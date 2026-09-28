@@ -186,6 +186,12 @@ tr.pending td { background: var(--brand-soft); }
 th.r, td.r { text-align: right; }
 .tk { display: flex; align-items: center; gap: 9px; }
 .tk .avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 11px; }
+.tklink { text-decoration: none; color: inherit; border-radius: 8px; }
+a.tklink[href] { cursor: pointer; }
+a.tklink[href]:hover b { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+.tklink .ext { font-size: 10px; color: var(--text-3); display: inline; }
+.subnum { display: block; font-size: 11px; color: var(--text-3); font-weight: 400; }
+td.mc b { font-weight: 500; }
 .tk b { font-size: 13px; } .tk span { display: block; font-size: 11.5px; color: var(--text-3); max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
 .checks { display: inline-flex; gap: 3px; }
 .checks i { width: 9px; height: 16px; border-radius: 3px; background: var(--line-2); position: relative; cursor: help; }
@@ -390,6 +396,9 @@ const pct = (v, d = 1) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFix
 const cls = v => (v > 0 ? "up" : v < 0 ? "down" : "muted");
 const dur = s => { s = Math.max(0, Math.round(s)); if (s < 60) return s + "s"; const m = Math.floor(s / 60); if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s"; return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m"; };
 const ago = s => s < 5 ? "now" : s < 60 ? Math.round(s) + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : Math.round(s / 3600) + "h ago";
+const usdOf = solAmt => (META?.sol_usd && solAmt != null) ? solAmt * META.sol_usd : null;
+const usd = v => v == null ? "" : "$" + (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "K" : v.toFixed(0));
+const mcapCell = sol => { const u = usdOf(sol); return u != null ? `<b class="num">${usd(u)}</b><span class="subnum num">${sol.toFixed(0)} SOL</span>` : `<b class="num">${sol.toFixed(0)}</b><span class="subnum">SOL</span>`; };
 const compact = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
 function hue(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 function avatar(sym, mint) { const h = hue(mint || sym); return `<div class="avatar" style="background:linear-gradient(135deg,hsl(${h} 70% 55%),hsl(${(h + 50) % 360} 75% 45%))">${esc((sym || "?").slice(0, 2))}</div>`; }
@@ -610,7 +619,7 @@ function renderPositions() {
       <div class="spark">${spark(p.spark, 320, 46, pc, p.entry_mcap)}</div>
       <div class="track"><div class="fill" style="left:${fillL}%;width:${fillW}%;background:${pc};opacity:.35"></div>${marks}<div class="now" style="left:${now}%"></div></div>
       <div class="pos-stats">
-        <div><span>Mcap in → now</span><b class="num">${p.entry_mcap.toFixed(0)} → ${p.mcap.toFixed(0)}</b></div>
+        <div><span>Mcap in → now</span><b class="num">${META?.sol_usd ? usd(usdOf(p.entry_mcap)) + " → " + usd(usdOf(p.mcap)) : p.entry_mcap.toFixed(0) + " → " + p.mcap.toFixed(0) + " SOL"}</b>${META?.sol_usd ? `<span class="subnum num">${p.entry_mcap.toFixed(0)} → ${p.mcap.toFixed(0)} SOL</span>` : ""}</div>
         <div><span>Held</span><b class="num">${dur(p.held_s)}</b></div>
         <div><span>Peak gain</span><b class="num up">${pct(p.peak_gain_pct, 0)}</b></div>
       </div>
@@ -624,7 +633,7 @@ function renderWatch() {
   $("#watchCount").textContent = S.stats.watching ? `${S.stats.watching} watching${S.stats.watching > W.length ? ` · top ${W.length}` : ""}` : "";
   if (!W.length) { $("#watch").innerHTML = `<tbody><tr><td class="empty" style="border:0">Waiting for new launches…</td></tr></tbody>`; return; }
   const maxW = S_cfg_watch();
-  $("#watch").innerHTML = `<thead><tr><th>Token</th><th>Age</th><th class="r">Mcap</th><th class="hide-sm">Chart</th><th>Filters</th><th class="r">Buyers</th><th class="r hide-sm">Buy vol</th><th class="r hide-sm">B/S</th></tr></thead><tbody>` +
+  $("#watch").innerHTML = `<thead><tr><th>Token</th><th>Age</th><th class="r" title="${META?.sol_usd ? `Market cap at $${META.sol_usd.toFixed(2)}/SOL` : "USD appears once the SOL price loads"}">Mcap</th><th class="hide-sm">Chart</th><th>Filters</th><th class="r">Buyers</th><th class="r hide-sm">Buy vol</th><th class="r hide-sm">B/S</th></tr></thead><tbody>` +
     W.map((t, i) => {
       const ratio = t.sell_vol ? t.buy_vol / t.sell_vol : null;
       const grp = g => t.checks.filter(c => c.group === g).map(c => `<i class="${c.ok ? "ok" : "no"}"></i>`).join("");
@@ -632,9 +641,9 @@ function renderWatch() {
       const checks = grp("core") + `<span class="sep"></span>` + trig("momentum", "Trigger A · Momentum") + trig("surge", "Trigger B · Buyer surge");
       const p = Math.min(100, t.age_s / maxW * 100);
       return `<tr class="${t.pending ? "pending" : ""}" data-i="${i}">
-        <td><div class="tk">${avatar(t.symbol, t.mint)}<div><b>${esc(t.symbol)}</b>${t.pending ? ` <span class="badge brand">BUYING</span>` : t.sec_state === "pending" ? ` <span class="badge gray" title="Waiting for RugCheck. Can't be bought until it passes">🛡 CHECKING</span>` : t.passed === t.total && t.total ? ` <span class="badge warn" title="Passed every filter but all position slots are full">SLOTS FULL</span>` : ""}<span>${esc(t.name)}</span></div></div></td>
+        <td><a class="tk tklink" ${META?.mode === "demo" ? `title="Demo token, not a real coin"` : `href="https://pump.fun/coin/${encodeURIComponent(t.mint)}" target="_blank" rel="noopener" title="Open ${esc(t.symbol)} on pump.fun"`}>${avatar(t.symbol, t.mint)}<div><b>${esc(t.symbol)}${META?.mode === "demo" ? "" : ` <span class="ext">↗</span>`}</b>${t.pending ? ` <span class="badge brand">BUYING</span>` : t.sec_state === "pending" ? ` <span class="badge gray" title="Waiting for RugCheck. Can't be bought until it passes">🛡 CHECKING</span>` : t.passed === t.total && t.total ? ` <span class="badge warn" title="Passed every filter but all position slots are full">SLOTS FULL</span>` : ""}<span>${esc(t.name)}</span></div></a></td>
         <td><span class="ring" style="--p:${p}"><span>${t.age_s < 60 ? t.age_s + "s" : Math.floor(t.age_s / 60) + "m"}</span></span></td>
-        <td class="r num">${t.mcap.toFixed(0)}</td>
+        <td class="r mc">${mcapCell(t.mcap)}</td>
         <td class="hide-sm" style="width:90px">${spark(t.spark, 84, 24)}</td>
         <td><span class="checks" data-mint="${t.mint}">${checks}</span> <span class="num faint" style="font-size:11.5px;margin-left:4px">${t.passed}/${t.total}</span></td>
         <td class="r num">${t.buyers}</td>
@@ -673,7 +682,7 @@ function renderFeed() {
     if (a.kind === "signal" && a.path === "buyer surge") title = "Buy signal · buyer surge";
     if (a.kind === "close") { ic = a.pnl >= 0 ? "close-up" : "close-down"; title = a.pnl >= 0 ? "Closed in profit" : "Closed at a loss"; right = `<div class="num ${cls(a.pnl)}" style="font-size:12.5px;font-weight:600;text-align:right">${pct(a.pnl_pct, 0)}</div>`; }
     return `<div class="ev ${fresh ? "fresh" : ""}"><div class="ic ${ic}">${a.kind === "close" ? (a.pnl >= 0 ? "✓" : "↘") : icons[a.kind] || "•"}</div>
-      <div class="t"><b>${esc(a.symbol)}</b> <span class="faint" style="font-size:12px">· ${title}</span><p>${esc(a.text)}</p></div>
+      <div class="t"><b>${esc(a.symbol)}</b> <span class="faint" style="font-size:12px">· ${title}</span><p>${esc(a.text).replace(/mcap (\d+) SOL/, (m, n) => META?.sol_usd ? `mcap ${usd(usdOf(+n))} (${n} SOL)` : m)}</p></div>
       <div>${right}<div class="when">${ago(S.now - a.ts)}</div></div></div>`;
   }).join("");
   firstFeed = false;

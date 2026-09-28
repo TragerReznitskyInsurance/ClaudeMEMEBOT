@@ -21,6 +21,7 @@ from memebot import settings as S
 from memebot.demo import generate
 from memebot.engine import Engine, Journal
 from memebot.live import LiveFeed, stream, tick_loop
+from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
 log = logging.getLogger("memebot")
@@ -53,7 +54,8 @@ class Runner:
 
     def meta(self):
         key = self.api_key()
-        return dict(mode=self.mode, running=self.running, connected=self.connected,
+        return dict(sol_usd=sol_price.usd, sol_usd_source=sol_price.source,
+                    mode=self.mode, running=self.running, connected=self.connected,
                     status=self.status_msg, started_at=self.started_at, speed=self.speed,
                     has_key=bool(key), key_from_env=bool(os.environ.get("PUMPPORTAL_API_KEY")),
                     key_hint=(key[:4] + "…" + key[-4:]) if len(key) > 10 else ("set" if key else ""),
@@ -154,6 +156,7 @@ class Runner:
 
 # ---------------------------------------------------------------------- routes
 runner = Runner()
+sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
 
 
@@ -188,8 +191,10 @@ async def broadcaster(app):
                 except Exception:
                     clients.discard(ws)
     task = asyncio.create_task(loop())
+    price_task = asyncio.create_task(sol_price.run())
     yield
     task.cancel()
+    price_task.cancel()
     await runner.stop()
 
 
