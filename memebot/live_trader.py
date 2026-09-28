@@ -29,7 +29,7 @@ from solders.pubkey import Pubkey
 from solders.system_program import TransferParams, transfer
 from solders.transaction import VersionedTransaction
 
-from memebot.chain import spot_price, trade_from_tx
+from memebot.chain import JUP_PRICE, curve_address, parse_curve, spot_price, trade_from_tx
 from memebot.names import is_placeholder
 
 log = logging.getLogger("memebot")
@@ -65,7 +65,8 @@ class LiveTrader:
         self.balance_ts = 0.0
         self.locks: dict[str, asyncio.Lock] = {}
         self.session: aiohttp.ClientSession | None = None
-        self.price_of = lambda mint: None  # set by the app: current SOL price per token
+        self.price_of = lambda mint: None  # set by the app: current SOL price per token (live feed)
+        self.prices: dict = {}             # mint -> (SOL per token, ts): our own on-chain price reads
         self.active = False                # true only while a live session is running
         self.late_waits = (45, 120)        # re-check a timed-out buy after these many seconds
         self.external_seen: set = set()    # wallet transactions already checked for outside sells
@@ -741,6 +742,61 @@ class LiveTrader:
         except OSError:
             pass
 
+    # ------------------------------------------------------------------ pricing open positions
+    def px(self, mint):
+        """Current SOL price per token: our own recent on-chain read, else the live feed's."""
+        own = self.prices.get(mint)
+        if own and time.time() - own[1] < 45:
+            return own[0]
+        try:
+            feed = self.price_of(mint)
+        except Exception:
+            feed = None
+        return feed or (own[0] if own else None)
+
+    async def refresh_prices(self):
+        mints = [m for m, p in self.positions.items() if p["status"] != "buying"]
+        if not mints or not self._hkey():
+            return
+        grads = []
+        for i in range(0, len(mints), 100):
+            chunk = mints[i:i + 100]
+            r = await self.rpc("getMultipleAccounts", [[curve_address(m) for m in chunk],
+                                                       {"encoding": "base64", "commitment": "confirmed"}])
+            for m, acc in zip(chunk, (r or {}).get("value") or []):
+                px = parse_curve(base64.b64decode(acc["data"][0])) if acc else None
+                if px:
+                    self.prices[m] = (px, time.time())
+                else:
+                    grads.append(m)                      # graduated / not a pump.fun curve
+        usd = self._usd()
+        if grads and usd:
+            s = await self._session()
+            for i in range(0, len(grads), 50):
+                chunk = grads[i:i + 50]
+                try:
+                    async with s.get(JUP_PRICE.format(mint=",".join(chunk)), timeout=aiohttp.ClientTimeout(total=8)) as rr:
+                        j = await rr.json(content_type=None) if rr.status == 200 else {}
+                    for m in chunk:
+                        v = float(((j or {}).get(m) or {}).get("usdPrice") or 0)
+                        if v > 0:
+                            self.prices[m] = (v / usd, time.time())
+                except Exception:
+                    pass
+        for m in list(self.prices):
+            if m not in self.positions:
+                self.prices.pop(m)
+
+    async def price_loop(self, every=15):
+        while True:
+            try:
+                await self.refresh_prices()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.debug("live price refresh failed: %s", e)
+            await asyncio.sleep(every)
+
     # ------------------------------------------------------------------ names
     def name_targets(self):
         return [m for m, p in self.positions.items() if is_placeholder(p.get("symbol", ""), m)] + \
@@ -826,8 +882,8 @@ class LiveTrader:
         per = {}
         for w in wallets:
             op, cl, deployed, realized = self.per_wallet(w)
-            priced = [p for p in op if p["status"] != "buying" and self.price_of(p["mint"])]
-            val = sum(p["tokens"] * self.price_of(p["mint"]) for p in priced) if priced else None
+            priced = [p for p in op if p["status"] != "buying" and self.px(p["mint"])]
+            val = sum(p["tokens"] * self.px(p["mint"]) for p in priced) if priced else None
             per[_short(w)] = dict(open=len(op), closed=len(cl), wins=sum(1 for x in cl if x["pnl_sol"] > 0),
                                   deployed=round(deployed, 4), realized=round(realized, 5),
                                   realized_usd=round(realized * px, 2) if px else None,
@@ -841,8 +897,8 @@ class LiveTrader:
             positions=[dict(mint=p["mint"], symbol=p["symbol"], name=p.get("name", ""), wallet=_short(p["wallet"]), status=p["status"],
                             sol_in=round(p["sol_in"] or p["size"], 5), sol_out=round(p["sol_out"], 5),
                             left_pct=round(p["tokens"] / p["tokens_bought"] * 100) if p.get("tokens_bought") else None,
-                            value=round(p["tokens"] * self.price_of(p["mint"]), 5)
-                            if p["status"] != "buying" and self.price_of(p["mint"]) else None,
+                            value=round(p["tokens"] * self.px(p["mint"]), 5)
+                            if p["status"] != "buying" and self.px(p["mint"]) else None,
                             age_s=round(time.time() - p["opened"]), last_sig=(p["sigs"] or [None])[-1])
                        for p in self.positions.values()],
             closed=self.closed[-30:][::-1],

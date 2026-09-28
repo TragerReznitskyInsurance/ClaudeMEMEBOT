@@ -285,10 +285,12 @@ async def broadcaster(app):
     task = asyncio.create_task(loop())
     price_task = asyncio.create_task(sol_price.run())
     names_task = asyncio.create_task(runner.names.run(runner.name_targets, runner.apply_name))
+    live_px_task = asyncio.create_task(runner.live.price_loop())
     yield
     task.cancel()
     price_task.cancel()
     names_task.cancel()
+    live_px_task.cancel()
     await runner.names.close()
     await runner.live.close()
     await runner.stop()
