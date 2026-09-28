@@ -22,6 +22,7 @@ from memebot.demo import generate
 from memebot.engine import Engine, Journal
 from memebot.live import LiveFeed, stream, tick_loop
 from memebot import wallet as WL
+from memebot.chain import ChainBackup
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -44,6 +45,8 @@ class Runner:
         self.journal = None
         self.recorder = None
         self.screener = None
+        self.chain = None
+        self.copy_log = None
 
     # ------------------------------------------------------------------ helpers
     def api_key(self):
@@ -84,12 +87,21 @@ class Runner:
             self.engine = Engine(self.cfg, feed, self.journal, screener=self.screener,
                                  blocklist_path=os.path.join(HERE, out, "creator_blocklist.txt"))
             feed.accounts = self.engine.copy_wallets()
+            if feed.accounts:
+                self.copy_log = open(os.path.join(HERE, out, f"copy_log_{tag}.jsonl"), "a")
+                self.engine.copy_log = self.copy_log
+                hk = S.helius_key(CONFIG)
+                if hk:
+                    self.chain = ChainBackup(lambda: self.engine, hk)
+                    self.engine.chain = self.chain
             if self.cfg["output"]["record_raw_events"]:
                 self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a")
             url = self.cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
             self._status(False, "Connecting to PumpPortal…")
             self.tasks = [asyncio.create_task(stream(self.engine, feed, url, self.recorder, self._status)),
                           asyncio.create_task(tick_loop(self.engine))]
+            if self.chain:
+                self.tasks.append(asyncio.create_task(self.chain.run()))
         else:
             self.engine = Engine(self.cfg, None, self.journal)
             self.screener = DemoScreener(self.engine)
@@ -109,6 +121,12 @@ class Runner:
         self.tasks = []
         if isinstance(self.screener, RugCheckScreener):
             await self.screener.close()
+        if self.chain:
+            await self.chain.close()
+            self.chain = None
+        if self.copy_log:
+            self.copy_log.close()
+            self.copy_log = None
         if self.engine and self.running:
             self.engine.close_all(self.engine.now or time.time(), "stopped")
             self.engine.on_tick(self.engine.now or time.time())

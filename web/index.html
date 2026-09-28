@@ -522,7 +522,14 @@ function renderBody() {
   if (C && C.wallets && C.wallets.length && META?.running) {
     const ws = C.wallets.map(w => w.slice(0, 4) + "…" + w.slice(-4)).join(", ");
     const waiting = META.mode === "live" && !(C.wallet_buys || C.wallet_sells);
-    n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${waiting ? "waiting for its next trade…" : `wallet bought ${C.wallet_buys || 0}× / sold ${C.wallet_sells || 0}× · copied ${C.copied_buys || 0} buys, ${C.copied_sells || 0} sells · ${C.open} open · ${C.closed} closed <span class="num ${cls(C.pnl)}">${signed(C.pnl, 4)} SOL</span>`}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}</div></div>`;
+    const B = C.backup;
+    const detail = waiting ? "waiting for its next trade…" :
+      `wallet bought ${C.wallet_buys || 0}× · sold ${C.wallet_sells || 0}×` +
+      (C.older_sells ? ` <span class="faint">(${C.older_sells} of those were positions it opened before we started, not copied)</span>` : "") +
+      ` · we copied ${C.copied_buys || 0} buys and mirrored ${C.mirrored_sells || 0} sells · ${C.open} open · ${C.closed} closed <span class="num ${cls(C.pnl)}">${signed(C.pnl, 4)} SOL</span>`;
+    const backup = META.mode !== "live" ? "" : B ? `<div class="faint" style="font-size:12px;margin-top:3px">🛡 On-chain backup active · ${B.recovered} missed trades recovered · ${B.resolved} amounts looked up${B.errors ? ` · ${B.errors} errors (${esc(B.last_error)})` : ""}</div>`
+      : `<div style="font-size:12px;margin-top:3px;color:var(--warn)">⚠ No Helius key, so there's no on-chain backup. Sells the live feed misses or sends without amounts may not be mirrored. Add the key in Wallet Lab, then restart.</div>`;
+    n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${detail}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}${backup}</div></div>`;
   }
   if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
   $("#notice").innerHTML = n;
@@ -659,6 +666,7 @@ function renderPositions() {
     const fillL = Math.min(now, zero), fillW = Math.abs(now - zero);
     const marks = [`<div class="mk stop" style="left:0"><label>${p.stop}%</label></div>`, `<div class="mk" style="left:${zero}%"><label>0</label></div>`]
       .concat(p.tp.map((t, i) => `<div class="mk ${t.done ? "done" : ""}" style="left:${trackPos(t.gain, lo, hi)}%"><label>TP${i + 1}</label></div>`)).join("");
+    const walletHold = p.mode === "copy" && p.wallet_left_pct != null ? `<span class="badge ${p.wallet_left_pct < 100 ? "warn" : "gray"}" title="How much of its position the copied wallet still holds">Wallet holds ${p.wallet_left_pct}%</span> ` : "";
     const status = p.exiting ? `<span class="badge warn">Exiting · ${esc(p.exiting)}</span>` : p.dev_sold ? `<span class="badge down">Dev sold</span>` : p.left_pct < 100 ? `<span class="badge up">${p.left_pct}% left</span>` : `<span class="badge gray">Holding</span>`;
     return `<div class="pos" style="--pc:${pc}">
       <div class="pos-top">${avatar(p.symbol, p.mint)}<div class="tkn"><b>${esc(p.symbol)} <span class="badge ${p.mode === "copy" ? "warn" : p.entry_path === "buyer surge" ? "brand" : "gray"}" style="vertical-align:1px">${p.mode === "copy" ? "Copy" : p.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></b><span>${esc(p.name)}</span></div>
@@ -670,7 +678,7 @@ ${p.mode === "copy" ? "" : `<div class="track"><div class="fill" style="left:${f
         <div><span>${p.mode === "copy" ? "Wallet in at" : "Held"}</span><b class="num">${p.mode === "copy" ? (META?.sol_usd ? usd(usdOf(p.wallet_entry_mcap)) : p.wallet_entry_mcap.toFixed(0) + " SOL") + ` <span class="faint">· ${dur(p.held_s)}</span>` : dur(p.held_s)}</b></div>
         <div><span>Peak gain</span><b class="num up">${pct(p.peak_gain_pct, 0)}</b></div>
       </div>
-      <div class="links" style="align-items:center">${status}<span class="spacer" style="flex:1"></span>${demo ? `<span class="faint">synthetic token</span>` : `<a href="https://pump.fun/coin/${p.mint}" target="_blank" rel="noopener">pump.fun ↗</a><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">DexScreener ↗</a>`}</div>
+      <div class="links" style="align-items:center">${walletHold}${status}<span class="spacer" style="flex:1"></span>${demo ? `<span class="faint">synthetic token</span>` : `<a href="https://pump.fun/coin/${p.mint}" target="_blank" rel="noopener">pump.fun ↗</a><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">DexScreener ↗</a>`}</div>
     </div>`;
   }).join("");
 }

@@ -8,6 +8,7 @@ data (backtest.py). It never signs or sends a transaction.
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import os
 from collections import Counter, defaultdict, deque
@@ -120,6 +121,7 @@ class Order:
     sol: float = 0.0     # buy size
     frac_of_initial: float | None = None   # sell: fraction of initial tokens; None = sell everything
     frac_of_left: float | None = None      # sell: fraction of tokens still held (copy mode)
+    defer_sell: float = 0.0                # copy: share the wallet sold while our buy was still filling
 
 
 @dataclass
@@ -200,8 +202,11 @@ class Engine:
         self._seen_set: set = set()
         # copy trading
         self.copy_hold = defaultdict(float)        # (wallet, mint) -> tokens the copied wallet holds (seen by us)
+        self.copy_bought = defaultdict(float)      # (wallet, mint) -> tokens it bought in the current position
         self.copy_stats = Counter()
         self.copy_wallet_mcap = {}                 # mint -> mcap the wallet bought at
+        self.chain = None                          # ChainBackup (live mode with a Helius key)
+        self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
         self.positions: dict[str, Position] = {}
@@ -407,6 +412,27 @@ class Engine:
         self._fill_due(ts)
 
     # ---------------------------------------------------------- copy trading
+    def seen_signature(self, sig: str) -> bool:
+        return sig in self._seen_set
+
+    def copy_from_chain(self, ev: dict, ts: float):
+        """A followed-wallet trade read from the chain (backup source / amount lookup)."""
+        sig = ev.get("signature")
+        if sig and sig not in self._seen_set:
+            self._seen_set.add(sig)
+            self._seen_sigs.append(sig)
+        self.now = ts
+        ev["_chain"] = True
+        self._on_copy(ev, ts)
+
+    def _wallet_left_pct(self, p):
+        if p.mode != "copy":
+            return None
+        for (w, m), bought in self.copy_bought.items():
+            if m == p.mint and bought:
+                return round(self.copy_hold.get((w, m), 0.0) / bought * 100)
+        return None
+
     def copy_wallets(self) -> set:
         cp = self.cfg.get("copy_trade") or {}
         if not cp.get("enabled"):
@@ -419,20 +445,42 @@ class Engine:
         w, mint = ev["traderPublicKey"], ev["mint"]
         tok = _f(ev.get("tokenAmount"), 0.0)
         wsol = _f(ev.get("solAmount"), 0.0)
+        from_chain = bool(ev.get("_chain"))
+        if self.copy_log:
+            try:
+                self.copy_log.write(json.dumps({"ts": ts, **{k: v for k, v in ev.items() if not k.startswith("_")},
+                                                "via": "chain" if from_chain else "live"}) + "\n")
+                self.copy_log.flush()
+            except (OSError, TypeError, ValueError):
+                pass
+        if tok <= 0 and not from_chain:
+            if self.chain is not None and ev.get("signature"):
+                self.copy_stats["looked_up"] += 1         # no usable amount: read the exact trade on-chain
+                self.chain.resolve(ev["signature"], w)
+                return
+            if ev["txType"] == "sell":
+                tok = self.copy_hold.get((w, mint), 0.0)  # no backup: treat as a full exit
+                self.copy_stats["assumed_full_sell"] += 1
+            elif wsol and _f(ev.get("marketCapSol")):
+                tok = wsol / (_f(ev.get("marketCapSol")) / TOTAL_SUPPLY)
         key = (w, mint)
         lat = self.cfg["execution"]["latency_s"]
         wshort = w[:4] + "…" + w[-4:]
         if ev["txType"] == "buy":
             self.copy_stats["wallet_buys"] += 1
             first = self.copy_hold[key] <= 0
+            if first:
+                self.copy_bought[key] = 0.0
             self.copy_hold[key] += tok
+            self.copy_bought[key] += tok
             t = self.tokens.get(mint)
             if t is None or t.status in ("rejected", "closed"):
                 t = TokenState(mint=mint, symbol=str(ev.get("symbol") or mint[:5]).upper()[:12], name="",
                                creator="", created_ts=ts, status="copy", last_trade_ts=ts)
                 self.tokens[mint] = t
-            t.update_market(ev, ts)
-            t.last_trade_ts = ts
+            if not from_chain:
+                t.update_market(ev, ts)
+                t.last_trade_ts = ts
             self.feed.subscribe(mint)                     # need live prices for fills and marking
             if first:
                 self.copy_wallet_mcap[mint] = _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
@@ -462,22 +510,30 @@ class Engine:
             self.copy_stats["wallet_sells"] += 1
             held = self.copy_hold.get(key, 0.0)
             t = self.tokens.get(mint)
-            if t:
+            if t and not from_chain:
                 t.update_market(ev, ts)
                 t.last_trade_ts = ts
             if held <= 0:
-                return                                    # bought before we started watching
+                self.copy_stats["older_sells"] += 1       # a position it opened before we started following
+                return
+            self.copy_stats["followed_sells"] += 1
             frac = min(1.0, tok / held) if held else 1.0
             self.copy_hold[key] = max(0.0, held - tok)
             if frac > 0.97 or self.copy_hold[key] <= held * 0.01:
                 frac = 1.0
                 self.copy_hold.pop(key, None)
-            if mint in self.pending_buys and frac >= 1.0:
-                del self.pending_buys[mint]               # they sold before our buy even filled
-                self.copy_stats["cancelled_before_fill"] += 1
-                if t:
-                    self._act("reject", t, "Copy cancelled · wallet sold before our buy filled")
-                return
+            if mint in self.pending_buys:
+                o = self.pending_buys[mint]
+                if frac >= 1.0 and mint not in self.positions:
+                    del self.pending_buys[mint]           # they sold out before our buy even filled
+                    self.copy_stats["cancelled_before_fill"] += 1
+                    if t:
+                        self._act("reject", t, "Copy cancelled · wallet sold before our buy filled")
+                    return
+                if mint not in self.positions:            # partial sell before our fill: apply right after it
+                    o.defer_sell = 1 - (1 - o.defer_sell) * (1 - frac)
+                    self.copy_stats["mirrored_sells"] += 1
+                    return
             p = self.positions.get(mint)
             if not p or not cp.get("follow_sells", True):
                 return
@@ -486,7 +542,7 @@ class Engine:
                 frac = 1 - (1 - prev) * (1 - frac)
             p.pending_sell = Order(mint, "sell", ts + lat, f"copied sell ({frac * 100:.0f}%)",
                                    frac_of_left=None if frac >= 1.0 else frac)
-            self.copy_stats["copied_sells"] += 1
+            self.copy_stats["mirrored_sells"] += 1
 
     # ---------------------------------------------------------- entry logic
     def entry_checks(self, t: TokenState, ts: float) -> list[dict]:
@@ -716,11 +772,14 @@ class Engine:
                 self._act("buy", t, f"Copied an add · {cost:.3f} SOL at mcap {t.mcap:.0f} SOL", sol=cost)
                 continue
             is_copy = o.reason.startswith("copy")
-            self.positions[mint] = Position(mint, t.symbol, ts, cost / tokens, tokens, tokens, cost,
+            self.positions[mint] = p_new = Position(mint, t.symbol, ts, cost / tokens, tokens, tokens, cost,
                                             peak_price=t.price, entry_mcap=t.mcap or 0.0, entry_path=o.reason,
                                             mode="copy" if is_copy else "strategy",
                                             copy_wallet=o.reason.split(":", 1)[1].strip() if is_copy and ":" in o.reason else "",
                                             wallet_entry_mcap=self.copy_wallet_mcap.get(mint, 0.0) if is_copy else 0.0)
+            if o.defer_sell > 0:
+                p_new.pending_sell = Order(mint, "sell", ts, f"copied sell ({o.defer_sell * 100:.0f}%)",
+                                           frac_of_left=None if o.defer_sell >= 0.999 else o.defer_sell)
             self._fill_row(ts, t, "BUY", "entry: " + o.reason, cost, tokens)
             self._act("buy", t, f"Paper buy {cost:.3f} SOL at mcap {t.mcap:.0f} SOL", sol=cost)
             log.info("BUY     %-10s %.3f SOL @ mcap %.0f SOL  (balance %.3f)", t.symbol, cost, t.mcap, self.balance)
@@ -819,6 +878,7 @@ class Engine:
             positions.append(dict(
                 mint=p.mint, symbol=p.symbol, name=t.name, held_s=round(ts - p.open_ts), entry_path=p.entry_path,
                 mode=p.mode, copy_wallet=p.copy_wallet, wallet_entry_mcap=round(p.wallet_entry_mcap, 1),
+                wallet_left_pct=self._wallet_left_pct(p),
                 sol_in=round(p.sol_in, 4), sol_out=round(p.sol_out, 4), value=round(val, 4),
                 upnl=round(p.sol_out + val - p.sol_in, 4), gain_pct=round(gain, 1),
                 peak_gain_pct=round((p.peak_price / p.entry_price - 1) * 100, 1),
@@ -888,6 +948,7 @@ class Engine:
             closed=self.closed[-60:][::-1],
             rejects=[r for r in self.reject_reasons.most_common() if not r[0].startswith("security: ")][:6],
             copy=dict(wallets=sorted(self.copy_wallets()),
+                      backup=(self.chain.stats | {"last_error": self.chain.last_error}) if self.chain else None,
                       **{k: v for k, v in self.copy_stats.items() if isinstance(k, str)},
                       open=sum(1 for p in self.positions.values() if p.mode == "copy"),
                       closed=sum(1 for c in self.closed if str(c.get("entry_path", "")).startswith("copy")),
