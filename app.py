@@ -83,6 +83,7 @@ class Runner:
             self.screener = RugCheckScreener(lambda: self.engine, lambda: self.engine.cfg["security"])
             self.engine = Engine(self.cfg, feed, self.journal, screener=self.screener,
                                  blocklist_path=os.path.join(HERE, out, "creator_blocklist.txt"))
+            feed.accounts = self.engine.copy_wallets()
             if self.cfg["output"]["record_raw_events"]:
                 self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a")
             url = self.cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
@@ -126,6 +127,33 @@ class Runner:
     async def _demo_loop(self):
         """Plays a synthetic feed on a virtual clock that runs `speed`× real time."""
         eng = self.engine
+        import random as _r
+        rng = _r.Random()
+        wallets = sorted(eng.copy_wallets())
+        held = {}   # mint -> (entry mcap, tokens, sold half?)
+
+        def fake_wallet(ev):
+            """Demo only: pretend the copied wallet buys ~40-48 SOL mcap, stops at -30%, sells into 3x/5x."""
+            if not wallets or ev.get("txType") not in ("buy", "sell"):
+                return []
+            mint, mc = ev["mint"], ev.get("marketCapSol") or 0
+            w = wallets[0]
+            out = []
+            base = dict(mint=mint, traderPublicKey=w, marketCapSol=mc,
+                        vSolInBondingCurve=ev.get("vSolInBondingCurve"), vTokensInBondingCurve=ev.get("vTokensInBondingCurve"))
+            if mint not in held and 40 <= mc <= 48 and rng.random() < 0.25:
+                tok = 1.5 / (mc / 1e9)
+                held[mint] = [mc, tok, False]
+                out.append(base | dict(txType="buy", solAmount=1.5, tokenAmount=tok, signature=f"demo-{rng.random()}"))
+            elif mint in held and held[mint][1] > 0:
+                e0, tok, half = held[mint]
+                if mc <= e0 * 0.7 or (half and mc >= e0 * 5):
+                    out.append(base | dict(txType="sell", solAmount=tok * mc / 1e9, tokenAmount=tok, signature=f"demo-{rng.random()}"))
+                    held[mint][1] = 0
+                elif not half and mc >= e0 * 3:
+                    out.append(base | dict(txType="sell", solAmount=tok / 2 * mc / 1e9, tokenAmount=tok / 2, signature=f"demo-{rng.random()}"))
+                    held[mint] = [e0, tok / 2, True]
+            return out
         vclock = time.time()
         events = generate(vclock + 2, n_tokens=80, seed=None)
         i = 0
@@ -142,6 +170,8 @@ class Runner:
             while i < len(events) and events[i]["_ts"] <= vclock:
                 ev = events[i]
                 i += 1
+                for extra in fake_wallet(ev):
+                    eng.on_event(extra, ev["_ts"])
                 while ev["_ts"] - last_tick >= 1.0:
                     last_tick += 1.0
                     eng.on_tick(last_tick)
@@ -248,6 +278,10 @@ async def api_save_settings(request):
             v = S.coerce(it, raw)
             if it["type"] in ("int", "float") and v < 0:
                 raise ValueError
+            if path == "copy_trade.wallet":
+                v = ",".join(w.strip() for w in v.split(",") if w.strip())
+                if any(not WL.valid_address(w) for w in v.split(",") if w):
+                    raise ValueError
             values[path] = v
         except (TypeError, ValueError):
             errors.append(it["label"])

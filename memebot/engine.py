@@ -119,6 +119,7 @@ class Order:
     reason: str
     sol: float = 0.0     # buy size
     frac_of_initial: float | None = None   # sell: fraction of initial tokens; None = sell everything
+    frac_of_left: float | None = None      # sell: fraction of tokens still held (copy mode)
 
 
 @dataclass
@@ -134,6 +135,9 @@ class Position:
     peak_price: float = 0.0
     entry_mcap: float = 0.0
     entry_path: str = ""
+    mode: str = "strategy"            # strategy | copy
+    copy_wallet: str = ""
+    wallet_entry_mcap: float = 0.0
     tp_done: set = field(default_factory=set)
     pending_sell: Order | None = None
     exit_reasons: list = field(default_factory=list)
@@ -192,6 +196,12 @@ class Engine:
         self.creator_launches = defaultdict(deque)
         self.security_passed = 0
         self.security_failed = 0
+        self._seen_sigs: deque = deque()
+        self._seen_set: set = set()
+        # copy trading
+        self.copy_hold = defaultdict(float)        # (wallet, mint) -> tokens the copied wallet holds (seen by us)
+        self.copy_stats = Counter()
+        self.copy_wallet_mcap = {}                 # mint -> mcap the wallet bought at
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
         self.positions: dict[str, Position] = {}
@@ -221,6 +231,16 @@ class Engine:
         mint = ev.get("mint")
         if not mint or not tx:
             return
+        sig = ev.get("signature")
+        if sig:
+            if sig in self._seen_set:
+                return                              # same trade from two streams (token + account)
+            self._seen_set.add(sig)
+            self._seen_sigs.append(sig)
+            if len(self._seen_sigs) > 50000:
+                self._seen_set.discard(self._seen_sigs.popleft())
+        if tx in ("buy", "sell") and ev.get("traderPublicKey") in self.copy_wallets():
+            self._on_copy(ev, ts)
         if tx == "create":
             self._on_create(ev, ts)
         elif tx == "migrate":
@@ -248,7 +268,8 @@ class Engine:
         self._mark_equity(ts)
         # prune finished tokens so memory stays flat over long runs
         for mint, t in list(self.tokens.items()):
-            if t.status in ("rejected", "closed") and ts - t.created_ts > 1800:
+            if (t.status in ("rejected", "closed") or (t.status == "copy" and mint not in self.pending_buys)) \
+                    and ts - t.created_ts > 1800 and mint not in self.positions:
                 del self.tokens[mint]
 
     # ---------------------------------------------------------- handlers
@@ -329,7 +350,7 @@ class Engine:
                 pass
 
     def _on_create(self, ev, ts):
-        if self.cfg["universe"] != "new_tokens":
+        if self.cfg["universe"] != "new_tokens" or not self.cfg.get("strategies", {}).get("momentum", True):
             return
         t = TokenState(
             mint=ev["mint"], symbol=str(ev.get("symbol", "?"))[:20], name=str(ev.get("name", ""))[:60],
@@ -384,6 +405,88 @@ class Engine:
         elif t.status == "held":
             self._evaluate_exit(t, ts)
         self._fill_due(ts)
+
+    # ---------------------------------------------------------- copy trading
+    def copy_wallets(self) -> set:
+        cp = self.cfg.get("copy_trade") or {}
+        if not cp.get("enabled"):
+            return set()
+        return {w.strip() for w in str(cp.get("wallet", "")).split(",") if w.strip()}
+
+    def _on_copy(self, ev: dict, ts: float):
+        """The followed wallet traded. Mirror it on paper: same token, our size, after our latency."""
+        cp = self.cfg["copy_trade"]
+        w, mint = ev["traderPublicKey"], ev["mint"]
+        tok = _f(ev.get("tokenAmount"), 0.0)
+        wsol = _f(ev.get("solAmount"), 0.0)
+        key = (w, mint)
+        lat = self.cfg["execution"]["latency_s"]
+        wshort = w[:4] + "…" + w[-4:]
+        if ev["txType"] == "buy":
+            self.copy_stats["wallet_buys"] += 1
+            first = self.copy_hold[key] <= 0
+            self.copy_hold[key] += tok
+            t = self.tokens.get(mint)
+            if t is None or t.status in ("rejected", "closed"):
+                t = TokenState(mint=mint, symbol=str(ev.get("symbol") or mint[:5]).upper()[:12], name="",
+                               creator="", created_ts=ts, status="copy", last_trade_ts=ts)
+                self.tokens[mint] = t
+            t.update_market(ev, ts)
+            t.last_trade_ts = ts
+            self.feed.subscribe(mint)                     # need live prices for fills and marking
+            if first:
+                self.copy_wallet_mcap[mint] = _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
+            size = cp["size_sol"]
+            if mint in self.positions or mint in self.pending_buys:
+                if not cp.get("follow_adds", True) or mint in self.pending_buys:
+                    return
+                first_sol = self.copy_stats.get(("first_sol", mint)) or wsol or 1.0
+                size = cp["size_sol"] * min(3.0, wsol / first_sol) if first_sol else cp["size_sol"]
+            elif not first:
+                return                                    # we skipped their first buy; don't start mid-position
+            else:
+                self.copy_stats[("first_sol", mint)] = wsol
+                copy_open = sum(1 for p in self.positions.values() if p.mode == "copy")
+                if copy_open >= cp.get("max_open", 100):
+                    self.copy_stats["skipped: max open"] += 1
+                    return self._act("reject", t, "Copy skipped · max copy positions reached")
+            if self.balance < size + 2 * self.cfg["execution"]["priority_fee_sol"]:
+                self.copy_stats["skipped: balance"] += 1
+                return self._act("reject", t, "Copy skipped · paper balance too low")
+            self.pending_buys[mint] = Order(mint, "buy", ts + lat, f"copy: {wshort}", sol=size)
+            self.copy_stats["copied_buys"] += 1
+            self._act("signal", t, f"Wallet {wshort} bought {wsol:.2f} SOL at mcap {t.mcap or 0:.0f} SOL · copying",
+                      path="copy")
+            log.info("COPY    %-10s wallet %s bought %.2f SOL @ mcap %.0f", t.symbol, wshort, wsol, t.mcap or 0)
+        else:
+            self.copy_stats["wallet_sells"] += 1
+            held = self.copy_hold.get(key, 0.0)
+            t = self.tokens.get(mint)
+            if t:
+                t.update_market(ev, ts)
+                t.last_trade_ts = ts
+            if held <= 0:
+                return                                    # bought before we started watching
+            frac = min(1.0, tok / held) if held else 1.0
+            self.copy_hold[key] = max(0.0, held - tok)
+            if frac > 0.97 or self.copy_hold[key] <= held * 0.01:
+                frac = 1.0
+                self.copy_hold.pop(key, None)
+            if mint in self.pending_buys and frac >= 1.0:
+                del self.pending_buys[mint]               # they sold before our buy even filled
+                self.copy_stats["cancelled_before_fill"] += 1
+                if t:
+                    self._act("reject", t, "Copy cancelled · wallet sold before our buy filled")
+                return
+            p = self.positions.get(mint)
+            if not p or not cp.get("follow_sells", True):
+                return
+            if p.pending_sell is not None:
+                prev = p.pending_sell.frac_of_left if p.pending_sell.frac_of_left is not None else 1.0
+                frac = 1 - (1 - prev) * (1 - frac)
+            p.pending_sell = Order(mint, "sell", ts + lat, f"copied sell ({frac * 100:.0f}%)",
+                                   frac_of_left=None if frac >= 1.0 else frac)
+            self.copy_stats["copied_sells"] += 1
 
     # ---------------------------------------------------------- entry logic
     def entry_checks(self, t: TokenState, ts: float) -> list[dict]:
@@ -483,7 +586,9 @@ class Engine:
             return
         # all filters passed -> risk checks
         r, x = self.cfg["risk"], self.cfg["execution"]
-        if len(self.positions) + len(self.pending_buys) >= r["max_open_positions"]:
+        strat_open = sum(1 for p in self.positions.values() if p.mode == "strategy") + \
+            sum(1 for o in self.pending_buys.values() if not o.reason.startswith("copy"))
+        if strat_open >= r["max_open_positions"]:
             t.last_fail = "max open positions"
             return
         if self.day_pnl <= -r["daily_loss_limit_sol"]:
@@ -532,8 +637,16 @@ class Engine:
             return
         x = self.cfg["exit"]
         p.peak_price = max(p.peak_price, t.price)
-        if p.pending_sell and p.pending_sell.frac_of_initial is None:
+        if p.pending_sell and p.pending_sell.frac_of_initial is None and p.pending_sell.frac_of_left is None:
             return  # full exit already queued
+        if p.mode == "copy":
+            cp = self.cfg.get("copy_trade", {})
+            lat = self.cfg["execution"]["latency_s"]
+            if cp.get("safety_stop_pct") and (t.price / p.entry_price - 1) * 100 <= -cp["safety_stop_pct"]:
+                p.pending_sell = Order(t.mint, "sell", ts + lat, "copy safety stop")
+            elif cp.get("max_hold_h") and ts - p.open_ts >= cp["max_hold_h"] * 3600:
+                p.pending_sell = Order(t.mint, "sell", ts + lat, "copy max hold")
+            return
 
         def sell_all(reason):
             p.pending_sell = Order(t.mint, "sell", ts + self.cfg["execution"]["latency_s"], reason)
@@ -593,8 +706,21 @@ class Engine:
             cost = o.sol + x["priority_fee_sol"]
             self.balance -= cost
             t.status = "held"
+            if mint in self.positions:                   # copy mode: wallet added to its position
+                p = self.positions[mint]
+                p.tokens_left += tokens
+                p.tokens_initial += tokens
+                p.sol_in += cost
+                p.entry_price = p.sol_in / p.tokens_initial
+                self._fill_row(ts, t, "BUY", "copy add", cost, tokens)
+                self._act("buy", t, f"Copied an add · {cost:.3f} SOL at mcap {t.mcap:.0f} SOL", sol=cost)
+                continue
+            is_copy = o.reason.startswith("copy")
             self.positions[mint] = Position(mint, t.symbol, ts, cost / tokens, tokens, tokens, cost,
-                                            peak_price=t.price, entry_mcap=t.mcap or 0.0, entry_path=o.reason)
+                                            peak_price=t.price, entry_mcap=t.mcap or 0.0, entry_path=o.reason,
+                                            mode="copy" if is_copy else "strategy",
+                                            copy_wallet=o.reason.split(":", 1)[1].strip() if is_copy and ":" in o.reason else "",
+                                            wallet_entry_mcap=self.copy_wallet_mcap.get(mint, 0.0) if is_copy else 0.0)
             self._fill_row(ts, t, "BUY", "entry: " + o.reason, cost, tokens)
             self._act("buy", t, f"Paper buy {cost:.3f} SOL at mcap {t.mcap:.0f} SOL", sol=cost)
             log.info("BUY     %-10s %.3f SOL @ mcap %.0f SOL  (balance %.3f)", t.symbol, cost, t.mcap, self.balance)
@@ -603,7 +729,12 @@ class Engine:
             if not o or ts < o.due_ts:
                 continue
             t = self.tokens[mint]
-            qty = p.tokens_left if o.frac_of_initial is None else min(p.tokens_left, p.tokens_initial * o.frac_of_initial)
+            if o.frac_of_left is not None:
+                qty = p.tokens_left * min(1.0, o.frac_of_left)
+            elif o.frac_of_initial is not None:
+                qty = min(p.tokens_left, p.tokens_initial * o.frac_of_initial)
+            else:
+                qty = p.tokens_left
             proceeds = self._sim_sell(t, qty)
             p.tokens_left -= qty
             p.sol_out += proceeds
@@ -687,6 +818,7 @@ class Engine:
             gain = (t.price / p.entry_price - 1) * 100 if t.price else 0.0
             positions.append(dict(
                 mint=p.mint, symbol=p.symbol, name=t.name, held_s=round(ts - p.open_ts), entry_path=p.entry_path,
+                mode=p.mode, copy_wallet=p.copy_wallet, wallet_entry_mcap=round(p.wallet_entry_mcap, 1),
                 sol_in=round(p.sol_in, 4), sol_out=round(p.sol_out, 4), value=round(val, 4),
                 upnl=round(p.sol_out + val - p.sol_in, 4), gain_pct=round(gain, 1),
                 peak_gain_pct=round((p.peak_price / p.entry_price - 1) * 100, 1),
@@ -736,7 +868,9 @@ class Engine:
                 realised=round(realised, 4), day_pnl=round(self.day_pnl, 4),
                 closed=len(self.closed), wins=wins, losses=len(self.closed) - wins,
                 win_rate=round(wins / len(self.closed) * 100, 1) if self.closed else None,
-                open=len(self.positions) + len(self.pending_buys), max_open=self.cfg["risk"]["max_open_positions"],
+                open=sum(1 for p in self.positions.values() if p.mode == "strategy")
+                + sum(1 for o in self.pending_buys.values() if not o.reason.startswith("copy")),
+                max_open=self.cfg["risk"]["max_open_positions"],
                 tokens_seen=self.security_passed + self.security_failed + screening,
                 security_passed=self.security_passed, security_failed=self.security_failed,
                 screening=screening, blocked_creators=len(self.bad_creators),
@@ -753,6 +887,11 @@ class Engine:
             activity=list(self.activity)[-120:][::-1],
             closed=self.closed[-60:][::-1],
             rejects=[r for r in self.reject_reasons.most_common() if not r[0].startswith("security: ")][:6],
+            copy=dict(wallets=sorted(self.copy_wallets()),
+                      **{k: v for k, v in self.copy_stats.items() if isinstance(k, str)},
+                      open=sum(1 for p in self.positions.values() if p.mode == "copy"),
+                      closed=sum(1 for c in self.closed if str(c.get("entry_path", "")).startswith("copy")),
+                      pnl=round(sum(c["pnl_sol"] for c in self.closed if str(c.get("entry_path", "")).startswith("copy")), 4)),
             security_rejects=[(r[10:], c) for r, c in self.reject_reasons.most_common()
                               if r.startswith("security: ")][:6],
         )

@@ -31,6 +31,7 @@ async def run(cfg):
     screener = RugCheckScreener(lambda: engine, lambda: engine.cfg["security"])
     engine = Engine(cfg, feed, journal, screener=screener,
                     blocklist_path=os.path.join(out, "creator_blocklist.txt"))
+    feed.accounts = engine.copy_wallets()
     rec = open(os.path.join(out, f"events_{tag}.jsonl"), "a") if cfg["output"]["record_raw_events"] else None
     url = cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
 

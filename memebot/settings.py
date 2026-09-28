@@ -46,6 +46,17 @@ SCHEMA = [
         {"path": "entry.buyer_surge.min_recent_buy_sell_ratio", "label": "Min buy/sell in window", "unit": "×", "type": "float"},
         {"path": "entry.buyer_surge.min_momentum_pct", "label": "Min price rise in window", "unit": "%", "type": "float"},
     ]},
+    {"group": "Copy trading", "items": [
+        {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
+        {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
+        {"path": "copy_trade.size_sol", "label": "Paper size per copy", "unit": "SOL", "type": "float"},
+        {"path": "copy_trade.follow_sells", "label": "Mirror their sells", "type": "bool"},
+        {"path": "copy_trade.follow_adds", "label": "Copy their adds", "type": "bool"},
+        {"path": "copy_trade.max_open", "label": "Max copied positions", "type": "int"},
+        {"path": "copy_trade.safety_stop_pct", "label": "Own stop loss (0 = off)", "unit": "%", "type": "float"},
+        {"path": "copy_trade.max_hold_h", "label": "Max hold (0 = off)", "unit": "h", "type": "float"},
+        {"path": "strategies.momentum", "label": "Also run momentum strategy", "type": "bool"},
+    ]},
     {"group": "Exits", "items": [
         {"path": "exit.stop_loss_pct", "label": "Stop loss", "unit": "%", "type": "float"},
         {"path": "exit.take_profit.0.gain_pct", "label": "Take profit 1 at", "unit": "%", "type": "float"},
@@ -168,5 +179,5 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
-_ORDER = ["Security gate", "Safety filters", "Trigger A", "Trigger B"]
+_ORDER = ["Copy trading", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

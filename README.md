@@ -106,6 +106,14 @@ $env:PUMPPORTAL_API_KEY="your-key"
 is 300k messages, about 0.3 SOL per day at most. Setting `universe: migrated`
 watches only graduated tokens, which is far cheaper.
 
+## Copy trading (paper)
+
+In **Settings → Copy trading**, turn on **Copy a wallet**, paste the wallet address, click Save, then **Stop** and **Start live** again.
+
+When that wallet buys, Momentum paper-buys the same token at your own size, after your simulated delay. When it sells, Momentum sells the same share of your position. Positions and trade history show a **Copy** badge, and a banner tracks what the wallet did and what was copied.
+
+To test copying on its own, turn **Also run momentum strategy** off. Copied positions have their own limit (**Max copied positions**) and don't use up the momentum strategy's slots.
+
 ## Wallet Lab: learn from a wallet that trades well
 
 Click **🔬 Wallet Lab** in the dashboard, paste any Solana wallet, and Momentum rebuilds every memecoin trade that wallet made. It shows:

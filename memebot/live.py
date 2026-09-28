@@ -15,10 +15,11 @@ log = logging.getLogger("memebot")
 class LiveFeed:
     """Queues subscribe/unsubscribe requests; the socket task sends them in batches."""
 
-    def __init__(self, has_key: bool):
+    def __init__(self, has_key: bool, accounts=()):
         self.q: asyncio.Queue = asyncio.Queue()
         self.active: set[str] = set()
         self.has_key = has_key
+        self.accounts = set(accounts)          # wallets to follow (copy trading)
 
     def subscribe(self, mint):
         if self.has_key and mint not in self.active:
@@ -65,6 +66,9 @@ async def stream(engine, feed: LiveFeed, url: str, recorder=None, on_status=None
                 await ws.send(json.dumps({"method": "subscribeMigration"}))
                 if feed.active:
                     await ws.send(json.dumps({"method": "subscribeTokenTrade", "keys": list(feed.active)}))
+                if feed.accounts and feed.has_key:
+                    await ws.send(json.dumps({"method": "subscribeAccountTrade", "keys": sorted(feed.accounts)}))
+                    log.info("following %d wallet(s) for copy trading", len(feed.accounts))
                 send_task = asyncio.create_task(_sender(ws, feed))
                 try:
                     async for raw in ws:

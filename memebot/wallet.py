@@ -323,7 +323,7 @@ def build_trips(fills, launch):
 
 
 # ───────────────────────────────────────────────────────── statistics
-def summarize(wallet, trips, fills, skipped, orphan_sells, days, tx_count):
+def summarize(wallet, trips, fills, skipped, orphan_sells, days, tx_count, max_tx=None):
     closed = [t for t in trips if t["status"] == "closed" and not t["transferred_out"]]
     wins = [t for t in closed if t["pnl_sol"] > 0]
     losses = [t for t in closed if t["pnl_sol"] <= 0]
@@ -416,6 +416,7 @@ def summarize(wallet, trips, fills, skipped, orphan_sells, days, tx_count):
                          hold_s=t["hold_s"], entry_mcap_sol=_r(t["entry_mcap_sol"], 1), entry_delay_s=t["entry_delay_s"])
                     for t in top5],
     )
+    s["max_tx"] = max_tx
     s["flags"] = flags(s, trips)
     return s
 
@@ -438,6 +439,18 @@ def flags(s, trips):
         out.append(("info", "Tokens moved out",
                     f"{s['counts']['transferred_out']} positions were partly transferred to other wallets "
                     "(possibly sold elsewhere) and are excluded from win/loss stats."))
+    if s["period"]["days"] and s["window_days"] and s["period"]["days"] < s["window_days"] * 0.8 \
+            and s["transactions"] >= s.get("max_tx", 10 ** 9):
+        out.append(("warn", "Window cut short",
+                    f"Hit the {s['transactions']:,}-transaction limit, so only {s['period']['days']:.0f} of "
+                    f"{s['window_days']} days were covered."))
+    unsold = [t for t in trips if t["status"] == "open"]
+    if unsold:
+        old = [t for t in unsold if time.time() - t["first_buy_ts"] > 86400]
+        out.append(("warn" if len(unsold) > 0.05 * max(1, len(trips)) else "info", "Never-sold positions",
+                    f"{len(unsold)} positions ({sum(t['sol_in'] for t in unsold):.1f} SOL of buys) were never sold, "
+                    f"{len(old)} of them over a day old. They are NOT in the PnL, so real results are lower "
+                    "if those tokens died."))
     if s["counts"]["orphan_sells"]:
         out.append(("info", "Pre-window positions",
                     f"{s['counts']['orphan_sells']} sells were of tokens bought before the analysis window and are ignored."))
@@ -504,7 +517,7 @@ def summary_text(s):
 
 
 # ───────────────────────────────────────────────────────── orchestration
-async def analyze(wallet, helius_key, out_root, days=30, max_tx=4000, progress_cb=None, raw_path=None):
+async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_cb=None, raw_path=None):
     """Full pipeline. Returns (summary dict, output dir). raw_path lets you re-run on saved data."""
     progress = Progress(progress_cb)
     if not valid_address(wallet):
@@ -529,7 +542,7 @@ async def analyze(wallet, helius_key, out_root, days=30, max_tx=4000, progress_c
         mints = {f["mint"] for f in fills if f["side"] == "buy"}
         launch = await fetch_launch_info(session, mints, progress) if mints else {}
     trips, orphans = build_trips(fills, launch)
-    s = summarize(wallet, trips, fills, skipped, orphans, days, len(txs))
+    s = summarize(wallet, trips, fills, skipped, orphans, days, len(txs), max_tx)
     write_outputs(out_dir, s, trips, fills, launch)
     progress(phase="done", done=1, total=1, message="Done")
     return s, out_dir

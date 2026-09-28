@@ -260,6 +260,7 @@ td.mc b { font-weight: 500; }
 .fgroup h4 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin: 22px 0 10px; font-weight: 600; }
 .field { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 10px; padding: 6px 0; }
 .field label { font-size: 13px; color: var(--text-2); }
+.field.wide { grid-template-columns: 1fr; gap: 6px; }
 .field label em { font-style: normal; font-size: 10.5px; color: var(--warn); margin-left: 6px; }
 .inp { position: relative; }
 .inp input, .inp select, .keyrow input { width: 100%; background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 10px; color: var(--text);
@@ -517,6 +518,12 @@ function renderBody() {
     n = `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>◇</span><div><b style="color:var(--brand)">Demo mode.</b> Every token here is synthetic. Use it to learn the dashboard, not to judge the strategy.</div></div>`;
   if (META?.running && META.mode === "live" && META.rugcheck_errors >= 5 && META.rugcheck_errors / Math.max(1, META.rugcheck_checks) > 0.3 && S?.stats?.rugcheck)
     n += `<div class="notice"><span>🛡</span><div><b>RugCheck isn't responding reliably</b> (${META.rugcheck_errors} of ${META.rugcheck_checks} checks failed${META.rugcheck_last_error ? ", last: " + esc(META.rugcheck_last_error) : ""}). ${META.rugcheck_on_error === "allow" ? "Tokens it can't check are being watched without it." : "Tokens it can't check are being skipped, so you may see very few trades."}</div><button class="btn" onclick="openDrawer()">Settings</button></div>`;
+  const C = S?.copy;
+  if (C && C.wallets && C.wallets.length && META?.running) {
+    const ws = C.wallets.map(w => w.slice(0, 4) + "…" + w.slice(-4)).join(", ");
+    const waiting = META.mode === "live" && !(C.wallet_buys || C.wallet_sells);
+    n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${waiting ? "waiting for its next trade…" : `wallet bought ${C.wallet_buys || 0}× / sold ${C.wallet_sells || 0}× · copied ${C.copied_buys || 0} buys, ${C.copied_sells || 0} sells · ${C.open} open · ${C.closed} closed <span class="num ${cls(C.pnl)}">${signed(C.pnl, 4)} SOL</span>`}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}</div></div>`;
+  }
   if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
   $("#notice").innerHTML = n;
 
@@ -654,13 +661,13 @@ function renderPositions() {
       .concat(p.tp.map((t, i) => `<div class="mk ${t.done ? "done" : ""}" style="left:${trackPos(t.gain, lo, hi)}%"><label>TP${i + 1}</label></div>`)).join("");
     const status = p.exiting ? `<span class="badge warn">Exiting · ${esc(p.exiting)}</span>` : p.dev_sold ? `<span class="badge down">Dev sold</span>` : p.left_pct < 100 ? `<span class="badge up">${p.left_pct}% left</span>` : `<span class="badge gray">Holding</span>`;
     return `<div class="pos" style="--pc:${pc}">
-      <div class="pos-top">${avatar(p.symbol, p.mint)}<div class="tkn"><b>${esc(p.symbol)} <span class="badge ${p.entry_path === "buyer surge" ? "brand" : "gray"}" style="vertical-align:1px">${p.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></b><span>${esc(p.name)}</span></div>
+      <div class="pos-top">${avatar(p.symbol, p.mint)}<div class="tkn"><b>${esc(p.symbol)} <span class="badge ${p.mode === "copy" ? "warn" : p.entry_path === "buyer surge" ? "brand" : "gray"}" style="vertical-align:1px">${p.mode === "copy" ? "Copy" : p.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></b><span>${esc(p.name)}</span></div>
         <div class="gain"><b class="num ${cls(p.gain_pct)}">${pct(p.gain_pct)}</b><span class="num ${cls(p.upnl)}">${signed(p.upnl, 4)} SOL</span></div></div>
       <div class="spark">${spark(p.spark, 320, 46, pc, p.entry_mcap)}</div>
-      <div class="track"><div class="fill" style="left:${fillL}%;width:${fillW}%;background:${pc};opacity:.35"></div>${marks}<div class="now" style="left:${now}%"></div></div>
+${p.mode === "copy" ? "" : `<div class="track"><div class="fill" style="left:${fillL}%;width:${fillW}%;background:${pc};opacity:.35"></div>${marks}<div class="now" style="left:${now}%"></div></div>`}
       <div class="pos-stats">
         <div><span>Mcap in → now</span><b class="num">${META?.sol_usd ? usd(usdOf(p.entry_mcap)) + " → " + usd(usdOf(p.mcap)) : p.entry_mcap.toFixed(0) + " → " + p.mcap.toFixed(0) + " SOL"}</b>${META?.sol_usd ? `<span class="subnum num">${p.entry_mcap.toFixed(0)} → ${p.mcap.toFixed(0)} SOL</span>` : ""}</div>
-        <div><span>Held</span><b class="num">${dur(p.held_s)}</b></div>
+        <div><span>${p.mode === "copy" ? "Wallet in at" : "Held"}</span><b class="num">${p.mode === "copy" ? (META?.sol_usd ? usd(usdOf(p.wallet_entry_mcap)) : p.wallet_entry_mcap.toFixed(0) + " SOL") + ` <span class="faint">· ${dur(p.held_s)}</span>` : dur(p.held_s)}</b></div>
         <div><span>Peak gain</span><b class="num up">${pct(p.peak_gain_pct, 0)}</b></div>
       </div>
       <div class="links" style="align-items:center">${status}<span class="spacer" style="flex:1"></span>${demo ? `<span class="faint">synthetic token</span>` : `<a href="https://pump.fun/coin/${p.mint}" target="_blank" rel="noopener">pump.fun ↗</a><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">DexScreener ↗</a>`}</div>
@@ -720,6 +727,7 @@ function renderFeed() {
     const key = a.ts + a.kind + a.mint + a.text, fresh = !firstFeed && !seenEv.has(key); seenEv.add(key);
     let ic = a.kind, title = titles[a.kind] || a.kind, right = "";
     if (a.kind === "signal" && a.path === "buyer surge") title = "Buy signal · buyer surge";
+    if (a.kind === "signal" && a.path === "copy") title = "Copy signal";
     if (a.kind === "close") { ic = a.pnl >= 0 ? "close-up" : "close-down"; title = a.pnl >= 0 ? "Closed in profit" : "Closed at a loss"; right = `<div class="num ${cls(a.pnl)}" style="font-size:12.5px;font-weight:600;text-align:right">${pct(a.pnl_pct, 0)}</div>`; }
     return `<div class="ev ${fresh ? "fresh" : ""}"><div class="ic ${ic}">${a.kind === "close" ? (a.pnl >= 0 ? "✓" : "↘") : icons[a.kind] || "•"}</div>
       <div class="t"><b>${esc(a.symbol)}</b> <span class="faint" style="font-size:12px">· ${title}</span><p>${esc(a.text).replace(/mcap (\d+) SOL/, (m, n) => META?.sol_usd ? `mcap ${usd(usdOf(+n))} (${n} SOL)` : m)}</p></div>
@@ -745,7 +753,7 @@ function renderHistory() {
       <td class="r num hide-sm">${sol(c.sol_in, 4)}</td><td class="r num hide-sm">${sol(c.sol_out, 4)}</td>
       <td class="r num ${cls(c.pnl_sol)}">${signed(c.pnl_sol, 4)}</td>
       <td class="r"><span class="badge ${c.pnl_pct >= 0 ? "up" : "down"} num">${pct(c.pnl_pct, 0)}</span></td>
-      <td class="hide-sm"><span class="badge ${c.entry_path === "buyer surge" ? "brand" : "gray"}">${c.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></td>
+      <td class="hide-sm"><span class="badge ${String(c.entry_path).startsWith("copy") ? "warn" : c.entry_path === "buyer surge" ? "brand" : "gray"}">${String(c.entry_path).startsWith("copy") ? "Copy" : c.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></td>
       <td><div style="display:flex;gap:4px">${c.exit_reasons.split(" | ").map(chip).join("")}</div></td></tr>`).join("") + "</tbody>";
 }
 
@@ -761,6 +769,7 @@ async function openDrawer(focusKey) {
       ${m.key_from_env ? "" : `<div class="keyrow"><input id="apiKey" type="password" placeholder="${m.has_key ? "Paste a new key to replace" : "Paste your API key"}" autocomplete="off"><button class="btn" onclick="const i=$('#apiKey');i.type=i.type==='password'?'text':'password'">👁</button></div>`}</div>`;
     $("#settingsBody").innerHTML = keyBox + schema.map(g => `<div class="fgroup"><h4>${esc(g.group)}</h4>` + g.items.map(it => {
       const id = "f_" + it.path.replace(/\./g, "_");
+      if (it.type === "text") return `<div class="field wide"><label for="${id}">${esc(it.label)}${it.restart ? "<em>next start</em>" : ""}</label><div class="inp"><input id="${id}" data-path="${it.path}" type="text" spellcheck="false" placeholder="Solana wallet address" value="${esc(it.value || "")}"></div></div>`;
       const input = it.type === "bool"
         ? `<select id="${id}" data-path="${it.path}"><option value="true" ${it.value ? "selected" : ""}>On</option><option value="false" ${!it.value ? "selected" : ""}>Off</option></select>`
         : it.type === "choice"
