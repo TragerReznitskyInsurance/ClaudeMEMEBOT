@@ -429,6 +429,7 @@ async def api_live_create(request):
 
 async def api_live_refresh(request):
     await runner.live.refresh_balance(force=True)
+    await runner.live.sync_with_wallet()
     return web.json_response({"balance": runner.live.balance})
 
 

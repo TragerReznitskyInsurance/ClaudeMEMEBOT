@@ -65,6 +65,7 @@ class LiveTrader:
         self.price_of = lambda mint: None  # set by the app: current SOL price per token
         self.active = False                # true only while a live session is running
         self.late_waits = (45, 120)        # re-check a timed-out buy after these many seconds
+        self.external_seen: set = set()    # wallet transactions already checked for outside sells
         self._load_state()
 
     # ------------------------------------------------------------------ wallet & state
@@ -357,33 +358,84 @@ class LiveTrader:
                             sig=sig, mint=mint)
                 return
 
-    async def sweep_orphans(self):
-        """Any token in the trading wallet that isn't a tracked position gets adopted so you can see and sell it."""
-        if not self.kp or not self._hkey():
-            return
+    async def _wallet_balances(self):
+        """{mint: ui amount} for every token account the trading wallet holds (both token programs)."""
+        out = {}
         for prog in TOKEN_PROGRAMS:
-            try:
-                r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
-                                                                {"encoding": "jsonParsed", "commitment": "confirmed"}])
-            except Exception:
-                continue
+            r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
+                                                            {"encoding": "jsonParsed", "commitment": "confirmed"}])
             for a in (r or {}).get("value", []):
                 info = a["account"]["data"]["parsed"]["info"]
-                mint = info["mint"]
-                ui = float(info["tokenAmount"].get("uiAmountString") or 0)
-                if ui <= 0 or mint in self.positions or mint in self.locks and self.locks[mint].locked():
+                out[info["mint"]] = out.get(info["mint"], 0.0) + float(info["tokenAmount"].get("uiAmountString") or 0)
+        return out
+
+    async def _external_sells(self, mint, since, known):
+        """SOL received from sells of `mint` the bot didn't make (e.g. you sold in Phantom)."""
+        sol, sigs = 0.0, []
+        try:
+            recent = await self.rpc("getSignaturesForAddress", [self.address, {"limit": 60, "commitment": "confirmed"}]) or []
+            for r in recent:
+                sig = r["signature"]
+                if sig in known or sig in self.external_seen or r.get("err") or (r.get("blockTime") or 0) < since - 5:
                     continue
-                self.positions[mint] = dict(mint=mint, symbol=mint[:5], wallet="unknown", status="open", size=0.0,
-                                            sol_in=0.0, sol_out=0.0, tokens=ui, tokens_bought=ui, opened=time.time(),
-                                            queued_sell=0.0, sigs=[], wallet_sol=0.0, orphan=True)
-                self._event("info", f"Found untracked tokens ({mint[:5]}…) in the trading wallet - added so you can sell them")
-        self._save()
+                fill = await self._fill(sig)
+                self.external_seen.add(sig)
+                if fill and fill["mint"] == mint and fill["txType"] == "sell":
+                    sol += fill["solAmount"]
+                    sigs.append(sig)
+        except Exception as e:
+            self._event("error", f"Couldn't look up the outside sell of {mint[:5]}: {e}")
+        return sol, sigs
+
+    async def sync_with_wallet(self):
+        """Make the bot match the trading wallet: drop/shrink positions you sold yourself, adopt tokens it doesn't know."""
+        if not self.kp or not self._hkey():
+            return
+        try:
+            bal = await self._wallet_balances()
+        except Exception as e:
+            return self._event("error", f"Wallet sync failed: {e}")
+        changed = False
+        for mint, p in list(self.positions.items()):
+            if p["status"] != "open" or (mint in self.locks and self.locks[mint].locked()):
+                continue                                  # the bot is trading it right now
+            have = bal.get(mint, 0.0)
+            if have < p["tokens"] * 0.98:                 # tokens left the wallet outside the bot
+                got, sigs = await self._external_sells(mint, p["opened"], set(p["sigs"]))
+                p["sol_out"] += got
+                p["sigs"] += sigs
+                p["tokens"] = have
+                changed = True
+                if have <= p["tokens_bought"] * 0.005:
+                    p["sol_out"] += await self._close_accounts(mint)
+                    self._event("info", f"{p['symbol']} was sold outside the bot (received {got:.4f} SOL) - closing it here")
+                    self._finish(mint, how="sold in wallet")
+                else:
+                    self._event("info", f"{p['symbol']}: part was sold outside the bot - now holding "
+                                        f"{have / p['tokens_bought'] * 100:.0f}%")
+            elif have > p["tokens"] * 1.02:               # more than we thought (e.g. you bought extra)
+                p["tokens"] = have
+                changed = True
+        for mint, ui in bal.items():                      # tokens nobody is tracking
+            if ui <= 0 or mint in self.positions or (mint in self.locks and self.locks[mint].locked()):
+                continue
+            self.positions[mint] = dict(mint=mint, symbol=mint[:5], wallet="unknown", status="open", size=0.0,
+                                        sol_in=0.0, sol_out=0.0, tokens=ui, tokens_bought=ui, opened=time.time(),
+                                        queued_sell=0.0, sigs=[], wallet_sol=0.0, orphan=True)
+            self._event("info", f"Found untracked tokens ({mint[:5]}…) in the trading wallet - added so you can sell them")
+            changed = True
+        if changed:
+            self._save()
+            await self.refresh_balance(force=True)
+
+    async def sweep_orphans(self):
+        await self.sync_with_wallet()
 
     async def sweep_loop(self):
         while True:
-            await asyncio.sleep(300)
+            await asyncio.sleep(30)
             if self.active:
-                await self.sweep_orphans()
+                await self.sync_with_wallet()
 
     async def _sell(self, mint, frac, reason):
         async with self._lock(mint):
@@ -449,14 +501,14 @@ class LiveTrader:
             self._event("error", f"Couldn't reclaim token-account rent: {e}")
             return 0.0
 
-    def _finish(self, mint):
+    def _finish(self, mint, how="bot"):
         p = self.positions.pop(mint)
         pnl = p["sol_out"] - p["sol_in"]
         px = self._usd() or 0
         rec = dict(mint=mint, symbol=p["symbol"], wallet=p["wallet"], opened=p["opened"], closed=time.time(),
                    sol_in=round(p["sol_in"], 6), sol_out=round(p["sol_out"], 6), pnl_sol=round(pnl, 6),
                    pnl_pct=round(pnl / p["sol_in"] * 100, 1) if p["sol_in"] else 0.0, pnl_usd=round(pnl * px, 2),
-                   sigs=p["sigs"])
+                   sigs=p["sigs"], how=how)
         self.closed.append(rec)
         self._event("close", f"Closed {p['symbol']}: {pnl:+.4f} SOL ({rec['pnl_pct']:+.0f}%, ${rec['pnl_usd']:+.2f})",
                     mint=mint, pnl=pnl)
