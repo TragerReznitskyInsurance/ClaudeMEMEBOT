@@ -27,7 +27,9 @@ strategies:
 copy_trade:
   enabled: false
   wallet: ""                           # one address, or several separated by commas
-  size_sol: 0.1                        # our paper size per copied buy
+  size_mode: match                     # match = same SOL as the wallet, scale = scale_pct of it, fixed = size_sol
+  scale_pct: 10                        # used when size_mode is scale
+  size_sol: 0.1                        # used when size_mode is fixed
   follow_adds: true                    # copy their extra buys into an open position (scaled, max 3x)
   follow_sells: true                   # mirror their sells proportionally
   max_open: 100                        # max copied positions open at once

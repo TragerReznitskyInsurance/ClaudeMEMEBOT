@@ -49,7 +49,10 @@ SCHEMA = [
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
         {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
-        {"path": "copy_trade.size_sol", "label": "Paper size per copy", "unit": "SOL", "type": "float"},
+        {"path": "copy_trade.size_mode", "label": "Buy size", "type": "choice",
+         "choices": [["match", "Same as the wallet"], ["scale", "% of the wallet's size"], ["fixed", "Fixed amount"]]},
+        {"path": "copy_trade.scale_pct", "label": "% of wallet size (if %)", "unit": "%", "type": "float"},
+        {"path": "copy_trade.size_sol", "label": "Fixed amount (if fixed)", "unit": "SOL", "type": "float"},
         {"path": "copy_trade.follow_sells", "label": "Mirror their sells", "type": "bool"},
         {"path": "copy_trade.follow_adds", "label": "Copy their adds", "type": "bool"},
         {"path": "copy_trade.max_open", "label": "Max copied positions", "type": "int"},

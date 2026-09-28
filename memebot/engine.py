@@ -484,16 +484,25 @@ class Engine:
             self.feed.subscribe(mint)                     # need live prices for fills and marking
             if first:
                 self.copy_wallet_mcap[mint] = _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
-            size = cp["size_sol"]
+            mode = cp.get("size_mode", "fixed")
+
+            def sized(wallet_sol, fixed):
+                if mode == "match" and wallet_sol > 0:
+                    return wallet_sol
+                if mode == "scale" and wallet_sol > 0:
+                    return wallet_sol * cp.get("scale_pct", 10) / 100
+                return fixed
+
             if mint in self.positions or mint in self.pending_buys:
                 if not cp.get("follow_adds", True) or mint in self.pending_buys:
                     return
                 first_sol = self.copy_stats.get(("first_sol", mint)) or wsol or 1.0
-                size = cp["size_sol"] * min(3.0, wsol / first_sol) if first_sol else cp["size_sol"]
+                size = sized(wsol, cp["size_sol"] * min(3.0, wsol / first_sol) if first_sol else cp["size_sol"])
             elif not first:
                 return                                    # we skipped their first buy; don't start mid-position
             else:
                 self.copy_stats[("first_sol", mint)] = wsol
+                size = sized(wsol, cp["size_sol"])
                 copy_open = sum(1 for p in self.positions.values() if p.mode == "copy")
                 if copy_open >= cp.get("max_open", 100):
                     self.copy_stats["skipped: max open"] += 1
@@ -503,8 +512,8 @@ class Engine:
                 return self._act("reject", t, "Copy skipped · paper balance too low")
             self.pending_buys[mint] = Order(mint, "buy", ts + lat, f"copy: {wshort}", sol=size)
             self.copy_stats["copied_buys"] += 1
-            self._act("signal", t, f"Wallet {wshort} bought {wsol:.2f} SOL at mcap {t.mcap or 0:.0f} SOL · copying",
-                      path="copy")
+            self._act("signal", t, f"Wallet {wshort} bought {wsol:.2f} SOL at mcap {t.mcap or 0:.0f} SOL · "
+                                   f"copying with {size:.2f} SOL", path="copy")
             log.info("COPY    %-10s wallet %s bought %.2f SOL @ mcap %.0f", t.symbol, wshort, wsol, t.mcap or 0)
         else:
             self.copy_stats["wallet_sells"] += 1

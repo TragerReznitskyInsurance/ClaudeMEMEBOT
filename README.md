@@ -110,7 +110,7 @@ watches only graduated tokens, which is far cheaper.
 
 In **Settings → Copy trading**, turn on **Copy a wallet**, paste the wallet address, click Save, then **Stop** and **Start live** again.
 
-When that wallet buys, Momentum paper-buys the same token at your own size, after your simulated delay. When it sells, Momentum sells the same share of your position. Positions and trade history show a **Copy** badge, and a banner tracks what the wallet did and what was copied.
+When that wallet buys, Momentum paper-buys the same token after your simulated delay. **Buy size** can be the same SOL amount as the wallet (default), a % of it, or a fixed amount. When it sells, Momentum sells the same share of the position, so with matching sizes the sell amounts match too. Matching a wallet that trades 1.5 SOL at a time needs a large paper balance: set **Starting paper balance** to about 300 SOL. Positions and trade history show a **Copy** badge, and a banner tracks what the wallet did and what was copied.
 
 To test copying on its own, turn **Also run momentum strategy** off. Copied positions have their own limit (**Max copied positions**) and don't use up the momentum strategy's slots.
 
