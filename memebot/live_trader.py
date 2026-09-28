@@ -35,7 +35,9 @@ log = logging.getLogger("memebot")
 TRADE_LOCAL = os.environ.get("MOMENTUM_PUMPPORTAL_TRADE", "https://pumpportal.fun/api/trade-local")
 RPC = os.environ.get("MOMENTUM_HELIUS_RPC", "https://mainnet.helius-rpc.com/?api-key={key}")
 PUBLIC_RPC = os.environ.get("MOMENTUM_PUBLIC_RPC", "https://api.mainnet-beta.solana.com")
-TOKEN_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PazvZ7hkDHdtBLa"]
+TOKEN_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]
+for _p in TOKEN_PROGRAMS:          # fail loudly at startup, not with a cryptic RPC error later
+    Pubkey.from_string(_p)
 LAMPORTS = 1_000_000_000
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
@@ -360,13 +362,21 @@ class LiveTrader:
 
     async def _wallet_balances(self):
         """{mint: ui amount} for every token account the trading wallet holds (both token programs)."""
-        out = {}
+        out, errors = {}, []
         for prog in TOKEN_PROGRAMS:
-            r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
-                                                            {"encoding": "jsonParsed", "commitment": "confirmed"}])
+            try:
+                r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
+                                                                {"encoding": "jsonParsed", "commitment": "confirmed"}])
+            except Exception as e:
+                errors.append(str(e))
+                continue
             for a in (r or {}).get("value", []):
                 info = a["account"]["data"]["parsed"]["info"]
                 out[info["mint"]] = out.get(info["mint"], 0.0) + float(info["tokenAmount"].get("uiAmountString") or 0)
+        if len(errors) == len(TOKEN_PROGRAMS):
+            raise RuntimeError(errors[0])
+        if errors:
+            raise RuntimeError("partial balance read: " + errors[0])   # never drop positions on half the data
         return out
 
     async def _external_sells(self, mint, since, known):
