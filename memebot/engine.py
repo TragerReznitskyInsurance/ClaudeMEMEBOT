@@ -206,6 +206,7 @@ class Engine:
         # copy trading
         self.copy_hold = defaultdict(float)        # (wallet, mint) -> tokens the copied wallet holds (seen by us)
         self.copy_bought = defaultdict(float)      # (wallet, mint) -> tokens it bought in the current position
+        self.copy_seen = defaultdict(lambda: {"live": 0, "chain": 0, "last": 0.0})   # per-wallet feed diagnostics
         self.copy_stats = Counter()
         self.copy_wallet_mcap = {}                 # mint -> mcap the wallet bought at
         self.chain = None                          # ChainBackup (live mode with a Helius key)
@@ -434,7 +435,10 @@ class Engine:
             xg = [c["exit_gap_pct"] for c in cl if c.get("exit_gap_pct") is not None]
             wins = sum(1 for c in cl if c["pnl_sol"] > 0)
             upnl = sum(p.sol_out + self._position_value(p) - p.sol_in for p in op)
+            seen = self.copy_seen.get(w) or {"live": 0, "chain": 0, "last": 0.0}
             out[short] = dict(wallet=w, open=len(op), closed=len(cl), wins=wins,
+                              seen_live=seen["live"], seen_chain=seen["chain"],
+                              last_seen_s=round(self.now - seen["last"]) if seen["last"] else None,
                               win_rate=round(wins / len(cl) * 100, 1) if cl else None,
                               pnl=round(sum(c["pnl_sol"] for c in cl), 4), open_pnl=round(upnl, 4),
                               sol_in=round(sum(c["sol_in"] for c in cl), 4),
@@ -476,6 +480,8 @@ class Engine:
         tok = _f(ev.get("tokenAmount"), 0.0)
         wsol = _f(ev.get("solAmount"), 0.0)
         from_chain = bool(ev.get("_chain"))
+        self.copy_seen[w]["chain" if from_chain else "live"] += 1
+        self.copy_seen[w]["last"] = ts
         if self.copy_log:
             try:
                 self.copy_log.write(json.dumps({"ts": ts, **{k: v for k, v in ev.items() if not k.startswith("_")},

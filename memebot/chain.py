@@ -53,14 +53,14 @@ def trade_from_tx(tx: dict, wallet: str, sig: str):
 
 
 class ChainBackup:
-    def __init__(self, engine_getter, key: str, poll_s: float = 10.0):
+    def __init__(self, engine_getter, key: str, poll_s: float = 5.0):
         self._engine = engine_getter
         self.url = RPC.format(key=key)
         self.poll_s = poll_s
         self.session: aiohttp.ClientSession | None = None
         self.started = time.time()
         self.done: set[str] = set()
-        self.stats = {"polls": 0, "recovered": 0, "resolved": 0, "errors": 0}
+        self.stats = {"polls": 0, "recovered": 0, "resolved": 0, "errors": 0, "last_poll": 0.0}
         self.last_error = ""
 
     async def _rpc(self, method, params):
@@ -108,6 +108,7 @@ class ChainBackup:
                 for w in eng.copy_wallets():
                     sigs = await self._rpc("getSignaturesForAddress", [w, {"limit": 40, "commitment": "confirmed"}]) or []
                     self.stats["polls"] += 1
+                    self.stats["last_poll"] = time.time()
                     new = [s for s in reversed(sigs)
                            if not s.get("err") and (s.get("blockTime") or 0) >= self.started - 5
                            and s["signature"] not in self.done and not eng.seen_signature(s["signature"])]
