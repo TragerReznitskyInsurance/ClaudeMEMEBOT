@@ -54,6 +54,8 @@ def stream_features(t, ts: float) -> dict:
     r60 = [x for x in t.recent if ts - x[0] <= 60]
     b60, s60 = sum(1 for x in r60 if x[1] == "buy"), sum(1 for x in r60 if x[1] == "sell")
     m30 = t.mcap_at(ts - 30)
+    m120 = t.mcap_at(ts - 120)
+    r120 = [x for x in t.recent if ts - x[0] <= 120]
     return dict(
         source="stream", age_s=round(ts - t.created_ts, 1) if t.created_ts else None,
         buyers=len(t.buyers), buys=t.buys, sells=t.sells, trades=t.buys + t.sells,
@@ -62,11 +64,58 @@ def stream_features(t, ts: float) -> dict:
         top_buyer_share_pct=round(top / non_dev * 100, 1) if non_dev else None,
         new_buyers_20s=sum(1 for v in t.buyer_first.values() if ts - v <= 20),
         buys_60s=b60, sells_60s=s60,
+        **recent_block([(x[0], x[1], x[2]) for x in r120], ts,
+                       (t.mcap / m120 - 1) * 100 if t.mcap and m120 and ts - t.created_ts >= 120 else None),
         momentum_30s_pct=round((t.mcap / m30 - 1) * 100, 1) if t.mcap and m30 else None,
         peak_mcap_sol=round(t.peak_mcap, 1),
         drawdown_pct=round((1 - t.mcap / t.peak_mcap) * 100, 1) if t.mcap and t.peak_mcap else None,
         security=t.sec_state or None, creator=t.creator or None,
     )
+
+
+def recent_block(trades, ts, momentum_2m):
+    """Activity in the 2 minutes before `ts` - same definition for live-feed and history data.
+    trades: [(ts, side, sol)]"""
+    w = [x for x in trades if 0 <= ts - x[0] <= 120]
+    b = [x for x in w if x[1] == "buy"]
+    s = [x for x in w if x[1] == "sell"]
+    return dict(buys_2m=len(b), sells_2m=len(s), buy_sol_2m=round(sum(x[2] for x in b), 3),
+                sell_sol_2m=round(sum(x[2] for x in s), 3),
+                momentum_2m_pct=round(momentum_2m, 1) if momentum_2m is not None else None)
+
+
+async def fetch_before(session, key, mint, before_sig):
+    """The 100 trades of `mint` right before `before_sig` (newest first)."""
+    params = {"api-key": key, "limit": "100", "before-signature": before_sig}
+    for attempt in range(3):
+        try:
+            async with session.get(WT.enhanced_url(mint), params=params, timeout=aiohttp.ClientTimeout(total=25)) as r:
+                if r.status == 429:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                if r.status != 200:
+                    return None
+                data = await r.json(content_type=None)
+                return data if isinstance(data, list) else None
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await asyncio.sleep(1)
+    return None
+
+
+def recent_from_history(txs, mint, ts):
+    trades = []
+    for tx in txs or []:
+        t = WT._trade_of(tx, mint)
+        if t and tx.get("timestamp"):
+            trades.append((tx["timestamp"], t[1], t[2], t[2] / t[3] if t[3] else None))
+    trades.sort()
+    w = [x for x in trades if 0 <= ts - x[0] <= 120 and x[3]]
+    mom = None
+    if len(w) >= 2 and trades and ts - trades[0][0] >= 110:      # need history reaching back ~2 minutes
+        mom = (w[-1][3] / w[0][3] - 1) * 100
+    b60 = [x for x in trades if 0 <= ts - x[0] <= 60]
+    return dict(buys_60s=sum(1 for x in b60 if x[1] == "buy"), sells_60s=sum(1 for x in b60 if x[1] == "sell"),
+                **recent_block([x[:3] for x in trades], ts, mom))
 
 
 def history_features(early, mint, wallet, sig, ts) -> dict:
@@ -200,6 +249,10 @@ class SnapshotRecorder:
                 await asyncio.sleep(self.history_delay)       # let the indexer catch up with the wallet's buy
                 early = await WT.fetch_early(await self._sess(), self.key, base["mint"])
                 feats = history_features(early, base["mint"], base["wallet"], base.get("sig"), base["ts"])
+                if base.get("sig"):                            # busy/older coins: what was happening just before
+                    before = await fetch_before(await self._sess(), self.key, base["mint"], base["sig"])
+                    if before:
+                        feats.update(recent_from_history(before, base["mint"], base["ts"]))
                 self.stats["history_lookups"] += 1
             rec = dict(type="snapshot", id=f"{base['kind']}:{base['mint']}:{int(base['ts'])}", **base, **feats, **holders)
             self._write(rec)
@@ -284,7 +337,7 @@ class SnapshotRecorder:
     def summary(self):
         return dict(wallet_buys=self.stats["wallet_buy"], compared=self.stats["crossed"], outcomes=self.stats["outcomes"],
                     waiting=len(self.pending), errors=self.stats["errors"], last_error=self.last_error,
-                    cross_mcap_sol=self.cfg().get("cross_mcap_sol", 40))
+                    cross_mcap_sol=self.cfg().get("cross_mcap_sol", 42))
 
     async def close(self):
         if self.session and not self.session.closed:

@@ -42,7 +42,9 @@ copy_trade:
 # was watching as they rise through cross_mcap_sol, for comparison. Needs a Helius key.
 snapshots:
   enabled: true
-  cross_mcap_sol: 40                   # comparison tokens are snapshotted when they first reach this market cap
+  cross_mcap_sol: 42                   # comparison tokens are snapshotted when they first reach this market cap
+  min_age_s: 120                       # ...but only if at least this old (skips creator/bundle launch jumps)
+  watch_s: 1800                        # with momentum off: watch new coins this long for comparison snapshots
   control_per_hour: 60                 # max comparison snapshots per hour (keeps Helius credits low)
 
 # ── REAL MONEY copy trading ─────────────────────────────────────

@@ -410,8 +410,10 @@ class Engine:
         prev_mcap = t.mcap
         t.update_market(ev, ts)
         if self.snaps is not None and not t.snapped and prev_mcap and t.mcap and t.creator:
-            line = _f((self.cfg.get("snapshots") or {}).get("cross_mcap_sol"), 40.0)
-            if prev_mcap < line <= t.mcap:
+            sc = self.cfg.get("snapshots") or {}
+            line = _f(sc.get("cross_mcap_sol"), 42.0)
+            # skip launch-second jumps (creator/bundle buys) - wallet #1 buys coins minutes to hours old
+            if prev_mcap < line <= t.mcap and ts - t.created_ts >= _f(sc.get("min_age_s"), 120.0):
                 t.snapped = True
                 self.snaps.crossed(t, ts)
         t.last_trade_ts = ts
@@ -737,8 +739,9 @@ class Engine:
         if t.mint in self.pending_buys:
             return
         if not self._momentum_on():                       # research-only: never buy, drop once recorded
-            if t.snapped or age > w["max_watch_s"]:
-                self._drop(t, "research: done")
+            sc = self.cfg.get("snapshots") or {}
+            if t.snapped or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
+                self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return
         fail, path = self.entry_status(t, ts)
         if fail and fail.startswith("HARD:"):
