@@ -311,6 +311,13 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 .prev { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 @media (max-width: 720px) { .lab-kpis { grid-template-columns: repeat(2, 1fr); } .lab-grid { grid-template-columns: 1fr; } .labform { grid-template-columns: 1fr 1fr; } .labform input { grid-column: 1 / -1; } }
 
+.wtab { width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 10px; }
+.wtab td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.wtab td.lbl { color: var(--text-2); width: 42%; }
+.wtab .share { display: flex; align-items: center; gap: 6px; }
+.wtab .share i { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.wtab .share em { display: block; height: 100%; background: var(--brand); }
+.wtitle { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 4px; font-weight: 600; }
 /* ── responsive ───────────────────────────────── */
 @media (max-width: 1250px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1000px) {
@@ -865,7 +872,7 @@ function renderLab() {
     <button class="btn violet" onclick="labStart()" ${busy || !labHasKey ? "disabled" : ""}>${busy ? "Analyzing…" : "Analyze"}</button></div>`;
   if (labPrev.length && !busy) h += `<div class="prev">${labPrev.slice(0, 6).map(p => `<button class="chip ${p.address === labAddr ? "on" : ""}" onclick="labShow('${p.address}')" title="${esc(p.generated)} UTC">${p.address.slice(0, 4)}…${p.address.slice(-4)} · ${p.trades} trades</button>`).join("")}</div>`;
   if (busy) {
-    const pctDone = st.phase === "fetch" ? Math.min(90, (st.done / Math.max(st.total, 1)) * 400) : st.phase === "launch" ? 90 + (st.done / Math.max(st.total, 1)) * 9 : 95;
+    const pctDone = st.phase === "fetch" ? Math.min(60, (st.done / Math.max(st.total, 1)) * 250) : st.phase === "launch" ? 60 + (st.done / Math.max(st.total, 1)) * 10 : st.phase === "profile" ? 70 + (st.done / Math.max(st.total, 1)) * 28 : 98;
     h += `<div class="lab-progress"><div class="meter"><i style="width:${pctDone}%"></i></div><p>${esc(st.message || "Working…")}</p></div>`;
   }
   if (st.error && !busy) h += `<div class="lab-err">${esc(st.error)}</div>`;
@@ -896,12 +903,26 @@ function renderLab() {
           ${row("Scaled into positions", `${LS(E.scaled_in_pct)}%`)}${row("Venues", Object.entries(E.venues).map(([k, v]) => `${k.replace("_", " ").toLowerCase()} ${v}`).join(", ") || "—")}</div>
         <div>${row("Time after launch (median)", fmtS(E.median_delay_s))}<div class="faint" style="margin:4px 0">Time after launch (${E.launch_time_known} known)</div>${buckets(E.delay_buckets, "var(--brand)")}</div>
       </div></div></div>
+      ${r.tokens && r.tokens.compared ? (() => {
+        const T = r.tokens, overall = R.win_rate_pct || 0;
+        const tab = (title, rows) => rows && rows.length ? `<div class="wtitle">${title}</div><table class="wtab">${rows.map(x => `<tr><td class="lbl">${esc(x.label)}</td>
+          <td style="width:30%"><div class="share"><i><em style="width:${x.share}%"></em></i><span class="num faint">${x.share}%</span></div></td>
+          <td class="r num ${x.win_rate >= overall + 8 ? "up" : x.win_rate <= overall - 8 ? "down" : ""}">win ${x.win_rate}%</td>
+          <td class="r num ${cls(x.avg_pnl)}">${signed(x.avg_pnl, 3)}</td></tr>`).join("")}</table>` : "";
+        return `<div class="lab-sec"><div class="lab-card"><h4>What it buys · ${T.compared} tokens as they looked when it bought</h4>
+          <div class="faint" style="font-size:12px;margin-bottom:6px">Share of its buys in each group, and how that group performed. Green or red means clearly better or worse than its ${overall}% average.</div>
+          ${T.wallet_is_creator ? `<div class="lab-flag warn" style="margin:6px 0"><b>⚠ Creator</b><span>The wallet itself created ${T.wallet_is_creator} of these tokens.</span></div>` : ""}
+          <div class="lab-grid" style="gap:0 20px"><div>${tab("Token age at entry", T.age)}${tab("Other buyers before it", T.buyers_before)}${tab("Creator's own buy", T.dev_buy)}</div>
+          <div>${tab("Links on the token", T.links)}${tab("Creator", T.creator_repeat)}${tab("Creator status", T.dev_sold)}</div></div>
+          ${T.top_words?.length ? `<div class="wtitle">Common words in names</div><div class="faint" style="font-size:12px">${T.top_words.slice(0, 20).map(esc).join(" · ")}</div>` : ""}
+          ${T.words_more_in_winners?.length ? `<div class="wtitle">Words far more common in its winners</div><div style="font-size:12px">${T.words_more_in_winners.map(esc).join(" · ")}</div>` : ""}
+        </div></div>`; })() : ""}
       ${r.top_trades.length ? `<div class="lab-sec"><h4>Biggest wins</h4><div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">PnL</th><th class="r">Return</th><th class="r">Held</th><th class="r">Entry mcap</th><th class="r">After launch</th></tr></thead><tbody>
         ${r.top_trades.map(t => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(t.mint)}" target="_blank" rel="noopener"><b>${esc(t.symbol || t.mint.slice(0, 6))}</b> <span class="ext">↗</span></a></td><td class="r num up">${signed(t.pnl_sol, 3)}</td><td class="r num up">+${t.pnl_pct}%</td><td class="r num">${fmtS(t.hold_s)}</td><td class="r num">${LS(t.entry_mcap_sol)}</td><td class="r num">${fmtS(t.entry_delay_s)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
       <div class="lab-actions"><a class="btn primary" href="/api/wallet/download?address=${encodeURIComponent(r.wallet)}">⬇ Download full report</a>
         <span class="faint" style="font-size:12.5px">Send this zip to Claude to turn the pattern into bot rules.</span></div>`;
   } else if (!busy && !st.error) {
-    h += `<div class="empty" style="margin-top:20px"><div class="ico">🔬</div>Results appear here. A 30-day scan usually takes 20 seconds to a few minutes, depending on how active the wallet is.</div>`;
+    h += `<div class="empty" style="margin-top:20px"><div class="ico">🔬</div>Results appear here. A 30-day scan takes a few minutes, a bit longer for busy wallets, because it also profiles every token it bought.</div>`;
   }
   $("#labBody").innerHTML = h;
 }

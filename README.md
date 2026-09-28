@@ -120,7 +120,8 @@ Click **🔬 Wallet Lab** in the dashboard, paste any Solana wallet, and Momentu
 - how it loses: loss sizes and how fast it cuts
 - how it wins: hold times, first sell, selling in stages
 - how it enters: size, market cap, seconds after launch, venue
-- warning flags, such as sniper/insider timing or a few outlier wins carrying all the profit
+- warning flags, such as sniper/insider timing, buys at launch price, never-sold bags, or a few outlier wins carrying all the profit
+- **What it buys:** each token profiled as it looked at the moment of the wallet's buy (age, how many buyers were already in, the creator's buy and whether the creator had sold, links such as a specific tweet, X account or Telegram, repeat creators, and common name words), with win rates for each group, so you can see what its winning picks have in common
 
 Setup: a free API key from **helius.dev** (sign up and copy the key from the dashboard). Paste it into Wallet Lab once, and it's saved only on your computer.
 

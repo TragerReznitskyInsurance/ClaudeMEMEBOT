@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 
 import aiohttp
 
+from memebot import wallet_tokens as WT
+
 log = logging.getLogger("memebot")
 
 WSOL = "So11111111111111111111111111111111111111112"
@@ -297,7 +299,7 @@ def build_trips(fills, launch):
         created = info.get("created_ts")
         rec = dict(
             mint=t["mint"], symbol=info.get("symbol") or "", status=t["status"],
-            first_buy_utc=_iso(first_buy["ts"]), first_buy_ts=first_buy["ts"],
+            first_buy_utc=_iso(first_buy["ts"]), first_buy_ts=first_buy["ts"], first_buy_sig=first_buy["sig"],
             last_fill_ts=fs[-1]["ts"], hold_s=(fs[-1]["ts"] - first_buy["ts"]) if t["status"] == "closed" else None,
             n_buys=len(buys), n_sells=len(sells), sol_in=t["sol_in"], sol_out=t["sol_out"],
             pnl_sol=pnl if t["status"] == "closed" else None,
@@ -429,6 +431,13 @@ def flags(s, trips):
         out.append(("warn", "Sniper/insider pattern",
                     f"{d['<3s']['pct']}% of entries land within 3s of launch. That needs dedicated infrastructure "
                     "or inside knowledge - the bot can copy the picks, not the entry prices."))
+    pump_entries = [t for t in trips if t["is_pump"] and t["entry_mcap_sol"]]
+    at_launch = [t for t in pump_entries if t["entry_mcap_sol"] < 32]
+    if len(pump_entries) >= 20 and len(at_launch) / len(pump_entries) >= 0.15:
+        out.append(("warn", "Buys at launch price",
+                    f"{len(at_launch) / len(pump_entries) * 100:.0f}% of its pump.fun entries are at the starting price "
+                    "(before other buyers). If those win unusually often, its buys may be what attracts buyers "
+                    "(copy-traders following it) - copying it could make you its exit liquidity."))
     if (s["results"]["top5_share_of_winnings_pct"] or 0) > 60 and s["counts"]["closed"] >= 20:
         out.append(("warn", "Outlier-driven",
                     f"The top 5 trades are {s['results']['top5_share_of_winnings_pct']}% of all winnings. "
@@ -513,11 +522,25 @@ def summary_text(s):
         "",
         "FLAGS",
     ] + [f"  [{f['level']}] {f['title']}: {f['text']}" for f in s["flags"]]
+    tk = s.get("tokens")
+    if tk and tk.get("compared"):
+        lines += ["", f"WHAT IT BUYS  ({tk['compared']} tokens profiled at the moment of its first buy)"]
+        for key, title in (("age", "token age"), ("buyers_before", "buyers before it"), ("dev_buy", "creator's buy"),
+                           ("dev_sold", "creator status"), ("links", "links"), ("creator_repeat", "creator")):
+            lines.append(f"  {title}:")
+            for r in tk.get(key) or []:
+                lines.append(f"    {r['label']:<30} {r['share']:>5}% of buys · win {r['win_rate']:>5}% · avg {r['avg_pnl']:+.3f} SOL")
+        lines.append(f"  common name words: {', '.join(tk.get('top_words', [])[:20])}")
+        if tk.get("words_more_in_winners"):
+            lines.append(f"  words much more common in winners: {', '.join(tk['words_more_in_winners'])}")
+        if tk.get("wallet_is_creator"):
+            lines.append(f"  !! the wallet itself created {tk['wallet_is_creator']} of these tokens")
     return "\n".join(lines)
 
 
 # ───────────────────────────────────────────────────────── orchestration
-async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_cb=None, raw_path=None):
+async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_cb=None, raw_path=None,
+                  profile_tokens=True, profile_cap=600):
     """Full pipeline. Returns (summary dict, output dir). raw_path lets you re-run on saved data."""
     progress = Progress(progress_cb)
     if not valid_address(wallet):
@@ -541,8 +564,23 @@ async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_
         fills, skipped = build_fills(txs, wallet)
         mints = {f["mint"] for f in fills if f["side"] == "buy"}
         launch = await fetch_launch_info(session, mints, progress) if mints else {}
-    trips, orphans = build_trips(fills, launch)
+        trips, orphans = build_trips(fills, launch)
+        profiles = {}
+        if helius_key and profile_tokens and trips:
+            try:
+                profiles = await WT.profile(session, helius_key, wallet, trips, progress, cap=profile_cap)
+            except Exception as e:                       # profiling is a bonus; never fail the report on it
+                log.warning("token profiling failed: %s", e)
+    for t in trips:                                       # fill what the launch lookup missed
+        pr = profiles.get(t["mint"]) or {}
+        if not t["symbol"] and pr.get("symbol"):
+            t["symbol"] = pr["symbol"]
+        if t["entry_delay_s"] is None and pr.get("created_ts"):
+            t["entry_delay_s"] = t["first_buy_ts"] - pr["created_ts"]
     s = summarize(wallet, trips, fills, skipped, orphans, days, len(txs), max_tx)
+    if profiles:
+        s["tokens"] = WT.analyze_profiles(trips, profiles)
+        WT.write_profiles(out_dir, trips, profiles)
     write_outputs(out_dir, s, trips, fills, launch)
     progress(phase="done", done=1, total=1, message="Done")
     return s, out_dir
@@ -579,7 +617,7 @@ def write_outputs(out_dir, s, trips, fills, launch):
     # one file to send back for review
     zpath = os.path.join(out_dir, f"wallet_report_{s['wallet'][:8]}.zip")
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ("summary.txt", "summary.json", "trades.csv", "fills.csv", "raw_transactions.jsonl"):
+        for name in ("summary.txt", "summary.json", "trades.csv", "fills.csv", "token_profiles.csv", "raw_transactions.jsonl"):
             p = os.path.join(out_dir, name)
             if os.path.exists(p) and os.path.getsize(p) < 60_000_000:
                 z.write(p, name)
