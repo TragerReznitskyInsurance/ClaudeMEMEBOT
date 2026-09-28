@@ -296,11 +296,42 @@ class LiveTrader:
             await asyncio.sleep(1.5)
         return None
 
+    async def _owner_accounts(self, flt):
+        """All of our token accounts matching `flt` ({"mint": ..} or {"programId": ..}).
+        Helius' paginated V2 method first (the old one fails with "index service overloaded"
+        under load), the classic method as a fallback, with short retries."""
+        last = None
+        for attempt in range(3):
+            try:
+                out, key = [], None
+                for _ in range(20):
+                    cfg = {"encoding": "jsonParsed", "commitment": "confirmed", "limit": 1000}
+                    if key:
+                        cfg["paginationKey"] = key
+                    r = await self.rpc("getTokenAccountsByOwnerV2", [self.address, flt, cfg]) or {}
+                    v = r.get("value")
+                    if isinstance(v, dict):                       # withContext-style shape
+                        key, page = v.get("paginationKey"), v.get("accounts") or []
+                    else:
+                        key, page = r.get("paginationKey"), v or []
+                    out += page
+                    if not page or not key:
+                        return out
+                return out
+            except Exception as e:
+                last = e
+            try:
+                r = await self.rpc("getTokenAccountsByOwner", [self.address, flt, {"encoding": "jsonParsed",
+                                                                                "commitment": "confirmed"}])
+                return (r or {}).get("value", [])
+            except Exception as e:
+                last = e
+            await asyncio.sleep(1.5 * (attempt + 1))
+        raise last
+
     async def _token_accounts(self, mint):
-        r = await self.rpc("getTokenAccountsByOwner", [self.address, {"mint": mint}, {"encoding": "jsonParsed",
-                                                                                   "commitment": "confirmed"}])
         out = []
-        for a in (r or {}).get("value", []):
+        for a in await self._owner_accounts({"mint": mint}):
             info = a["account"]["data"]["parsed"]["info"]
             out.append(dict(address=a["pubkey"], program=a["account"]["owner"], lamports=a["account"].get("lamports", 0),
                             amount=int(info["tokenAmount"]["amount"]),
@@ -467,12 +498,11 @@ class LiveTrader:
         out, errors = {}, []
         for prog in TOKEN_PROGRAMS:
             try:
-                r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
-                                                                {"encoding": "jsonParsed", "commitment": "confirmed"}])
+                accts = await self._owner_accounts({"programId": prog})
             except Exception as e:
                 errors.append(str(e))
                 continue
-            for a in (r or {}).get("value", []):
+            for a in accts:
                 info = a["account"]["data"]["parsed"]["info"]
                 out[info["mint"]] = out.get(info["mint"], 0.0) + float(info["tokenAmount"].get("uiAmountString") or 0)
         if len(errors) == len(TOKEN_PROGRAMS):
@@ -505,8 +535,14 @@ class LiveTrader:
             return
         try:
             bal = await self._wallet_balances()
+            self.sync_fails = 0
         except Exception as e:
-            return self._event("error", f"Wallet sync failed: {e}")
+            self.sync_fails = getattr(self, "sync_fails", 0) + 1       # positions are left untouched
+            log.info("LIVE wallet sync skipped (%d in a row): %s", self.sync_fails, e)
+            if self.sync_fails == 3:
+                self._event("error", f"Wallet sync keeps failing (Helius busy?) - positions are unchanged, "
+                                     f"will keep retrying: {str(e)[:90]}")
+            return
         changed = False
         for mint, p in list(self.positions.items()):
             if p["status"] != "open" or (mint in self.locks and self.locks[mint].locked()):
