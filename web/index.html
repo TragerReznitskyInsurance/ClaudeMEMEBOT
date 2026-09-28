@@ -524,7 +524,8 @@ function renderHeader(lost) {
     a = `<button class="btn" onclick="start('demo')"><span>◇</span><span class="lbl">Demo</span></button>
          <button class="btn primary" onclick="start('live')"><svg width="11" height="12" viewBox="0 0 11 12"><path d="M0 0l11 6-11 6z" fill="currentColor"/></svg><span class="lbl">Start live</span></button>`;
   }
-  const labBtn = `<button class="btn" onclick="openLab()" title="Analyze a wallet's trading"><span>🔬</span><span class="lbl">Wallet Lab</span></button>`;
+  const labBtn = `<button class="btn" onclick="openLab()" title="Analyze a wallet's trading"><span>🔬</span><span class="lbl">Wallet Lab</span></button>
+    <a class="btn icon" href="/api/diagnostics" title="Download diagnostics (trades, copy log, settings - never your wallet key)" aria-label="Download diagnostics">⬇</a>`;
   $("#actions").innerHTML = a + labBtn + theme + gear;
 }
 

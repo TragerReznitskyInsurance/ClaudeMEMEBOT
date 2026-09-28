@@ -467,6 +467,37 @@ async def api_live_withdraw(request):
     return web.json_response({"signature": sig})
 
 
+# ---------------------------------------------------------------------- diagnostics
+SAFE_EXCLUDE = {"trading_wallet.json"}             # never leaves the computer
+
+
+async def api_diagnostics(request):
+    """One zip with everything needed to review a session - never the trading wallet key or API keys."""
+    import glob
+    import io
+    import zipfile
+    data_dir = os.path.join(HERE, "data")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
+        for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt"):
+            p = os.path.join(data_dir, name)
+            if os.path.exists(p):
+                z.write(p, name)
+        for pattern in ("copy_log_*.jsonl", "positions_*.csv", "fills_*.csv"):
+            for p in sorted(glob.glob(os.path.join(data_dir, pattern)))[-3:]:
+                if os.path.basename(p) not in SAFE_EXCLUDE and os.path.getsize(p) < 40_000_000:
+                    z.write(p, os.path.basename(p))
+        ov = S.load_overrides(CONFIG)
+        for k in ("api_key", "helius_key"):
+            if ov.get(k):
+                ov[k] = "(set, hidden)"
+        z.writestr("settings_redacted.json", json.dumps(ov, indent=1))
+    name = f"momentum_diagnostics_{time.strftime('%Y%m%d_%H%M')}.zip"
+    return web.Response(body=buf.getvalue(), content_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 def make_app():
     app = web.Application()
     app.router.add_get("/", index)
@@ -485,6 +516,7 @@ def make_app():
     app.router.add_post("/api/live/pause", api_live_pause)
     app.router.add_post("/api/live/sell", api_live_sell)
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
+    app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
     return app
@@ -497,8 +529,12 @@ def main():
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--demo", action="store_true", help="start the demo feed immediately")
     a = ap.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
+    from logging.handlers import RotatingFileHandler
+    fh = RotatingFileHandler(os.path.join(HERE, "data", "app.log"), maxBytes=5_000_000, backupCount=2, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",
+                        handlers=[logging.StreamHandler(), fh])
     app = make_app()
     url = f"http://localhost:{a.port}"
 
