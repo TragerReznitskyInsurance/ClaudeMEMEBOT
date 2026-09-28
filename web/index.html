@@ -984,7 +984,7 @@ function renderLive() {
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? v.open_value.toFixed(4) + " SOL" : "—"}</td></tr>`).join("")}</table>`;
     if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>Copying</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
-      ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a></td>
+      ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a>${p.name && p.name !== p.symbol ? `<div class="faint" style="font-size:11.5px">${esc(p.name)}</div>` : ""}</td>
         <td class="num">${esc(p.wallet)}</td><td class="r num">${p.sol_in.toFixed(4)}</td>
         <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}">${p.value != null ? p.value.toFixed(4) : "—"}</td>
         <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>

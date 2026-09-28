@@ -30,6 +30,7 @@ from solders.system_program import TransferParams, transfer
 from solders.transaction import VersionedTransaction
 
 from memebot.chain import spot_price, trade_from_tx
+from memebot.names import is_placeholder
 
 log = logging.getLogger("memebot")
 TRADE_LOCAL = os.environ.get("MOMENTUM_PUMPPORTAL_TRADE", "https://pumpportal.fun/api/trade-local")
@@ -704,6 +705,32 @@ class LiveTrader:
         except OSError:
             pass
 
+    # ------------------------------------------------------------------ names
+    def name_targets(self):
+        return [m for m, p in self.positions.items() if is_placeholder(p.get("symbol", ""), m)] + \
+               [c["mint"] for c in self.closed if is_placeholder(c.get("symbol", ""), c["mint"])]
+
+    def rename(self, mint, symbol, name=""):
+        olds = set()
+        p = self.positions.get(mint)
+        if p and is_placeholder(p.get("symbol", ""), mint):
+            olds.add(p["symbol"])
+            p["symbol"], p["name"] = symbol, name
+        for c in self.closed:
+            if c["mint"] == mint and is_placeholder(c.get("symbol", ""), mint):
+                olds.add(c.get("symbol", ""))
+                c["symbol"] = symbol
+        if not olds:
+            return
+        olds.discard("")
+        for e in self.events:
+            if e.get("mint") == mint:
+                for o in olds:
+                    e["text"] = e["text"].replace(o, symbol)
+        self._rewrite_csv(lambda rows: [r[:1] + [symbol] + r[2:] if len(r) > 2 and r[2] == mint and is_placeholder(r[1], mint)
+                                        else r for r in rows])
+        self._save()
+
     # ------------------------------------------------------------------ manual controls
     async def sell_now(self, mint):
         await self._sell(mint, 1.0, "manual")
@@ -775,7 +802,7 @@ class LiveTrader:
             has_helius=bool(self._hkey()), trade_usd=c.get("trade_usd", 2.5),
             budget_usd=c.get("budget_usd_per_wallet", 10), max_open=c.get("max_open_per_wallet", 4),
             per_wallet=per,
-            positions=[dict(mint=p["mint"], symbol=p["symbol"], wallet=_short(p["wallet"]), status=p["status"],
+            positions=[dict(mint=p["mint"], symbol=p["symbol"], name=p.get("name", ""), wallet=_short(p["wallet"]), status=p["status"],
                             sol_in=round(p["sol_in"] or p["size"], 5), sol_out=round(p["sol_out"], 5),
                             left_pct=round(p["tokens"] / p["tokens_bought"] * 100) if p.get("tokens_bought") else None,
                             value=round(p["tokens"] * self.price_of(p["mint"]), 5)

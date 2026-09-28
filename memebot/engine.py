@@ -477,6 +477,28 @@ class Engine:
         gap = (price / wpx - 1) * 100
         return gap if gap > lim else None
 
+    def rename(self, mint: str, symbol: str, name: str = ""):
+        """Swap an address-placeholder symbol for the token's real ticker everywhere it's shown."""
+        from memebot.names import is_placeholder
+        t = self.tokens.get(mint)
+        if t and is_placeholder(t.symbol, mint):
+            t.symbol, t.name = symbol, t.name or name
+        p = self.positions.get(mint)
+        if p and is_placeholder(p.symbol, mint):
+            p.symbol = symbol
+        for c in self.closed:
+            if c.get("mint") == mint and is_placeholder(c.get("symbol", ""), mint):
+                c["symbol"] = symbol
+        for a in self.activity:
+            if a.get("mint") == mint and is_placeholder(a.get("symbol", ""), mint):
+                a["symbol"] = symbol
+
+    def name_targets(self) -> list:
+        from memebot.names import is_placeholder
+        out = [m for m, t in self.tokens.items() if t.status in ("copy", "held") and is_placeholder(t.symbol, m)]
+        out += [c["mint"] for c in self.closed if is_placeholder(c.get("symbol", ""), c["mint"])]
+        return out
+
     def seen_signature(self, sig: str) -> bool:
         return sig in self._seen_set
 

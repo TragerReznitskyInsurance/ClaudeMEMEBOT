@@ -25,6 +25,7 @@ from memebot import wallet as WL
 from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
+from memebot.names import TokenNames
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -53,6 +54,18 @@ class Runner:
         self.live = LiveTrader(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
+
+    def name_targets(self):
+        out = self.live.name_targets()
+        if self.engine is not None and self.mode == "live":
+            out += self.engine.name_targets()
+        return list(dict.fromkeys(out))
+
+    def apply_name(self, mint, info):
+        self.live.rename(mint, info["symbol"], info.get("name", ""))
+        if self.engine is not None and self.mode == "live":
+            self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
     # ------------------------------------------------------------------ helpers
     def api_key(self):
@@ -271,9 +284,12 @@ async def broadcaster(app):
                     clients.discard(ws)
     task = asyncio.create_task(loop())
     price_task = asyncio.create_task(sol_price.run())
+    names_task = asyncio.create_task(runner.names.run(runner.name_targets, runner.apply_name))
     yield
     task.cancel()
     price_task.cancel()
+    names_task.cancel()
+    await runner.names.close()
     await runner.live.close()
     await runner.stop()
 
