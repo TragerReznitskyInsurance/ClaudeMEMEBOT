@@ -106,6 +106,18 @@ $env:PUMPPORTAL_API_KEY="your-key"
 is 300k messages, about 0.3 SOL per day at most. Setting `universe: migrated`
 watches only graduated tokens, which is far cheaper.
 
+## Wallet Lab: learn from a wallet that trades well
+
+Click **🔬 Wallet Lab** in the dashboard, paste any Solana wallet, and Momentum rebuilds every memecoin trade that wallet made. It shows:
+- how it loses: loss sizes and how fast it cuts
+- how it wins: hold times, first sell, selling in stages
+- how it enters: size, market cap, seconds after launch, venue
+- warning flags, such as sniper/insider timing or a few outlier wins carrying all the profit
+
+Setup: a free API key from **helius.dev** (sign up and copy the key from the dashboard). Paste it into Wallet Lab once, and it's saved only on your computer.
+
+Click **Download full report** and send the zip to Claude to turn the pattern into bot rules. The command-line version is `python analyze_wallet.py <address> --days 30`.
+
 ## Command-line tools
 
 ```bash

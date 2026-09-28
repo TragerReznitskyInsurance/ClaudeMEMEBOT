@@ -81,6 +81,7 @@ header {
 .actions { display: flex; align-items: center; gap: 8px; }
 .btn { border: 1px solid var(--line-2); background: var(--card); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 13px;
   cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: .15s; white-space: nowrap; }
+a.btn { text-decoration: none; }
 .btn:hover { border-color: var(--text-3); background: var(--card-2); }
 .btn.primary { background: var(--up); border-color: var(--up); color: #04130d; }
 .btn.primary:hover { filter: brightness(1.08); }
@@ -275,6 +276,40 @@ td.mc b { font-weight: 500; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 30px; }
 
+
+/* ── wallet lab ───────────────────────────────── */
+.drawer.wide { width: min(820px, 100vw); }
+.labform { display: grid; grid-template-columns: 1fr 150px auto; gap: 8px; margin-top: 16px; }
+.labform input, .labform select { background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; padding: 9px 11px; color: var(--text); font: 13px var(--mono); outline: none; min-width: 0; }
+.labform select { font-family: var(--sans); }
+.labform input:focus, .labform select:focus { border-color: var(--brand); }
+.lab-intro { color: var(--text-2); font-size: 13px; margin: 4px 0 0; }
+.lab-progress { margin-top: 16px; }
+.lab-progress .meter { height: 8px; }
+.lab-progress p { font-size: 12.5px; color: var(--text-2); margin: 8px 0 0; }
+.lab-err { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--down-soft); color: var(--down); font-size: 13px; }
+.lab-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.lab-kpis .k { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.lab-kpis .k span { display: block; font-size: 11.5px; color: var(--text-3); }
+.lab-kpis .k b { font-size: 19px; font-weight: 600; }
+.lab-flags { display: grid; gap: 8px; margin-top: 14px; }
+.lab-flag { display: flex; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; border: 1px solid var(--line); background: var(--card); }
+.lab-flag b { white-space: nowrap; }
+.lab-flag.good b { color: var(--up); } .lab-flag.warn b { color: var(--warn); } .lab-flag.info b { color: var(--text-2); }
+.lab-sec { margin-top: 20px; }
+.lab-sec h4 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin: 0 0 8px; font-weight: 600; }
+.lab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lab-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.lab-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; padding: 3px 0; }
+.lab-row span { color: var(--text-2); } .lab-row b { font-weight: 500; text-align: right; }
+.bk { display: grid; grid-template-columns: 70px 1fr 42px; gap: 8px; align-items: center; font-size: 11.5px; padding: 2px 0; color: var(--text-2); }
+.bk i { display: block; height: 7px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.bk i em { display: block; height: 100%; border-radius: 4px; }
+.bk b { text-align: right; font-weight: 500; font-family: var(--mono); }
+.lab-actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+.prev { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 720px) { .lab-kpis { grid-template-columns: repeat(2, 1fr); } .lab-grid { grid-template-columns: 1fr; } .labform { grid-template-columns: 1fr 1fr; } .labform input { grid-column: 1 / -1; } }
+
 /* ── responsive ───────────────────────────────── */
 @media (max-width: 1250px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1000px) {
@@ -372,6 +407,10 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
     <button class="btn primary" id="saveSettings">Save changes</button>
   </div>
 </aside>
+<aside class="drawer wide" id="lab" aria-label="Wallet Lab">
+  <div class="drawer-h"><h3>🔬 Wallet Lab</h3><div class="spacer"></div><button class="btn icon" onclick="closeLab()" aria-label="Close">✕</button></div>
+  <div class="drawer-b" id="labBody"></div>
+</aside>
 <div class="tip" id="tip"></div>
 <div class="toast" id="toast"></div>
 
@@ -464,7 +503,8 @@ function renderHeader(lost) {
     a = `<button class="btn" onclick="start('demo')"><span>◇</span><span class="lbl">Demo</span></button>
          <button class="btn primary" onclick="start('live')"><svg width="11" height="12" viewBox="0 0 11 12"><path d="M0 0l11 6-11 6z" fill="currentColor"/></svg><span class="lbl">Start live</span></button>`;
   }
-  $("#actions").innerHTML = a + theme + gear;
+  const labBtn = `<button class="btn" onclick="openLab()" title="Analyze a wallet's trading"><span>🔬</span><span class="lbl">Wallet Lab</span></button>`;
+  $("#actions").innerHTML = a + labBtn + theme + gear;
 }
 
 function renderBody() {
@@ -748,6 +788,106 @@ $("#saveSettings").onclick = async () => {
 };
 $("#resetSettings").onclick = async () => { if (!confirm("Reset all strategy settings to the defaults in config.yaml? Your API key is kept.")) return; await api("/api/settings", { reset: true }); toast("Settings reset"); openDrawer(); };
 api("/api/settings").then(j => { const w = j.schema.flatMap(g => g.items).find(i => i.path === "watch.max_watch_s"); if (w) window.__maxWatch = w.value; }).catch(() => {});
+
+
+/* ── wallet lab ───────────────────────────── */
+let labAddr = null, labTimer = null, labReport = null, labState = null, labHasKey = false, labKeyEnv = false, labPrev = [];
+const LS = x => x == null ? "—" : x;
+async function openLab() {
+  $("#lab").classList.add("open"); $("#scrim").classList.add("open");
+  await labRefresh(true);
+}
+function closeLab() { $("#lab").classList.remove("open"); if (!$("#drawer").classList.contains("open")) $("#scrim").classList.remove("open"); clearTimeout(labTimer); }
+$("#scrim").addEventListener("click", closeLab);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeLab(); });
+
+async function labRefresh(first) {
+  try {
+    const j = await api("/api/wallet/status" + (labAddr ? "?address=" + encodeURIComponent(labAddr) : ""));
+    labState = j.lab; labHasKey = j.has_key; labKeyEnv = j.key_from_env;
+    if (!labAddr && labState.address) labAddr = labState.address;
+    if (j.report) labReport = j.report;
+    if (first) labPrev = await api("/api/wallet/list").catch(() => []);
+  } catch (e) { labState = { error: e.message }; }
+  renderLab();
+  clearTimeout(labTimer);
+  if (labState?.running && $("#lab").classList.contains("open")) labTimer = setTimeout(() => labRefresh(), 900);
+  else if (labState && !labState.running && labState.phase === "done" && labAddr && (!labReport || labReport.wallet !== labAddr)) labTimer = setTimeout(() => labRefresh(true), 300);
+}
+
+async function labStart() {
+  const addr = $("#labAddr").value.trim(), days = +$("#labDays").value;
+  if (!addr) return toast("Paste a wallet address");
+  labAddr = addr; labReport = null;
+  try { labState = await api("/api/wallet/analyze", { address: addr, days }); renderLab(); labRefresh(); }
+  catch (e) { toast(e.message); }
+}
+async function labSaveKey() {
+  const k = $("#heliusKey").value.trim(); if (!k) return;
+  try { await api("/api/settings", { values: {}, helius_key: k }); toast("Helius key saved"); labRefresh(); } catch (e) { toast(e.message); }
+}
+function labShow(addr) { labAddr = addr; labReport = null; labRefresh(); }
+
+const fmtS = x => x == null ? "—" : x < 90 ? Math.round(x) + "s" : x < 5400 ? Math.round(x / 60) + "m" : (x / 3600).toFixed(1) + "h";
+function buckets(obj, color) {
+  const max = Math.max(1, ...Object.values(obj).map(v => v.pct));
+  return Object.entries(obj).map(([k, v]) => `<div class="bk"><span>${esc(k)}</span><i><em style="width:${v.pct / max * 100}%;background:${color}"></em></i><b>${v.pct}%</b></div>`).join("");
+}
+const row = (k, v) => `<div class="lab-row"><span>${k}</span><b class="num">${v}</b></div>`;
+
+function renderLab() {
+  const st = labState || {}, r = labReport;
+  const busy = st.running;
+  let h = `<p class="lab-intro">Paste any Solana wallet. Momentum rebuilds every memecoin trade it made (entries, sizes, exits, hold times) so we can see <b>how</b> it wins and turn that into bot rules. Read-only; nothing is signed or sent.</p>`;
+  if (!labHasKey) {
+    h += `<div class="keybox"><b>Helius API key</b><p>Needed to download a wallet's history. Free at <a href="https://dashboard.helius.dev" target="_blank" rel="noopener">helius.dev</a>: sign up, copy the API key from the dashboard, paste it here. Saved only on this computer.</p>
+      <div class="keyrow"><input id="heliusKey" type="password" placeholder="Paste your Helius API key" autocomplete="off"><button class="btn primary" onclick="labSaveKey()">Save</button></div></div>`;
+  }
+  h += `<div class="labform"><input id="labAddr" placeholder="Wallet address" value="${esc(labAddr || "")}" ${busy ? "disabled" : ""} spellcheck="false">
+    <select id="labDays" ${busy ? "disabled" : ""}><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select>
+    <button class="btn violet" onclick="labStart()" ${busy || !labHasKey ? "disabled" : ""}>${busy ? "Analyzing…" : "Analyze"}</button></div>`;
+  if (labPrev.length && !busy) h += `<div class="prev">${labPrev.slice(0, 6).map(p => `<button class="chip ${p.address === labAddr ? "on" : ""}" onclick="labShow('${p.address}')" title="${esc(p.generated)} UTC">${p.address.slice(0, 4)}…${p.address.slice(-4)} · ${p.trades} trades</button>`).join("")}</div>`;
+  if (busy) {
+    const pctDone = st.phase === "fetch" ? Math.min(90, (st.done / Math.max(st.total, 1)) * 400) : st.phase === "launch" ? 90 + (st.done / Math.max(st.total, 1)) * 9 : 95;
+    h += `<div class="lab-progress"><div class="meter"><i style="width:${pctDone}%"></i></div><p>${esc(st.message || "Working…")}</p></div>`;
+  }
+  if (st.error && !busy) h += `<div class="lab-err">${esc(st.error)}</div>`;
+  if (r && !busy) {
+    const R = r.results, Wn = r.wins, Lo = r.losses, E = r.entries;
+    h += `<div class="lab-kpis">
+      <div class="k"><span>Closed trades</span><b class="num">${r.counts.closed}</b></div>
+      <div class="k"><span>Win rate</span><b class="num">${LS(R.win_rate_pct)}%</b></div>
+      <div class="k"><span>PnL</span><b class="num ${cls(R.total_pnl_sol)}">${signed(R.total_pnl_sol || 0, 2)}<small class="faint"> SOL</small></b></div>
+      <div class="k"><span>Avg win ÷ avg loss</span><b class="num">${LS(R.payoff_ratio)}×</b></div>
+      <div class="k"><span>Profit factor</span><b class="num">${LS(R.profit_factor)}</b></div></div>
+      <div class="faint" style="font-size:12px;margin-top:8px">${esc(r.period.first)} → ${esc(r.period.last)} UTC · ${r.transactions.toLocaleString()} transactions · ${LS(r.counts.trips_per_day)} trades/day</div>
+      <div class="lab-flags">${r.flags.map(f => `<div class="lab-flag ${f.level}"><b>${f.level === "good" ? "✓" : f.level === "warn" ? "⚠" : "ℹ"} ${esc(f.title)}</b><span>${esc(f.text)}</span></div>`).join("")}</div>
+      <div class="lab-sec"><div class="lab-grid">
+        <div class="lab-card"><h4>How it loses</h4>
+          ${row("Median loss", `${LS(R.median_loss_pct)}%`)}${row("Worst loss", `${LS(R.worst_loss_pct)}%`)}${row("Median hold", fmtS(Lo.median_hold_s))}${row("Exits in one sell", `${LS(Lo.single_sell_pct)}%`)}
+          <div style="margin-top:8px" class="faint">Loss size</div>${buckets(Lo.size_buckets, "var(--down)")}
+          <div style="margin-top:8px" class="faint">Hold time</div>${buckets(Lo.hold_buckets, "var(--down)")}</div>
+        <div class="lab-card"><h4>How it wins</h4>
+          ${row("Median win", `+${LS(R.median_win_pct)}%`)}${row("Top 10% of wins", `+${LS(R.p90_win_pct)}%`)}${row("Median hold", fmtS(Wn.median_hold_s))}
+          ${row("First sell", `${fmtS(Wn.median_first_sell_s)} in · ${LS(Wn.median_first_sell_mult)}× · ${LS(Wn.median_first_sell_frac_pct)}% sold`)}${row("Best sell (median)", `${LS(Wn.median_max_sell_mult)}×`)}${row("Sells in stages", `${LS(Wn.ladder_pct)}%`)}
+          <div style="margin-top:8px" class="faint">Hold time</div>${buckets(Wn.hold_buckets, "var(--up)")}</div>
+      </div></div>
+      <div class="lab-sec"><div class="lab-card"><h4>How it enters</h4><div class="lab-grid" style="gap:4px 24px">
+        <div>${row("Typical size", `${LS(E.median_buy_sol)} SOL (${LS(E.p10_buy_sol)}–${LS(E.p90_buy_sol)})`)}${row("Size: winners vs losers", `${LS(E.avg_size_winners)} vs ${LS(E.avg_size_losers)}`)}
+          ${row("Entry mcap (median)", E.entry_mcap_sol.median != null ? `${E.entry_mcap_sol.median} SOL${META?.sol_usd ? " · " + usd(E.entry_mcap_sol.median * META.sol_usd) : ""}` : "—")}
+          ${row("Entry mcap range", `${LS(E.entry_mcap_sol.p25)}–${LS(E.entry_mcap_sol.p75)} SOL`)}${row("Mcap: winners vs losers", `${LS(E.entry_mcap_winners_median)} vs ${LS(E.entry_mcap_losers_median)}`)}
+          ${row("Scaled into positions", `${LS(E.scaled_in_pct)}%`)}${row("Venues", Object.entries(E.venues).map(([k, v]) => `${k.replace("_", " ").toLowerCase()} ${v}`).join(", ") || "—")}</div>
+        <div>${row("Time after launch (median)", fmtS(E.median_delay_s))}<div class="faint" style="margin:4px 0">Time after launch (${E.launch_time_known} known)</div>${buckets(E.delay_buckets, "var(--brand)")}</div>
+      </div></div></div>
+      ${r.top_trades.length ? `<div class="lab-sec"><h4>Biggest wins</h4><div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">PnL</th><th class="r">Return</th><th class="r">Held</th><th class="r">Entry mcap</th><th class="r">After launch</th></tr></thead><tbody>
+        ${r.top_trades.map(t => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(t.mint)}" target="_blank" rel="noopener"><b>${esc(t.symbol || t.mint.slice(0, 6))}</b> <span class="ext">↗</span></a></td><td class="r num up">${signed(t.pnl_sol, 3)}</td><td class="r num up">+${t.pnl_pct}%</td><td class="r num">${fmtS(t.hold_s)}</td><td class="r num">${LS(t.entry_mcap_sol)}</td><td class="r num">${fmtS(t.entry_delay_s)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
+      <div class="lab-actions"><a class="btn primary" href="/api/wallet/download?address=${encodeURIComponent(r.wallet)}">⬇ Download full report</a>
+        <span class="faint" style="font-size:12.5px">Send this zip to Claude to turn the pattern into bot rules.</span></div>`;
+  } else if (!busy && !st.error) {
+    h += `<div class="empty" style="margin-top:20px"><div class="ico">🔬</div>Results appear here. A 30-day scan usually takes 20 seconds to a few minutes, depending on how active the wallet is.</div>`;
+  }
+  $("#labBody").innerHTML = h;
+}
 
 let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800); }
 addEventListener("resize", () => S && renderChart());

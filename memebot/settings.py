@@ -124,22 +124,29 @@ def load_config(config_path="config.yaml") -> dict:
     return cfg
 
 
-def save_overrides(values: dict, api_key=None, config_path="config.yaml"):
+def save_overrides(values: dict, api_key=None, config_path="config.yaml", helius_key=None):
     ov = load_overrides(config_path)
     ov.setdefault("values", {}).update(values)
     if api_key is not None:
         ov["api_key"] = api_key
+    if helius_key is not None:
+        ov["helius_key"] = helius_key
     with open(_settings_path(config_path), "w") as fh:
         json.dump(ov, fh, indent=2)
 
 
 def reset_overrides(config_path="config.yaml"):
+    """Reset strategy values; keep API keys."""
     p = _settings_path(config_path)
     if os.path.exists(p):
         ov = load_overrides(config_path)
-        key = ov.get("api_key")
+        keep = {k: ov[k] for k in ("api_key", "helius_key") if ov.get(k)}
         with open(p, "w") as fh:
-            json.dump({"api_key": key} if key else {}, fh, indent=2)
+            json.dump(keep, fh, indent=2)
+
+
+def helius_key(config_path="config.yaml") -> str:
+    return os.environ.get("HELIUS_API_KEY") or load_overrides(config_path).get("helius_key") or ""
 
 
 def coerce(item, raw):

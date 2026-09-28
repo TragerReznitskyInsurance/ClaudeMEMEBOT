@@ -21,6 +21,7 @@ from memebot import settings as S
 from memebot.demo import generate
 from memebot.engine import Engine, Journal
 from memebot.live import LiveFeed, stream, tick_loop
+from memebot import wallet as WL
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -253,7 +254,9 @@ async def api_save_settings(request):
     if errors:
         return web.json_response({"error": "Check these values: " + ", ".join(errors)}, status=400)
     key = body.get("api_key")
-    S.save_overrides(values, api_key=key if key is not None else None, config_path=CONFIG)
+    hkey = body.get("helius_key")
+    S.save_overrides(values, api_key=key if key is not None else None, config_path=CONFIG,
+                     helius_key=hkey.strip() if isinstance(hkey, str) else None)
     runner.cfg = S.load_config(CONFIG)
     restart = False
     if runner.engine and runner.running:       # apply live where it's safe to
@@ -265,6 +268,84 @@ async def api_save_settings(request):
     return web.json_response({"ok": True, "restart_needed": restart, "meta": runner.meta()})
 
 
+# ---------------------------------------------------------------------- wallet lab
+WALLET_DIR = os.path.join(HERE, "data", "wallets")
+lab = dict(running=False, address=None, phase="", done=0, total=0, message="", error="", task=None)
+
+
+def _lab_state():
+    return {k: v for k, v in lab.items() if k != "task"}
+
+
+def _load_report(addr):
+    try:
+        with open(os.path.join(WALLET_DIR, addr, "summary.json")) as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+async def api_wallet_analyze(request):
+    body = await request.json()
+    addr = str(body.get("address", "")).strip()
+    days = max(1, min(180, int(body.get("days", 30))))
+    if not WL.valid_address(addr):
+        return web.json_response({"error": "That doesn't look like a Solana wallet address"}, status=400)
+    key = S.helius_key(CONFIG)
+    if not key:
+        return web.json_response({"error": "Add a free Helius API key first (Settings → Helius)"}, status=400)
+    if lab["running"]:
+        return web.json_response({"error": "An analysis is already running"}, status=409)
+
+    def prog(phase, done, total, message):
+        lab.update(phase=phase, done=done, total=total, message=message)
+
+    async def run():
+        try:
+            await WL.analyze(addr, key, WALLET_DIR, days=days, progress_cb=prog)
+            lab.update(phase="done", message="Done")
+        except Exception as e:
+            log.warning("wallet analysis failed: %s", e)
+            lab.update(error=str(e) or type(e).__name__, phase="error")
+        finally:
+            lab["running"] = False
+
+    lab.update(running=True, address=addr, phase="fetch", done=0, total=0, message="Starting…", error="")
+    lab["task"] = asyncio.create_task(run())
+    return web.json_response(_lab_state())
+
+
+async def api_wallet_status(request):
+    addr = request.query.get("address") or lab["address"]
+    report = _load_report(addr) if addr and WL.valid_address(addr) and not lab["running"] else None
+    return web.json_response({"lab": _lab_state(), "report": report, "has_key": bool(S.helius_key(CONFIG)),
+                              "key_from_env": bool(os.environ.get("HELIUS_API_KEY"))})
+
+
+async def api_wallet_list(request):
+    out = []
+    if os.path.isdir(WALLET_DIR):
+        for a in os.listdir(WALLET_DIR):
+            r = _load_report(a)
+            if r:
+                out.append(dict(address=a, generated=r.get("generated_utc"), trades=r["counts"]["trips"],
+                                pnl=r["results"]["total_pnl_sol"], win_rate=r["results"]["win_rate_pct"]))
+    out.sort(key=lambda x: x["generated"] or "", reverse=True)
+    return web.json_response(out)
+
+
+async def api_wallet_download(request):
+    addr = request.query.get("address", "")
+    if not WL.valid_address(addr):
+        raise web.HTTPBadRequest()
+    folder = os.path.join(WALLET_DIR, addr)
+    zips = [f for f in os.listdir(folder) if f.endswith(".zip")] if os.path.isdir(folder) else []
+    if not zips:
+        raise web.HTTPNotFound()
+    return web.FileResponse(os.path.join(folder, zips[0]),
+                            headers={"Content-Disposition": f'attachment; filename="{zips[0]}"'})
+
+
 def make_app():
     app = web.Application()
     app.router.add_get("/", index)
@@ -274,6 +355,10 @@ def make_app():
     app.router.add_post("/api/speed", api_speed)
     app.router.add_get("/api/settings", api_get_settings)
     app.router.add_post("/api/settings", api_save_settings)
+    app.router.add_post("/api/wallet/analyze", api_wallet_analyze)
+    app.router.add_get("/api/wallet/status", api_wallet_status)
+    app.router.add_get("/api/wallet/list", api_wallet_list)
+    app.router.add_get("/api/wallet/download", api_wallet_download)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
     return app
