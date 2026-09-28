@@ -83,6 +83,7 @@ class TokenState:
     recent: deque = field(default_factory=deque)         # (ts, side, sol) for the last ~2 minutes
     dev_sold: bool = False
     migrated: bool = False
+    snapped: bool = False             # comparison snapshot already taken
 
     def update_market(self, ev: dict, ts: float):
         vs, vt = _f(ev.get("vSolInBondingCurve")), _f(ev.get("vTokensInBondingCurve"))
@@ -212,6 +213,7 @@ class Engine:
         self.copy_wallet_px = {}                   # mint -> SOL/token the wallet paid on its first buy
         self.chain = None                          # ChainBackup (live mode with a Helius key)
         self.live = None                           # LiveTrader (real-money copies), live mode only
+        self.snaps = None                          # SnapshotRecorder (lookalike research), live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -360,8 +362,21 @@ class Engine:
             except OSError:
                 pass
 
+    def _momentum_on(self):
+        return bool(self.cfg.get("strategies", {}).get("momentum", True))
+
+    def _research_only(self):
+        """Momentum strategy off, but snapshots on: watch new tokens only to record comparison snapshots."""
+        return not self._momentum_on() and self.snaps is not None and self.snaps.enabled()
+
+    def _drop(self, t: TokenState, reason: str):
+        """Stop watching quietly (research-only mode): no funnel counts, no feed entries."""
+        t.status, t.reason = "rejected", reason
+        self.feed.unsubscribe(t.mint)
+        t.mcap_hist.clear(); t.buyers.clear(); t.buy_by_wallet.clear(); t.buyer_first.clear(); t.recent.clear()
+
     def _on_create(self, ev, ts):
-        if self.cfg["universe"] != "new_tokens" or not self.cfg.get("strategies", {}).get("momentum", True):
+        if self.cfg["universe"] != "new_tokens" or not (self._momentum_on() or self._research_only()):
             return
         t = TokenState(
             mint=ev["mint"], symbol=str(ev.get("symbol", "?"))[:20], name=str(ev.get("name", ""))[:60],
@@ -392,7 +407,13 @@ class Engine:
             return
         sol = _f(ev.get("solAmount"), 0.0)
         trader = ev.get("traderPublicKey", "")
+        prev_mcap = t.mcap
         t.update_market(ev, ts)
+        if self.snaps is not None and not t.snapped and prev_mcap and t.mcap and t.creator:
+            line = _f((self.cfg.get("snapshots") or {}).get("cross_mcap_sol"), 40.0)
+            if prev_mcap < line <= t.mcap:
+                t.snapped = True
+                self.snaps.crossed(t, ts)
         t.last_trade_ts = ts
         if ev["txType"] == "buy":
             t.buys += 1
@@ -535,6 +556,8 @@ class Engine:
                     _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
                 if self.live:
                     self.live.on_copy_buy(w, mint, wsol, t.symbol, wallet_px=wpx)
+                if self.snaps is not None:
+                    self.snaps.wallet_buy(w, mint, ts, wsol, wpx, self.copy_wallet_mcap[mint], t, ev.get("signature"))
             mode = cp.get("size_mode", "fixed")
 
             def sized(wallet_sol, fixed):
@@ -690,6 +713,10 @@ class Engine:
         w = self.cfg["watch"]
         age = ts - t.created_ts
         if t.mint in self.pending_buys:
+            return
+        if not self._momentum_on():                       # research-only: never buy, drop once recorded
+            if t.snapped or age > w["max_watch_s"]:
+                self._drop(t, "research: done")
             return
         fail, path = self.entry_status(t, ts)
         if fail and fail.startswith("HARD:"):
@@ -1027,6 +1054,7 @@ class Engine:
             copy=dict(wallets=sorted(self.copy_wallets()),
                       backup=(self.chain.stats | {"last_error": self.chain.last_error, "fast_on": self.chain.ws_connected})
                       if self.chain else None,
+                      snaps=self.snaps.summary() if self.snaps is not None else None,
                       **{k: v for k, v in self.copy_stats.items() if isinstance(k, str)},
                       open=sum(1 for p in self.positions.values() if p.mode == "copy"),
                       closed=sum(1 for c in self.closed if str(c.get("entry_path", "")).startswith("copy")),

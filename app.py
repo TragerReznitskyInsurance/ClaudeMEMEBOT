@@ -24,6 +24,7 @@ from memebot.live import LiveFeed, stream, tick_loop
 from memebot import wallet as WL
 from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
+from memebot.snapshots import SnapshotRecorder
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -47,6 +48,7 @@ class Runner:
         self.recorder = None
         self.screener = None
         self.chain = None
+        self.snaps = None
         self.copy_log = None
         self.live = LiveTrader(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
@@ -98,6 +100,9 @@ class Runner:
                 if hk:
                     self.chain = ChainBackup(lambda: self.engine, hk)
                     self.engine.chain = self.chain
+                    self.snaps = SnapshotRecorder(os.path.join(HERE, out, "snapshots.jsonl"), hk,
+                                                  lambda: self.engine.cfg, lambda: sol_price.usd)
+                    self.engine.snaps = self.snaps
             if self.cfg["output"]["record_raw_events"]:
                 self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a")
             url = self.cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
@@ -107,6 +112,8 @@ class Runner:
             if self.chain:
                 self.tasks.append(asyncio.create_task(self.chain.run()))
                 self.tasks.append(asyncio.create_task(self.chain.listen()))
+            if self.snaps:
+                self.tasks.append(asyncio.create_task(self.snaps.run()))
             # real-money copies: only ever active inside a live session
             eng = self.engine
             self.live.price_of = lambda m: (eng.tokens[m].price if m in eng.tokens else None)
@@ -143,6 +150,9 @@ class Runner:
         if self.chain:
             await self.chain.close()
             self.chain = None
+        if self.snaps:
+            await self.snaps.close()
+            self.snaps = None
         if self.copy_log:
             self.copy_log.close()
             self.copy_log = None
@@ -481,7 +491,7 @@ async def api_diagnostics(request):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
-        for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt"):
+        for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
