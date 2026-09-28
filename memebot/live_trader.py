@@ -34,12 +34,14 @@ from memebot.chain import trade_from_tx
 log = logging.getLogger("memebot")
 TRADE_LOCAL = os.environ.get("MOMENTUM_PUMPPORTAL_TRADE", "https://pumpportal.fun/api/trade-local")
 RPC = os.environ.get("MOMENTUM_HELIUS_RPC", "https://mainnet.helius-rpc.com/?api-key={key}")
+PUBLIC_RPC = os.environ.get("MOMENTUM_PUBLIC_RPC", "https://api.mainnet-beta.solana.com")
+TOKEN_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PazvZ7hkDHdtBLa"]
 LAMPORTS = 1_000_000_000
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
 
 def _short(w):
-    return w[:4] + "…" + w[-4:]
+    return "untracked" if w == "unknown" else w[:4] + "…" + w[-4:]
 
 
 class LiveTrader:
@@ -62,6 +64,7 @@ class LiveTrader:
         self.session: aiohttp.ClientSession | None = None
         self.price_of = lambda mint: None  # set by the app: current SOL price per token
         self.active = False                # true only while a live session is running
+        self.late_waits = (45, 120)        # re-check a timed-out buy after these many seconds
         self._load_state()
 
     # ------------------------------------------------------------------ wallet & state
@@ -159,7 +162,44 @@ class LiveTrader:
     async def _send(self, tx: VersionedTransaction):
         b64 = base64.b64encode(bytes(tx)).decode()
         return await self.rpc("sendTransaction", [b64, {"encoding": "base64", "skipPreflight": False,
-                                                        "preflightCommitment": "confirmed", "maxRetries": 3}])
+                                                        "preflightCommitment": "confirmed", "maxRetries": 0}])
+
+    async def _rebroadcast(self, b64):
+        """Re-send an already-signed tx (no simulation) through Helius and the public RPC."""
+        s = await self._session()
+        body = {"jsonrpc": "2.0", "id": 1, "method": "sendTransaction",
+                "params": [b64, {"encoding": "base64", "skipPreflight": True, "maxRetries": 0}]}
+        for url in (RPC.format(key=self._hkey()), PUBLIC_RPC):
+            try:
+                async with s.post(url, json=body, timeout=aiohttp.ClientTimeout(total=5)) as r:
+                    await r.read()
+            except Exception:
+                pass
+
+    async def _send_and_confirm(self, tx: VersionedTransaction, timeout=None, resend_for=None):
+        """Send, then keep re-broadcasting every 2s until it confirms, fails, or its blockhash expires.
+        Returns (ok, why, sig): ok is True / False / None (unknown after timeout)."""
+        timeout = timeout or self.cfg().get("confirm_timeout_s", 75)
+        resend_for = resend_for or min(60, timeout)
+        sig = await self._send(tx)                      # first send simulates: bad trades fail here, free
+        b64 = base64.b64encode(bytes(tx)).decode()
+        t0, last = time.time(), 0.0
+        while time.time() - t0 < timeout:
+            try:
+                r = await self.rpc("getSignatureStatuses", [[sig], {"searchTransactionHistory": False}])
+                st = (r or {}).get("value", [None])[0]
+                if st:
+                    if st.get("err"):
+                        return False, f"failed on-chain: {st['err']}", sig
+                    if st.get("confirmationStatus") in ("confirmed", "finalized"):
+                        return True, "", sig
+            except Exception:
+                pass
+            if time.time() - last >= 2 and time.time() - t0 < resend_for:
+                last = time.time()
+                await self._rebroadcast(b64)
+            await asyncio.sleep(1.0)
+        return None, f"not confirmed after {timeout}s (network busy - try a higher priority fee)", sig
 
     async def _confirm(self, sig, timeout=45):
         t0 = time.time()
@@ -267,33 +307,83 @@ class LiveTrader:
     # ------------------------------------------------------------------ execution
     async def _buy(self, mint):
         p = self.positions[mint]
+        sig = None
         async with self._lock(mint):
             try:
                 tx = await self._pumpportal("buy", mint, round(p["size"], 6), True, self.cfg().get("buy_slippage_pct", 20))
-                sig = await self._send(tx)
+                ok, why, sig = await self._send_and_confirm(tx)
                 p["sigs"].append(sig)
-                ok, why = await self._confirm(sig)
-                if ok is None:                            # unknown: check if tokens actually arrived
-                    accts = await self._token_accounts(mint)
-                    ok = any(a["amount"] > 0 for a in accts)
-                    why = why if not ok else ""
+                if ok is None:                            # unknown: did the tokens arrive anyway?
+                    ok = any(a["amount"] > 0 for a in await self._token_accounts(mint))
                 if not ok:
                     raise RuntimeError(why)
                 fill = await self._fill(sig)
-                if not fill or fill["txType"] != "buy":
-                    raise RuntimeError("bought, but couldn't read the fill back")
-                p.update(status="open", sol_in=fill["solAmount"], tokens=fill["tokenAmount"],
-                         tokens_bought=fill["tokenAmount"], entry_ts=time.time())
-                self._event("buy", f"Bought {p['symbol']} for {fill['solAmount']:.4f} SOL (copying {_short(p['wallet'])})",
+                if fill and fill["txType"] == "buy":
+                    p.update(status="open", sol_in=fill["solAmount"], tokens=fill["tokenAmount"],
+                             tokens_bought=fill["tokenAmount"], entry_ts=time.time())
+                else:                                     # landed, fill not readable yet: use the balance
+                    amt = sum(a["ui"] for a in await self._token_accounts(mint))
+                    p.update(status="open", sol_in=p["size"], tokens=amt, tokens_bought=amt, entry_ts=time.time())
+                self._event("buy", f"Bought {p['symbol']} for {p['sol_in']:.4f} SOL (copying {_short(p['wallet'])})",
                             sig=sig, mint=mint)
             except Exception as e:
                 self.positions.pop(mint, None)
                 self._save()
-                return self._event("error", f"Buy {p['symbol']} failed: {e}", mint=mint)
+                self._event("error", f"Buy {p['symbol']} failed: {e}", mint=mint, sig=sig)
+                if sig:                                   # in case it lands late, adopt it rather than lose track
+                    asyncio.get_running_loop().create_task(self._late_check(mint, p, sig))
+                return
             self._save()
         await self.refresh_balance(force=True)
         if p["queued_sell"] > 0:
             await self._sell(mint, p["queued_sell"], "copied sell (during our buy)")
+
+    async def _late_check(self, mint, p, sig):
+        for wait in self.late_waits:
+            await asyncio.sleep(wait)
+            if mint in self.positions:
+                return
+            try:
+                amt = sum(a["ui"] for a in await self._token_accounts(mint))
+            except Exception:
+                continue
+            if amt > 0:
+                fill = await self._fill(sig)
+                cost = fill["solAmount"] if fill and fill["txType"] == "buy" else p["size"]
+                p.update(status="open", sol_in=cost, tokens=amt, tokens_bought=amt, entry_ts=time.time(), queued_sell=0.0)
+                self.positions[mint] = p
+                self._save()
+                self._event("buy", f"{p['symbol']}: the earlier buy landed late - now tracking it ({cost:.4f} SOL)",
+                            sig=sig, mint=mint)
+                return
+
+    async def sweep_orphans(self):
+        """Any token in the trading wallet that isn't a tracked position gets adopted so you can see and sell it."""
+        if not self.kp or not self._hkey():
+            return
+        for prog in TOKEN_PROGRAMS:
+            try:
+                r = await self.rpc("getTokenAccountsByOwner", [self.address, {"programId": prog},
+                                                                {"encoding": "jsonParsed", "commitment": "confirmed"}])
+            except Exception:
+                continue
+            for a in (r or {}).get("value", []):
+                info = a["account"]["data"]["parsed"]["info"]
+                mint = info["mint"]
+                ui = float(info["tokenAmount"].get("uiAmountString") or 0)
+                if ui <= 0 or mint in self.positions or mint in self.locks and self.locks[mint].locked():
+                    continue
+                self.positions[mint] = dict(mint=mint, symbol=mint[:5], wallet="unknown", status="open", size=0.0,
+                                            sol_in=0.0, sol_out=0.0, tokens=ui, tokens_bought=ui, opened=time.time(),
+                                            queued_sell=0.0, sigs=[], wallet_sol=0.0, orphan=True)
+                self._event("info", f"Found untracked tokens ({mint[:5]}…) in the trading wallet - added so you can sell them")
+        self._save()
+
+    async def sweep_loop(self):
+        while True:
+            await asyncio.sleep(300)
+            if self.active:
+                await self.sweep_orphans()
 
     async def _sell(self, mint, frac, reason):
         async with self._lock(mint):
@@ -305,10 +395,18 @@ class LiveTrader:
             try:
                 p["status"] = "selling"
                 amount = "100%" if full else f"{max(frac * 100, 0.1):.2f}%"
-                tx = await self._pumpportal("sell", mint, amount, False, self.cfg().get("sell_slippage_pct", 30))
-                sig = await self._send(tx)
-                p["sigs"].append(sig)
-                ok, why = await self._confirm(sig)
+                before = p["tokens"]
+                for attempt in range(2):                  # one automatic retry if the network drops it
+                    tx = await self._pumpportal("sell", mint, amount, False, self.cfg().get("sell_slippage_pct", 30))
+                    ok, why, sig = await self._send_and_confirm(tx)
+                    p["sigs"].append(sig)
+                    if ok is None:                        # unknown: did our balance go down?
+                        now_amt = sum(a["ui"] for a in await self._token_accounts(mint))
+                        ok = now_amt < before * 0.98
+                    if ok or ok is False and "failed on-chain" in why and attempt == 1:
+                        break
+                    if not ok:
+                        self._event("error", f"Sell {p['symbol']} didn't land ({why}); retrying", mint=mint, sig=sig)
                 if not ok:
                     raise RuntimeError(why)
                 fill = await self._fill(sig)

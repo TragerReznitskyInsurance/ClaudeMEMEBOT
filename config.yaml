@@ -47,7 +47,7 @@ live:
   follow_sells: true                   # sell the same % the followed wallet sells
   buy_slippage_pct: 20
   sell_slippage_pct: 30
-  priority_fee_sol: 0.0003             # per transaction (~4 cents)
+  priority_fee_sol: 0.0006             # per transaction (~7 cents); raise if buys "don't confirm"
 
 # Spend guard for metered data. The bot stops watching NEW tokens once this
 # many trade messages have been received today (10,000 msgs = 0.01 SOL).

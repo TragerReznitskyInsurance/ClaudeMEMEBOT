@@ -114,6 +114,8 @@ class Runner:
             for m in list(self.live.positions):
                 feed.subscribe(m)                        # keep pricing positions carried over from before
             self.tasks.append(asyncio.create_task(self.live.recheck()))
+            self.tasks.append(asyncio.create_task(self.live.sweep_orphans()))
+            self.tasks.append(asyncio.create_task(self.live.sweep_loop()))
             self.tasks.append(asyncio.create_task(self.live.refresh_balance(force=True)))
             if self.live.enabled():
                 self.live._event("info", "Real-money copy trading is ON for this session")
