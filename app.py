@@ -106,6 +106,7 @@ class Runner:
                           asyncio.create_task(tick_loop(self.engine))]
             if self.chain:
                 self.tasks.append(asyncio.create_task(self.chain.run()))
+                self.tasks.append(asyncio.create_task(self.chain.listen()))
             # real-money copies: only ever active inside a live session
             eng = self.engine
             self.live.price_of = lambda m: (eng.tokens[m].price if m in eng.tokens else None)

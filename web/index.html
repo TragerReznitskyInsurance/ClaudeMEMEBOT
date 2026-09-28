@@ -548,7 +548,7 @@ function renderBody() {
       `wallet bought ${C.wallet_buys || 0}× · sold ${C.wallet_sells || 0}×` +
       (C.older_sells ? ` <span class="faint">(${C.older_sells} of those were positions it opened before we started, not copied)</span>` : "") +
       ` · we copied ${C.copied_buys || 0} buys and mirrored ${C.mirrored_sells || 0} sells · ${C.open} open · ${C.closed} closed <span class="num ${cls(C.pnl)}">${signed(C.pnl, 4)} SOL</span>`;
-    const backup = META.mode !== "live" ? "" : B ? `<div class="faint" style="font-size:12px;margin-top:3px">🛡 On-chain backup active · ${B.recovered} missed trades recovered · ${B.resolved} amounts looked up${B.errors ? ` · ${B.errors} errors (${esc(B.last_error)})` : ""}</div>`
+    const backup = META.mode !== "live" ? "" : B ? `<div class="faint" style="font-size:12px;margin-top:3px">${B.fast_on ? `⚡ Fast wallet feed connected${B.fast ? ` · ${B.fast} trades caught${B.fast_lag_s != null ? ` (last ${B.fast_lag_s}s after it happened)` : ""}` : ""} · ` : `<span style="color:var(--warn)">⚡ Fast wallet feed connecting…</span> · `}🛡 On-chain backup active · ${B.recovered} missed trades recovered · ${B.resolved} amounts looked up${B.errors ? ` · ${B.errors} errors (${esc(B.last_error)})` : ""}</div>`
       : `<div style="font-size:12px;margin-top:3px;color:var(--warn)">⚠ No Helius key, so there's no on-chain backup. Sells the live feed misses or sends without amounts may not be mirrored. Add the key in Wallet Lab, then restart.</div>`;
     const PW = C.per_wallet || {};
     const gapTxt = g => g == null ? "—" : `<span class="${g > 5 ? "down" : g < -2 ? "up" : ""}">${g > 0 ? "+" : ""}${g}%</span>`;

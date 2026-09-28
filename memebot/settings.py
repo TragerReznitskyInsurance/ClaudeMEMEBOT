@@ -67,6 +67,8 @@ SCHEMA = [
         {"path": "copy_trade.max_open", "label": "Max copied positions", "type": "int"},
         {"path": "copy_trade.safety_stop_pct", "label": "Own stop loss (0 = off)", "unit": "%", "type": "float"},
         {"path": "copy_trade.max_hold_h", "label": "Max hold (0 = off)", "unit": "h", "type": "float"},
+        {"path": "copy_trade.max_entry_gap_pct", "label": "Don't chase: skip if price is already up (0 = off)", "unit": "%",
+         "type": "float"},
         {"path": "strategies.momentum", "label": "Also run momentum strategy", "type": "bool"},
     ]},
     {"group": "Exits", "items": [

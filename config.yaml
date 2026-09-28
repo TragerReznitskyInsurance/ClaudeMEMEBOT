@@ -35,6 +35,7 @@ copy_trade:
   max_open: 100                        # max copied positions open at once
   safety_stop_pct: 0                   # optional stop of our own (0 = pure mirror)
   max_hold_h: 0                        # optional time limit in hours (0 = pure mirror)
+  max_entry_gap_pct: 15                # don't chase: skip a copy if the price is already this much above what the wallet paid (0 = off)
 
 # ── REAL MONEY copy trading ─────────────────────────────────────
 # Uses a dedicated trading wallet created in the dashboard (key stays in data/trading_wallet.json).

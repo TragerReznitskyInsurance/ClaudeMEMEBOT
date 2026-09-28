@@ -209,6 +209,7 @@ class Engine:
         self.copy_seen = defaultdict(lambda: {"live": 0, "chain": 0, "last": 0.0})   # per-wallet feed diagnostics
         self.copy_stats = Counter()
         self.copy_wallet_mcap = {}                 # mint -> mcap the wallet bought at
+        self.copy_wallet_px = {}                   # mint -> SOL/token the wallet paid on its first buy
         self.chain = None                          # ChainBackup (live mode with a Helius key)
         self.live = None                           # LiveTrader (real-money copies), live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
@@ -446,6 +447,15 @@ class Engine:
                               avg_exit_gap=round(sum(xg) / len(xg), 1) if xg else None)
         return out
 
+    def chase_gap(self, mint: str, price: float | None):
+        """% our price is above the wallet's if that breaks the "don't chase" limit, else None."""
+        lim = _f((self.cfg.get("copy_trade") or {}).get("max_entry_gap_pct"), 0.0)
+        wpx = self.copy_wallet_px.get(mint)
+        if not lim or not wpx or not price:
+            return None
+        gap = (price / wpx - 1) * 100
+        return gap if gap > lim else None
+
     def seen_signature(self, sig: str) -> bool:
         return sig in self._seen_set
 
@@ -519,9 +529,12 @@ class Engine:
                 t.last_trade_ts = ts
             self.feed.subscribe(mint)                     # need live prices for fills and marking
             if first:
-                self.copy_wallet_mcap[mint] = _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
+                wpx = wsol / tok if wsol > 0 and tok > 0 else None     # what the wallet actually paid per token
+                self.copy_wallet_px[mint] = wpx
+                self.copy_wallet_mcap[mint] = (wpx * TOTAL_SUPPLY if wpx else None) or \
+                    _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
                 if self.live:
-                    self.live.on_copy_buy(w, mint, wsol, t.symbol)
+                    self.live.on_copy_buy(w, mint, wsol, t.symbol, wallet_px=wpx)
             mode = cp.get("size_mode", "fixed")
 
             def sized(wallet_sol, fixed):
@@ -811,6 +824,13 @@ class Engine:
             if t.dev_sold or not t.price:
                 self._reject(t, "aborted before fill (dev sold / no price)", ts)
                 continue
+            gap = self.chase_gap(mint, t.price) if o.reason.startswith("copy") and mint not in self.positions else None
+            if gap is not None:
+                self.copy_stats["skipped: chasing"] += 1
+                t.status = "copy"
+                self._act("reject", t, f"Copy skipped · price already +{gap:.0f}% above what the wallet paid "
+                                       f"(limit {self.cfg['copy_trade'].get('max_entry_gap_pct', 0):g}%)")
+                continue
             tokens = self._sim_buy(t, o.sol)
             cost = o.sol + x["priority_fee_sol"]
             self.balance -= cost
@@ -1005,7 +1025,8 @@ class Engine:
             closed=self.closed[-60:][::-1],
             rejects=[r for r in self.reject_reasons.most_common() if not r[0].startswith("security: ")][:6],
             copy=dict(wallets=sorted(self.copy_wallets()),
-                      backup=(self.chain.stats | {"last_error": self.chain.last_error}) if self.chain else None,
+                      backup=(self.chain.stats | {"last_error": self.chain.last_error, "fast_on": self.chain.ws_connected})
+                      if self.chain else None,
                       **{k: v for k, v in self.copy_stats.items() if isinstance(k, str)},
                       open=sum(1 for p in self.positions.values() if p.mode == "copy"),
                       closed=sum(1 for c in self.closed if str(c.get("entry_path", "")).startswith("copy")),

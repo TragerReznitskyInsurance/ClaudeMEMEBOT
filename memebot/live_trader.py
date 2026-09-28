@@ -29,7 +29,7 @@ from solders.pubkey import Pubkey
 from solders.system_program import TransferParams, transfer
 from solders.transaction import VersionedTransaction
 
-from memebot.chain import trade_from_tx
+from memebot.chain import spot_price, trade_from_tx
 
 log = logging.getLogger("memebot")
 TRADE_LOCAL = os.environ.get("MOMENTUM_PUMPPORTAL_TRADE", "https://pumpportal.fun/api/trade-local")
@@ -68,7 +68,11 @@ class LiveTrader:
         self.active = False                # true only while a live session is running
         self.late_waits = (45, 120)        # re-check a timed-out buy after these many seconds
         self.external_seen: set = set()    # wallet transactions already checked for outside sells
+        self.ignored: set = set()          # tokens that showed up without us buying them (airdrops / spam)
+        self.fill_cache: dict = {}         # our own tx signature -> parsed trade (or None)
+        self.gone_confirm_s = 25           # a token must read as gone twice, this far apart, before we close it
         self._load_state()
+        self._repair_history()
 
     # ------------------------------------------------------------------ wallet & state
     def _load_key(self):
@@ -100,6 +104,7 @@ class LiveTrader:
             self.positions = s.get("positions", {})
             self.closed = s.get("closed", [])
             self.paused = s.get("paused", False)
+            self.ignored = set(s.get("ignored", []))
             for p in self.positions.values():            # anything mid-flight when we stopped
                 if p["status"] in ("buying", "selling"):
                     p["status"] = "check"
@@ -109,8 +114,67 @@ class LiveTrader:
     def _save(self):
         tmp = self.state_path + ".tmp"
         with open(tmp, "w") as fh:
-            json.dump({"positions": self.positions, "closed": self.closed[-500:], "paused": self.paused}, fh, indent=1)
+            json.dump({"positions": self.positions, "closed": self.closed[-500:], "paused": self.paused,
+                       "ignored": sorted(self.ignored)[-2000:]}, fh, indent=1)
         os.replace(tmp, self.state_path)
+
+    CSV_HEAD = "closed_utc,symbol,mint,wallet,sol_in,sol_out,pnl_sol,pnl_pct,pnl_usd,signatures\n"
+
+    def _csv_path(self):
+        return os.path.join(self.dir, "live_trades.csv")
+
+    def _rewrite_csv(self, fix):
+        """fix(list of row-lists) -> new list. Keeps live_trades.csv in step with a history repair."""
+        try:
+            with open(self._csv_path()) as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            return
+        if not lines:
+            return
+        rows = fix([ln.split(",") for ln in lines[1:] if ln.strip()])
+        tmp = self._csv_path() + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(self.CSV_HEAD)
+            for r in rows:
+                fh.write(",".join(str(x) for x in r) + "\n")
+        os.replace(tmp, self._csv_path())
+
+    def _repair_history(self):
+        """One sell split into two records (a "-100%" close, then the same coin sold as 'untracked'):
+        merge them back into one trade."""
+        merged = []
+        for i, c in enumerate(self.closed):
+            if c.get("wallet") != "unknown" or c.get("sol_in"):
+                continue
+            for e in reversed(self.closed[:i]):
+                if e["mint"] == c["mint"] and e.get("wallet") != "unknown" and e.get("sol_out", 0) <= e.get("sol_in", 0) * 0.02:
+                    e["sol_out"] = round(e.get("sol_out", 0) + c["sol_out"], 6)
+                    e["pnl_sol"] = round(e["sol_out"] - e["sol_in"], 6)
+                    e["pnl_pct"] = round(e["pnl_sol"] / e["sol_in"] * 100, 1) if e["sol_in"] else 0.0
+                    e["pnl_usd"] = round(e.get("pnl_usd", 0) + c.get("pnl_usd", 0), 2)
+                    e["sigs"] = list(e.get("sigs", [])) + list(c.get("sigs", []))
+                    e["closed"] = c["closed"]
+                    merged.append((c, e))
+                    break
+        if not merged:
+            return
+        drop = {id(c) for c, _ in merged}
+        self.closed = [c for c in self.closed if id(c) not in drop]
+
+        def fix(rows):
+            for c, e in merged:
+                un = next((r for r in rows if len(r) >= 10 and r[2] == c["mint"] and r[3] == "unknown"), None)
+                orig = next((r for r in reversed(rows) if len(r) >= 10 and r[2] == e["mint"] and r[3] != "unknown"), None)
+                if un is not None:
+                    rows.remove(un)
+                if orig is not None:
+                    orig[5], orig[6], orig[7], orig[8] = e["sol_out"], e["pnl_sol"], e["pnl_pct"], e["pnl_usd"]
+                    orig[9] = " ".join(e["sigs"])
+            return rows
+        self._rewrite_csv(fix)
+        self._save()
+        log.info("LIVE merged %d split trade record(s) in the history", len(merged))
 
     def _event(self, kind, text, **extra):
         self.events.append(dict(ts=time.time(), kind=kind, text=text, **extra))
@@ -218,11 +282,16 @@ class LiveTrader:
         return None, "not confirmed in time"
 
     async def _fill(self, sig):
+        if sig in self.fill_cache:
+            return self.fill_cache[sig]
         for attempt in range(6):
             tx = await self.rpc("getTransaction", [sig, {"encoding": "jsonParsed", "commitment": "confirmed",
                                                          "maxSupportedTransactionVersion": 0}])
             if tx:
-                return trade_from_tx(tx, self.address, sig)
+                self.fill_cache[sig] = f = trade_from_tx(tx, self.address, sig)
+                if len(self.fill_cache) > 3000:
+                    self.fill_cache.pop(next(iter(self.fill_cache)))
+                return f
             await asyncio.sleep(1.5)
         return None
 
@@ -253,7 +322,7 @@ class LiveTrader:
         return self.locks.setdefault(mint, asyncio.Lock())
 
     # ------------------------------------------------------------------ copy hooks (called by the engine)
-    def on_copy_buy(self, wallet, mint, wallet_sol, symbol=""):
+    def on_copy_buy(self, wallet, mint, wallet_sol, symbol="", wallet_px=None):
         if not (self.active and self.enabled()) or self.paused:
             return
         c = self.cfg()
@@ -274,7 +343,8 @@ class LiveTrader:
             return self._event("skip", f"{symbol or mint[:5]}: trading wallet balance too low ({self.balance:.4f} SOL)")
         self.positions[mint] = dict(mint=mint, symbol=symbol or mint[:5], wallet=wallet, status="buying", size=size,
                                     sol_in=0.0, sol_out=0.0, tokens=0.0, tokens_bought=0.0, opened=time.time(),
-                                    queued_sell=0.0, sigs=[], wallet_sol=wallet_sol)
+                                    queued_sell=0.0, sigs=[], wallet_sol=wallet_sol, wallet_px=wallet_px)
+        self.ignored.discard(mint)
         self._save()
         asyncio.get_running_loop().create_task(self._buy(mint))
 
@@ -312,6 +382,11 @@ class LiveTrader:
         p = self.positions[mint]
         sig = None
         async with self._lock(mint):
+            why_not = await self._pre_buy_check(p)
+            if why_not:
+                self.positions.pop(mint, None)
+                self._save()
+                return self._event("skip", f"{p['symbol']}: {why_not}", mint=mint)
             try:
                 tx = await self._pumpportal("buy", mint, round(p["size"], 6), True, self.cfg().get("buy_slippage_pct", 20))
                 ok, why, sig = await self._send_and_confirm(tx)
@@ -324,6 +399,8 @@ class LiveTrader:
                 if fill and fill["txType"] == "buy":
                     p.update(status="open", sol_in=fill["solAmount"], tokens=fill["tokenAmount"],
                              tokens_bought=fill["tokenAmount"], entry_ts=time.time())
+                    if p.get("wallet_px") and fill["tokenAmount"]:
+                        p["entry_gap_pct"] = round((fill["solAmount"] / fill["tokenAmount"] / p["wallet_px"] - 1) * 100, 1)
                 else:                                     # landed, fill not readable yet: use the balance
                     amt = sum(a["ui"] for a in await self._token_accounts(mint))
                     p.update(status="open", sol_in=p["size"], tokens=amt, tokens_bought=amt, entry_ts=time.time())
@@ -340,6 +417,30 @@ class LiveTrader:
         await self.refresh_balance(force=True)
         if p["queued_sell"] > 0:
             await self._sell(mint, p["queued_sell"], "copied sell (during our buy)")
+
+    async def _pre_buy_check(self, p):
+        """Reason not to buy (the wallet already left, or the price ran away), or None."""
+        if p.get("queued_sell", 0) >= 0.99:
+            return f"{_short(p['wallet'])} already sold out before our buy - skipped"
+        lim = float((self._cfg().get("copy_trade") or {}).get("max_entry_gap_pct") or 0)
+        wpx = p.get("wallet_px")
+        if not lim or not wpx:
+            return None
+        try:
+            px, src = await spot_price(self.rpc, await self._session(), p["mint"], self._usd())
+        except Exception:
+            px, src = None, ""
+        if not px:
+            px, src = self.price_of(p["mint"]), "feed"
+        if not px:
+            self._event("info", f"{p['symbol']}: couldn't read the current price, buying without the chase check")
+            return None
+        gap = (px / wpx - 1) * 100
+        p["quote_gap_pct"] = round(gap, 1)
+        if gap > lim:
+            return (f"price already +{gap:.0f}% above what {_short(p['wallet'])} paid "
+                    f"(limit {lim:g}%) - not chasing")
+        return None
 
     async def _late_check(self, mint, p, sig):
         for wait in self.late_waits:
@@ -410,6 +511,28 @@ class LiveTrader:
             if p["status"] != "open" or (mint in self.locks and self.locks[mint].locked()):
                 continue                                  # the bot is trading it right now
             have = bal.get(mint, 0.0)
+            if p.get("orphan") and not p.get("sol_in"):
+                continue                                  # handled with the untracked tokens below
+            if have <= p["tokens_bought"] * 0.005 and have < p["tokens"] * 0.98:
+                # looks fully gone. RPC reads can briefly miss an account, so confirm before closing
+                first_seen = p.get("gone_since")
+                if not first_seen:
+                    p["gone_since"] = time.time()
+                    changed = True
+                    continue
+                if time.time() - first_seen < self.gone_confirm_s:
+                    continue
+                try:
+                    have = sum(a["ui"] for a in await self._token_accounts(mint))
+                except Exception:
+                    continue
+                if have > p["tokens_bought"] * 0.005:
+                    p.pop("gone_since", None)
+                    p["tokens"] = have
+                    changed = True
+                    continue
+            elif p.pop("gone_since", None):
+                changed = True
             if have < p["tokens"] * 0.98:                 # tokens left the wallet outside the bot
                 got, sigs = await self._external_sells(mint, p["opened"], set(p["sigs"]))
                 p["sol_out"] += got
@@ -427,16 +550,65 @@ class LiveTrader:
                 p["tokens"] = have
                 changed = True
         for mint, ui in bal.items():                      # tokens nobody is tracking
-            if ui <= 0 or mint in self.positions or (mint in self.locks and self.locks[mint].locked()):
+            if ui <= 0 or mint in self.ignored or (mint in self.locks and self.locks[mint].locked()):
                 continue
-            self.positions[mint] = dict(mint=mint, symbol=mint[:5], wallet="unknown", status="open", size=0.0,
-                                        sol_in=0.0, sol_out=0.0, tokens=ui, tokens_bought=ui, opened=time.time(),
-                                        queued_sell=0.0, sigs=[], wallet_sol=0.0, orphan=True)
-            self._event("info", f"Found untracked tokens ({mint[:5]}…) in the trading wallet - added so you can sell them")
-            changed = True
+            p = self.positions.get(mint)
+            if p and not (p.get("orphan") and not p.get("sol_in")):
+                continue
+            if await self._adopt(mint, ui):
+                changed = True
         if changed:
             self._save()
             await self.refresh_balance(force=True)
+
+    async def _find_own_buy(self, mint, since=0.0):
+        """Our own buy transaction of `mint` (SOL actually spent), or None."""
+        try:
+            recent = await self.rpc("getSignaturesForAddress", [self.address, {"limit": 100, "commitment": "confirmed"}]) or []
+        except Exception:
+            return None
+        for r in recent:
+            if r.get("err") or (r.get("blockTime") or 0) < since - 5:
+                continue
+            f = await self._fill(r["signature"])
+            if f and f["mint"] == mint and f["txType"] == "buy":
+                return f
+        return None
+
+    async def _adopt(self, mint, ui):
+        """Tokens in the wallet the bot isn't tracking. Returns True if state changed."""
+        # 1) a trade we closed too early (the balance read missed it): reopen that same record
+        for i in range(len(self.closed) - 1, -1, -1):
+            c = self.closed[i]
+            if c["mint"] == mint and c.get("wallet") != "unknown" and time.time() - c["closed"] < 86400 \
+                    and c.get("sol_out", 0) <= c.get("sol_in", 0) * 0.02:
+                self.closed.pop(i)
+                def drop_last(rows, mint=mint, wallet=c["wallet"]):
+                    for j in range(len(rows) - 1, -1, -1):
+                        if len(rows[j]) > 3 and rows[j][2] == mint and rows[j][3] == wallet:
+                            return rows[:j] + rows[j + 1:]
+                    return rows
+                self._rewrite_csv(drop_last)
+                self.positions[mint] = dict(mint=mint, symbol=c["symbol"], wallet=c["wallet"], status="open",
+                                            size=c["sol_in"], sol_in=c["sol_in"], sol_out=c.get("sol_out", 0.0),
+                                            tokens=ui, tokens_bought=max(ui, 1e-9), opened=c["opened"],
+                                            queued_sell=0.0, sigs=list(c.get("sigs", [])), wallet_sol=0.0)
+                self._event("info", f"{c['symbol']}: tokens are still in the wallet - reopened the trade (it was closed too early)")
+                return True
+        # 2) a buy of ours the bot lost track of: adopt it with its real cost
+        f = await self._find_own_buy(mint)
+        if f:
+            self.positions[mint] = dict(mint=mint, symbol=mint[:5], wallet="unknown", status="open", size=f["solAmount"],
+                                        sol_in=f["solAmount"], sol_out=0.0, tokens=ui, tokens_bought=ui, opened=time.time(),
+                                        queued_sell=0.0, sigs=[f["signature"]], wallet_sol=0.0, orphan=True)
+            self._event("info", f"Found untracked tokens ({mint[:5]}…) from one of our buys - added so you can sell them")
+            return True
+        # 3) arrived without us spending anything: airdrop / spam. Ignore it for good
+        self.ignored.add(mint)
+        if self.positions.get(mint, {}).get("orphan"):
+            self.positions.pop(mint)
+        self._event("info", f"Ignoring {mint[:5]}… - tokens that arrived without a buy (airdrop/spam)")
+        return True
 
     async def sweep_orphans(self):
         await self.sync_with_wallet()
@@ -518,7 +690,7 @@ class LiveTrader:
         rec = dict(mint=mint, symbol=p["symbol"], wallet=p["wallet"], opened=p["opened"], closed=time.time(),
                    sol_in=round(p["sol_in"], 6), sol_out=round(p["sol_out"], 6), pnl_sol=round(pnl, 6),
                    pnl_pct=round(pnl / p["sol_in"] * 100, 1) if p["sol_in"] else 0.0, pnl_usd=round(pnl * px, 2),
-                   sigs=p["sigs"], how=how)
+                   sigs=p["sigs"], how=how, entry_gap_pct=p.get("entry_gap_pct"))
         self.closed.append(rec)
         self._event("close", f"Closed {p['symbol']}: {pnl:+.4f} SOL ({rec['pnl_pct']:+.0f}%, ${rec['pnl_usd']:+.2f})",
                     mint=mint, pnl=pnl)
