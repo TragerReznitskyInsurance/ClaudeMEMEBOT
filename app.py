@@ -27,6 +27,7 @@ from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
+from memebot.lookalike import Lookalike
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -55,16 +56,22 @@ class Runner:
         self.live = LiveTrader(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.lookalike = Lookalike(os.path.join(HERE, "data"),
+                                   lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
+                                   lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
 
     def name_targets(self):
+        from memebot.names import is_placeholder
         out = self.live.name_targets()
+        out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
         return list(dict.fromkeys(out))
 
     def apply_name(self, mint, info):
         self.live.rename(mint, info["symbol"], info.get("name", ""))
+        self.lookalike.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
@@ -133,6 +140,15 @@ class Runner:
             self.live.price_of = lambda m: (eng.tokens[m].price if m in eng.tokens else None)
             self.live.active = True
             eng.live = self.live
+            self.lookalike.active = True
+            eng.lookalike = self.lookalike
+
+            def feed_price(m):
+                t = eng.tokens.get(m)
+                if t and t.price and t.status == "watching":
+                    return t.price, time.time() - t.last_trade_ts
+                return None
+            self.lookalike.feed_price = feed_price
             for m in list(self.live.positions):
                 feed.subscribe(m)                        # keep pricing positions carried over from before
             self.tasks.append(asyncio.create_task(self.live.recheck()))
@@ -151,6 +167,7 @@ class Runner:
 
     async def stop(self):
         self.live.active = False
+        self.lookalike.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -244,7 +261,8 @@ class Runner:
     def snapshot(self):
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
-        return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw)}
+        return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
+                "lookalike": self.lookalike.state()}
 
 
 # ---------------------------------------------------------------------- routes
@@ -287,11 +305,14 @@ async def broadcaster(app):
     price_task = asyncio.create_task(sol_price.run())
     names_task = asyncio.create_task(runner.names.run(runner.name_targets, runner.apply_name))
     live_px_task = asyncio.create_task(runner.live.price_loop())
+    lk_task = asyncio.create_task(runner.lookalike.run())
     yield
     task.cancel()
     price_task.cancel()
     names_task.cancel()
     live_px_task.cancel()
+    lk_task.cancel()
+    await runner.lookalike.close()
     await runner.names.close()
     await runner.live.close()
     await runner.stop()
@@ -510,7 +531,8 @@ async def api_diagnostics(request):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
-        for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl"):
+        for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl",
+                     "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

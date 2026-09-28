@@ -55,6 +55,20 @@ SCHEMA = [
         {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
         {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
     ]},
+    {"group": "Lookalike (paper test)", "items": [
+        {"path": "lookalike.enabled", "label": "Run the lookalike paper test", "type": "bool"},
+        {"path": "lookalike.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
+        {"path": "lookalike.min_age_s", "label": "Coin at least this old", "unit": "s", "type": "float"},
+        {"path": "lookalike.size_usd", "label": "Paper size per coin", "unit": "$", "type": "float"},
+        {"path": "lookalike.stop_pct", "label": "Stop loss (until 6x)", "unit": "%", "type": "float"},
+        {"path": "lookalike.tp_initial_mult", "label": "Take the initial out at", "unit": "x", "type": "float"},
+        {"path": "lookalike.tp6_mult", "label": "Partial sell #1 at (floor moves to entry)", "unit": "x", "type": "float"},
+        {"path": "lookalike.tp6_sell_pct", "label": "Partial sell #1 amount (of what's left)", "unit": "%", "type": "float"},
+        {"path": "lookalike.tp10_mult", "label": "Partial sell #2 at", "unit": "x", "type": "float"},
+        {"path": "lookalike.tp10_sell_pct", "label": "Partial sell #2 amount (of what's left)", "unit": "%", "type": "float"},
+        {"path": "lookalike.moon_mult", "label": "Sell everything at", "unit": "x", "type": "float"},
+        {"path": "lookalike.max_open", "label": "Max open paper positions", "type": "int"},
+    ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
         {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
@@ -195,5 +209,5 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
-_ORDER = ["Copy trading", "Real money", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
+_ORDER = ["Copy trading", "Real money", "Lookalike", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

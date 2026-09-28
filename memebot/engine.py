@@ -214,6 +214,7 @@ class Engine:
         self.chain = None                          # ChainBackup (live mode with a Helius key)
         self.live = None                           # LiveTrader (real-money copies), live mode only
         self.snaps = None                          # SnapshotRecorder (lookalike research), live mode only
+        self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -365,9 +366,12 @@ class Engine:
     def _momentum_on(self):
         return bool(self.cfg.get("strategies", {}).get("momentum", True))
 
+    def _lk_on(self):
+        return self.lookalike is not None and self.lookalike.enabled()
+
     def _research_only(self):
-        """Momentum strategy off, but snapshots on: watch new tokens only to record comparison snapshots."""
-        return not self._momentum_on() and self.snaps is not None and self.snaps.enabled()
+        """Momentum strategy off, but snapshots / lookalike on: watch new tokens without momentum buys."""
+        return not self._momentum_on() and ((self.snaps is not None and self.snaps.enabled()) or self._lk_on())
 
     def _drop(self, t: TokenState, reason: str):
         """Stop watching quietly (research-only mode): no funnel counts, no feed entries."""
@@ -416,6 +420,8 @@ class Engine:
             if prev_mcap < line <= t.mcap and ts - t.created_ts >= _f(sc.get("min_age_s"), 120.0):
                 t.snapped = True
                 self.snaps.crossed(t, ts)
+        if self.lookalike is not None and t.creator and prev_mcap:
+            self.lookalike.maybe_enter(t, prev_mcap, ts)
         t.last_trade_ts = ts
         if ev["txType"] == "buy":
             t.buys += 1
@@ -740,7 +746,9 @@ class Engine:
             return
         if not self._momentum_on():                       # research-only: never buy, drop once recorded
             sc = self.cfg.get("snapshots") or {}
-            if t.snapped or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
+            snap_done = t.snapped or not (self.snaps is not None and self.snaps.enabled())
+            lk_done = not self._lk_on() or t.mint in self.lookalike.traded
+            if (snap_done and lk_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return
         fail, path = self.entry_status(t, ts)

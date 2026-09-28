@@ -374,6 +374,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <main>
   <div id="notice"></div>
   <section id="realmoney"></section>
+  <section id="lookalike"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
     <section class="grid kpis" id="kpis"></section>
@@ -438,7 +439,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let LIVE = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+let LIVE = null, LK = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
 
 /* theme */
 try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -500,13 +501,13 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); }
+function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); }
 
 function renderHeader(lost) {
   const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
@@ -948,6 +949,35 @@ function renderLab() {
   $("#labBody").innerHTML = h;
 }
 
+
+/* ── lookalike paper test ─────────────────── */
+let lkOpen = true;
+function renderLookalike() {
+  const el = $("#lookalike"), L = LK;
+  if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
+  const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";
+  const running = META?.running && META.mode === "live";
+  const status = !L.enabled ? `<span class="badge gray">OFF in Settings</span>` : !running ? `<span class="badge warn">Not running (Start live)</span>` : `<span class="badge brand">● PAPER</span>`;
+  const tot = (L.realized || 0) + (L.open_pnl || 0);
+  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🧪 Lookalike test</h2>${status}
+    <span class="faint" style="font-size:12px">Buys coins rising through ${L.entry_mcap_sol} SOL mcap · $${L.size_usd} each · no real money</span>
+    <div class="rm-actions"><button class="btn" onclick="lkOpen=!lkOpen;renderLookalike()">${lkOpen ? "Hide" : "Show"}</button></div></div>`;
+  h += `<div class="card-b"><table class="wtab"><tr class="faint"><td>Open</td><td class="r">Closed</td><td class="r">Win rate</td><td class="r">Hit 2x</td><td class="r">Hit 6x</td><td class="r">Realized</td><td class="r">Open P&L</td><td class="r">Total</td></tr>
+    <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>
+    <td class="r num ${cls(L.realized)}">${$u(L.realized) || signed(L.realized, 4)}</td><td class="r num ${cls(L.open_pnl)}">${$u(L.open_pnl) || signed(L.open_pnl, 4)}</td><td class="r num ${cls(tot)}"><b>${$u(tot) || signed(tot, 4)}</b></td></tr></table>`;
+  if (L.last_error) h += `<div class="faint" style="font-size:12px;color:var(--warn)">Price check error: ${esc(L.last_error)}</div>`;
+  if (lkOpen) {
+    const stage = p => p.stages.includes("10x") ? "past 10x" : p.stages.includes("6x") ? "past 6x · floor at entry" : p.stages.includes("2x") ? "initial out · free ride" : "stop at −30%";
+    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Now</th><th class="r">Peak</th><th>Stage</th><th class="r">Worth</th><th class="r">Held</th></tr></thead><tbody>
+      ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a></td>
+        <td class="r num ${p.mult >= 1 ? "up" : "down"}">${p.mult.toFixed(2)}x</td><td class="r num faint">${p.peak.toFixed(2)}x</td>
+        <td><span class="badge ${p.stages.length ? "up" : "gray"}">${stage(p)}</span></td>
+        <td class="r num">${$u(p.value)}</td><td class="r num faint">${p.age_min < 60 ? p.age_min + "m" : (p.age_min / 60).toFixed(1) + "h"}</td></tr>`).join("")}</tbody></table></div>`;
+    else h += `<div class="faint" style="font-size:12.5px">No open paper positions yet. It buys when a watched coin rises through ${L.entry_mcap_sol} SOL market cap.</div>`;
+    if (L.events.length) h += `<div class="rm-events">${L.events.slice(0, 10).map(e => `<div class="${e.kind}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span>${esc(e.text)}</span></div>`).join("")}</div>`;
+  }
+  el.innerHTML = h + `</div></div>`;
+}
 
 /* ── real money panel ─────────────────────── */
 function renderLive() {
