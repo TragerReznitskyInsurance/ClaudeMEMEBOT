@@ -166,7 +166,7 @@ class Journal:
         for name, cols in specs.items():
             path = os.path.join(out_dir, f"{name}_{tag}.csv")
             new = not os.path.exists(path)
-            fh = open(path, "a", newline="")
+            fh = open(path, "a", newline="", encoding="utf-8", errors="replace")
             w = csv.writer(fh)
             if new:
                 w.writerow(cols)
@@ -197,7 +197,7 @@ class Engine:
         self.blocklist_path = blocklist_path
         self.bad_creators: set[str] = set()
         if blocklist_path and os.path.exists(blocklist_path):
-            with open(blocklist_path) as fh:
+            with open(blocklist_path, encoding="utf-8", errors="replace") as fh:
                 self.bad_creators = {ln.strip() for ln in fh if ln.strip()}
         self.creator_launches = defaultdict(deque)
         self.security_passed = 0
@@ -357,7 +357,7 @@ class Engine:
         if self.blocklist_path:
             try:
                 os.makedirs(os.path.dirname(self.blocklist_path) or ".", exist_ok=True)
-                with open(self.blocklist_path, "a") as fh:
+                with open(self.blocklist_path, "a", encoding="utf-8", errors="replace") as fh:
                     fh.write(creator + "\n")
             except OSError:
                 pass

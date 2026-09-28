@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 import webbrowser
 
@@ -107,7 +108,7 @@ class Runner:
                                  blocklist_path=os.path.join(HERE, out, "creator_blocklist.txt"))
             feed.accounts = self.engine.copy_wallets()
             if feed.accounts:
-                self.copy_log = open(os.path.join(HERE, out, f"copy_log_{tag}.jsonl"), "a")
+                self.copy_log = open(os.path.join(HERE, out, f"copy_log_{tag}.jsonl"), "a", encoding="utf-8", errors="replace")
                 self.engine.copy_log = self.copy_log
                 hk = S.helius_key(CONFIG)
                 if hk:
@@ -117,7 +118,7 @@ class Runner:
                                                   lambda: self.engine.cfg, lambda: sol_price.usd)
                     self.engine.snaps = self.snaps
             if self.cfg["output"]["record_raw_events"]:
-                self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a")
+                self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a", encoding="utf-8", errors="replace")
             url = self.cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
             self._status(False, "Connecting to PumpPortal…")
             self.tasks = [asyncio.create_task(stream(self.engine, feed, url, self.recorder, self._status)),
@@ -380,7 +381,7 @@ def _lab_state():
 
 def _load_report(addr):
     try:
-        with open(os.path.join(WALLET_DIR, addr, "summary.json")) as fh:
+        with open(os.path.join(WALLET_DIR, addr, "summary.json"), encoding="utf-8", errors="replace") as fh:
             return json.load(fh)
     except (OSError, json.JSONDecodeError):
         return None
@@ -560,6 +561,11 @@ def main():
     a = ap.parse_args()
     os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
     from logging.handlers import RotatingFileHandler
+    for stream in (sys.stdout, sys.stderr):              # Windows consoles can't print every coin name
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:
+            pass
     fh = RotatingFileHandler(os.path.join(HERE, "data", "app.log"), maxBytes=5_000_000, backupCount=2, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S",

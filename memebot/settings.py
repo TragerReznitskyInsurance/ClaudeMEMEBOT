@@ -131,14 +131,14 @@ def _settings_path(config_path):
 
 def load_overrides(config_path="config.yaml") -> dict:
     try:
-        with open(_settings_path(config_path)) as fh:
+        with open(_settings_path(config_path), encoding="utf-8", errors="replace") as fh:
             return json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def load_config(config_path="config.yaml") -> dict:
-    with open(config_path) as fh:
+    with open(config_path, encoding="utf-8", errors="replace") as fh:
         cfg = yaml.safe_load(fh)
     ov = load_overrides(config_path)
     for path, val in ov.get("values", {}).items():
@@ -158,7 +158,7 @@ def save_overrides(values: dict, api_key=None, config_path="config.yaml", helius
         ov["api_key"] = api_key
     if helius_key is not None:
         ov["helius_key"] = helius_key
-    with open(_settings_path(config_path), "w") as fh:
+    with open(_settings_path(config_path), "w", encoding="utf-8", errors="replace") as fh:
         json.dump(ov, fh, indent=2)
 
 
@@ -168,7 +168,7 @@ def reset_overrides(config_path="config.yaml"):
     if os.path.exists(p):
         ov = load_overrides(config_path)
         keep = {k: ov[k] for k in ("api_key", "helius_key") if ov.get(k)}
-        with open(p, "w") as fh:
+        with open(p, "w", encoding="utf-8", errors="replace") as fh:
             json.dump(keep, fh, indent=2)
 
 

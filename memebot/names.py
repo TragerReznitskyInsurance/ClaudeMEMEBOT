@@ -39,7 +39,7 @@ class TokenNames:
         self.tries: dict[str, tuple[int, float]] = {}   # mint -> (attempts, next try ts)
         self.session: aiohttp.ClientSession | None = None
         try:
-            with open(path) as fh:
+            with open(path, encoding="utf-8", errors="replace") as fh:
                 self.names = json.load(fh)
         except (OSError, ValueError):
             pass
@@ -50,7 +50,7 @@ class TokenNames:
     def _save(self):
         try:
             tmp = self.path + ".tmp"
-            with open(tmp, "w") as fh:
+            with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
                 json.dump(self.names, fh)
             os.replace(tmp, self.path)
         except OSError:

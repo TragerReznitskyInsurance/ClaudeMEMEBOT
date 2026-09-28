@@ -79,7 +79,7 @@ class LiveTrader:
     # ------------------------------------------------------------------ wallet & state
     def _load_key(self):
         try:
-            with open(self.key_path) as fh:
+            with open(self.key_path, encoding="utf-8", errors="replace") as fh:
                 return Keypair.from_base58_string(json.load(fh)["secret"])
         except (OSError, KeyError, ValueError, json.JSONDecodeError):
             return None
@@ -88,7 +88,7 @@ class LiveTrader:
         if self.kp is not None:
             raise ValueError("A trading wallet already exists")
         kp = Keypair()
-        with open(self.key_path, "w") as fh:
+        with open(self.key_path, "w", encoding="utf-8", errors="replace") as fh:
             json.dump({"secret": str(kp), "public": str(kp.pubkey()), "created": time.time(),
                        "note": "Momentum trading wallet. Anyone with this file can spend the funds. Never share it."}, fh)
         self.kp = kp
@@ -101,7 +101,7 @@ class LiveTrader:
 
     def _load_state(self):
         try:
-            with open(self.state_path) as fh:
+            with open(self.state_path, encoding="utf-8", errors="replace") as fh:
                 s = json.load(fh)
             self.positions = s.get("positions", {})
             self.closed = s.get("closed", [])
@@ -115,7 +115,7 @@ class LiveTrader:
 
     def _save(self):
         tmp = self.state_path + ".tmp"
-        with open(tmp, "w") as fh:
+        with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
             json.dump({"positions": self.positions, "closed": self.closed[-500:], "paused": self.paused,
                        "ignored": sorted(self.ignored)[-2000:]}, fh, indent=1)
         os.replace(tmp, self.state_path)
@@ -128,7 +128,7 @@ class LiveTrader:
     def _rewrite_csv(self, fix):
         """fix(list of row-lists) -> new list. Keeps live_trades.csv in step with a history repair."""
         try:
-            with open(self._csv_path()) as fh:
+            with open(self._csv_path(), encoding="utf-8", errors="replace") as fh:
                 lines = fh.read().splitlines()
         except OSError:
             return
@@ -136,7 +136,7 @@ class LiveTrader:
             return
         rows = fix([ln.split(",") for ln in lines[1:] if ln.strip()])
         tmp = self._csv_path() + ".tmp"
-        with open(tmp, "w") as fh:
+        with open(tmp, "w", encoding="utf-8", errors="replace") as fh:
             fh.write(self.CSV_HEAD)
             for r in rows:
                 fh.write(",".join(str(x) for x in r) + "\n")
@@ -733,7 +733,7 @@ class LiveTrader:
         self._event("close", f"Closed {p['symbol']}: {pnl:+.4f} SOL ({rec['pnl_pct']:+.0f}%, ${rec['pnl_usd']:+.2f})",
                     mint=mint, pnl=pnl)
         try:
-            with open(os.path.join(self.dir, "live_trades.csv"), "a") as fh:
+            with open(os.path.join(self.dir, "live_trades.csv"), "a", encoding="utf-8", errors="replace") as fh:
                 if fh.tell() == 0:
                     fh.write("closed_utc,symbol,mint,wallet,sol_in,sol_out,pnl_sol,pnl_pct,pnl_usd,signatures\n")
                 fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())},{rec['symbol']},{mint},{p['wallet']},"

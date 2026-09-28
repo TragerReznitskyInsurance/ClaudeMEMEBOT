@@ -550,14 +550,14 @@ async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_
     since = time.time() - days * 86400
     async with aiohttp.ClientSession(headers={"User-Agent": "momentum-wallet-lab"}) as session:
         if raw_path:
-            with open(raw_path) as fh:
+            with open(raw_path, encoding="utf-8", errors="replace") as fh:
                 txs = [json.loads(l) for l in fh if l.strip()]
         else:
             if not helius_key:
                 raise ValueError("Add a Helius API key in Settings first (free at helius.dev)")
             progress(phase="fetch", done=0, total=max_tx, message="Downloading transactions from Helius…")
             txs = await fetch_history(session, wallet, helius_key, since, max_tx, progress)
-            with open(os.path.join(out_dir, "raw_transactions.jsonl"), "w") as fh:
+            with open(os.path.join(out_dir, "raw_transactions.jsonl"), "w", encoding="utf-8", errors="replace") as fh:
                 for t in txs:
                     fh.write(json.dumps(t) + "\n")
         progress(phase="rebuild", done=0, total=1, message="Rebuilding trades…")
@@ -587,7 +587,7 @@ async def analyze(wallet, helius_key, out_root, days=30, max_tx=20000, progress_
 
 
 def write_outputs(out_dir, s, trips, fills, launch):
-    with open(os.path.join(out_dir, "summary.json"), "w") as fh:
+    with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8", errors="replace") as fh:
         json.dump(s, fh, indent=2)
     with open(os.path.join(out_dir, "summary.txt"), "w", encoding="utf-8") as fh:
         fh.write(summary_text(s))

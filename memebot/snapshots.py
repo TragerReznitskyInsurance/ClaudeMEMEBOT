@@ -105,7 +105,7 @@ class SnapshotRecorder:
             return
         snaps, done = {}, set()
         try:
-            with open(self.path) as fh:
+            with open(self.path, encoding="utf-8", errors="replace") as fh:
                 for ln in fh:
                     try:
                         r = json.loads(ln)
@@ -128,7 +128,7 @@ class SnapshotRecorder:
 
     def _write(self, rec: dict):
         try:
-            with open(self.path, "a") as fh:
+            with open(self.path, "a", encoding="utf-8", errors="replace") as fh:
                 fh.write(json.dumps(rec, default=str) + "\n")
         except OSError as e:
             self.last_error = str(e)
