@@ -1,0 +1,6 @@
+# personal / local-only - never commit
+settings.json
+data/
+.venv/
+__pycache__/
+*.pyc

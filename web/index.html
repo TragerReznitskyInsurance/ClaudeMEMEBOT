@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Momentum · Paper Trading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311141b'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%233ee6a8' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #090b10;
+  --bg-2: #0d1017;
+  --card: #11151d;
+  --card-2: #151a24;
+  --line: #1e2431;
+  --line-2: #2a3242;
+  --text: #e8ecf3;
+  --text-2: #9aa4b6;
+  --text-3: #626d80;
+  --up: #3ee6a8;
+  --up-soft: rgba(62,230,168,.12);
+  --down: #ff5d73;
+  --down-soft: rgba(255,93,115,.12);
+  --brand: #8b7cff;
+  --brand-soft: rgba(139,124,255,.14);
+  --warn: #ffb547;
+  --warn-soft: rgba(255,181,71,.13);
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.25);
+  --radius: 14px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f4f6fa; --bg-2: #eef1f6; --card: #ffffff; --card-2: #f7f9fc;
+  --line: #e3e8f0; --line-2: #d3dae6; --text: #121826; --text-2: #4d5a70; --text-3: #8a95a8;
+  --up: #0fae74; --up-soft: rgba(15,174,116,.11); --down: #e23a55; --down-soft: rgba(226,58,85,.1);
+  --brand: #6a57f0; --brand-soft: rgba(106,87,240,.1); --warn: #c77a00; --warn-soft: rgba(199,122,0,.1);
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.05);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  background-image: radial-gradient(1200px 500px at 85% -120px, var(--brand-soft), transparent 60%),
+                    radial-gradient(900px 400px at -10% -80px, var(--up-soft), transparent 60%);
+  background-repeat: no-repeat;
+  color: var(--text); font: 14px/1.45 var(--sans); min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--text-2); } .faint { color: var(--text-3); }
+
+/* ── header ───────────────────────────────────── */
+header {
+  position: sticky; top: 0; z-index: 20;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.bar { max-width: 1480px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; white-space: nowrap; }
+.logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--brand), var(--up)); box-shadow: 0 4px 18px var(--brand-soft); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+.pill.paper { background: var(--warn-soft); color: var(--warn); }
+.pill.brand { background: var(--brand-soft); color: var(--brand); }
+.status { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; min-width: 0; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
+.dot.live { background: var(--up); box-shadow: 0 0 0 0 var(--up); animation: pulse 2s infinite; }
+.dot.demo { background: var(--brand); box-shadow: 0 0 0 0 var(--brand); animation: pulse 2s infinite; }
+.dot.err { background: var(--down); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent), 0 0 0 0 rgba(62,230,168,.5);} 70% { box-shadow: 0 0 0 8px rgba(0,0,0,0);} 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0);} }
+.spacer { flex: 1; }
+.actions { display: flex; align-items: center; gap: 8px; }
+.btn { border: 1px solid var(--line-2); background: var(--card); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 13px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: .15s; white-space: nowrap; }
+.btn:hover { border-color: var(--text-3); background: var(--card-2); }
+.btn.primary { background: var(--up); border-color: var(--up); color: #04130d; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.violet { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.violet:hover { filter: brightness(1.1); }
+.btn.danger { color: var(--down); border-color: color-mix(in srgb, var(--down) 45%, transparent); background: var(--down-soft); }
+.btn.icon { padding: 8px; width: 36px; height: 36px; justify-content: center; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-2); }
+.seg button.on { background: var(--brand-soft); color: var(--brand); }
+
+main { max-width: 1480px; margin: 0 auto; padding: 22px 24px 60px; }
+
+/* ── cards & grid ─────────────────────────────── */
+.grid { display: grid; gap: 16px; }
+.kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.row2 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); margin-top: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
+.card-h { display: flex; align-items: center; gap: 10px; padding: 16px 18px 0; }
+.card-h h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); letter-spacing: .02em; text-transform: uppercase; }
+.card-h .count { font-size: 12px; color: var(--text-3); font-weight: 500; }
+.card-b { padding: 14px 18px 18px; }
+.section { margin-top: 16px; }
+
+.kpi { padding: 16px 18px; position: relative; overflow: hidden; }
+.kpi .label { color: var(--text-2); font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.kpi .value { font-size: 24px; font-weight: 600; margin-top: 6px; letter-spacing: -.02em; white-space: nowrap; }
+.kpi .value small { font-size: 12px; color: var(--text-3); font-weight: 500; margin-left: 3px; }
+.kpi .sub { font-size: 12px; color: var(--text-3); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .kspark { position: absolute; right: 12px; top: 14px; opacity: .9; }
+.wl { display: flex; height: 6px; border-radius: 4px; overflow: hidden; margin-top: 10px; background: var(--line); }
+.wl i { display: block; height: 100%; }
+.slots { display: flex; gap: 5px; margin-top: 10px; }
+.slots i { width: 18px; height: 6px; border-radius: 3px; background: var(--line-2); }
+.slots i.on { background: var(--brand); box-shadow: 0 0 10px var(--brand-soft); }
+.meter { height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), var(--up)); border-radius: 4px; }
+
+/* ── chart ────────────────────────────────────── */
+.chart-wrap { position: relative; height: 250px; }
+.chart-wrap svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.chart-tip { position: absolute; pointer-events: none; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -115%); box-shadow: var(--shadow); display: none; }
+.legend-inline { display: flex; gap: 14px; font-size: 12px; color: var(--text-3); margin-left: auto; }
+
+/* ── funnel & reasons ─────────────────────────── */
+.funnel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.fstep { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.fstep b { display: block; font-size: 18px; font-weight: 600; }
+.fstep span { font-size: 11.5px; color: var(--text-3); }
+.reasons { margin-top: 16px; display: grid; gap: 9px; }
+.secline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.rgroup { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--text-3); margin-top: 6px; }
+.reason { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; }
+.reason .bar2 { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.reason .bar2 i { display: block; height: 100%; background: color-mix(in srgb, var(--text-3) 70%, transparent); border-radius: 3px; }
+
+/* ── positions ────────────────────────────────── */
+.positions { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.pos { background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; position: relative; overflow: hidden; }
+.pos::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--pc, var(--text-3)); }
+.pos-top { display: flex; align-items: flex-start; gap: 10px; }
+.avatar { width: 36px; height: 36px; border-radius: 10px; flex: none; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; }
+.tkn { min-width: 0; }
+.tkn b { display: block; font-size: 14.5px; }
+.tkn span { display: block; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gain { margin-left: auto; text-align: right; }
+.gain b { font-size: 20px; font-weight: 600; display: block; }
+.gain span { font-size: 12px; }
+.pos .spark { margin: 10px 0 6px; }
+.track { position: relative; height: 8px; border-radius: 4px; background: var(--line); margin: 16px 0 22px; }
+.track .fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.track .mk { position: absolute; top: -4px; width: 2px; height: 16px; background: var(--line-2); border-radius: 1px; }
+.track .mk.done { background: var(--up); }
+.track .mk.stop { background: var(--down); }
+.track .mk label { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-size: 10.5px; color: var(--text-3); white-space: nowrap; font-family: var(--mono); }
+.track .now { position: absolute; top: -5px; width: 18px; height: 18px; border-radius: 50%; transform: translateX(-50%);
+  background: var(--card); border: 3px solid var(--pc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pc) 20%, transparent); transition: left .6s ease; }
+.pos-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px; }
+.pos-stats div span { display: block; color: var(--text-3); font-size: 11px; }
+.pos-stats div b { font-weight: 500; white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.up { background: var(--up-soft); color: var(--up); }
+.badge.down { background: var(--down-soft); color: var(--down); }
+.badge.brand { background: var(--brand-soft); color: var(--brand); }
+.badge.gray { background: var(--line); color: var(--text-2); }
+.links { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; }
+.links a { color: var(--text-3); text-decoration: none; } .links a:hover { color: var(--text); }
+.empty { text-align: center; padding: 34px 16px; color: var(--text-3); font-size: 13px; }
+.empty .ico { font-size: 22px; margin-bottom: 6px; opacity: .7; }
+
+/* ── watchlist ────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--text-3); font-size: 11.5px; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background .15s; }
+tbody tr:hover { background: var(--card-2); }
+tr.pending td { background: var(--brand-soft); }
+th.r, td.r { text-align: right; }
+.tk { display: flex; align-items: center; gap: 9px; }
+.tk .avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 11px; }
+.tk b { font-size: 13px; } .tk span { display: block; font-size: 11.5px; color: var(--text-3); max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.checks { display: inline-flex; gap: 3px; }
+.checks i { width: 9px; height: 16px; border-radius: 3px; background: var(--line-2); position: relative; cursor: help; }
+.checks i.ok { background: var(--up); }
+.checks i.no { background: color-mix(in srgb, var(--down) 55%, var(--line-2)); }
+.checks .sep { width: 6px; }
+.checks .trig { font: 600 9.5px var(--mono); color: var(--text-3); margin: 0 2px 0 4px; align-self: center; }
+.checks .trig.on { color: var(--brand); }
+.tip .tgroup { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin: 8px 0 3px; font-weight: 600; display: flex; justify-content: space-between; }
+.tip .tgroup b { color: var(--up); font-weight: 600; }
+.ring { --p: 0; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center;
+  background: conic-gradient(var(--brand) calc(var(--p) * 1%), var(--line) 0); vertical-align: middle; }
+.ring::after { content: ""; width: 20px; height: 20px; border-radius: 50%; background: var(--card); grid-area: 1/1; }
+.ring span { grid-area: 1/1; z-index: 1; font-size: 9.5px; font-family: var(--mono); color: var(--text-2); }
+.tip { position: fixed; z-index: 60; pointer-events: none; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.35); display: none; min-width: 230px; }
+.tip .trow { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
+.tip .trow .ok { color: var(--up); } .tip .trow .no { color: var(--down); }
+
+/* ── activity ─────────────────────────────────── */
+.feed { max-height: 560px; overflow-y: auto; margin: 0 -18px; padding: 0 18px; }
+.feed-filters { display: flex; gap: 6px; margin-left: auto; }
+.chip { border: 1px solid var(--line-2); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--text-3); }
+.chip.on { color: var(--text); background: var(--card-2); }
+.ev { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.ev:last-child { border-bottom: 0; }
+.ev.fresh { animation: slidein .5s ease; }
+@keyframes slidein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.ev .ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 13px; }
+.ev .ic.signal { background: var(--brand-soft); color: var(--brand); }
+.ev .ic.buy { background: var(--up-soft); color: var(--up); }
+.ev .ic.sell { background: var(--warn-soft); color: var(--warn); }
+.ev .ic.close-up { background: var(--up-soft); color: var(--up); }
+.ev .ic.close-down { background: var(--down-soft); color: var(--down); }
+.ev .ic.reject { background: var(--line); color: var(--text-3); }
+.ev .t b { font-size: 13px; } .ev .t p { margin: 1px 0 0; font-size: 12px; color: var(--text-2); }
+.ev .when { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+/* ── hero / empty state ───────────────────────── */
+.hero { padding: 42px 32px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 32px; align-items: center; }
+.hero h1 { font-size: 30px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -.03em; }
+.hero h1 em { font-style: normal; background: linear-gradient(90deg, var(--brand), var(--up)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p { color: var(--text-2); margin: 0 0 22px; max-width: 520px; }
+.hero .cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.hero .cta .btn { padding: 11px 18px; font-size: 14px; }
+.steps { display: grid; gap: 10px; }
+.step { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--line); }
+.step i { font-style: normal; width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 12px; background: var(--brand-soft); color: var(--brand); }
+.step b { display: block; font-size: 13.5px; } .step span { font-size: 12.5px; color: var(--text-2); }
+.notice { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px;
+  background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); font-size: 13px; }
+.notice b { color: var(--warn); }
+.notice .btn { margin-left: auto; }
+
+/* ── drawer ───────────────────────────────────── */
+.scrim { position: fixed; inset: 0; background: rgba(3,5,10,.55); z-index: 40; opacity: 0; pointer-events: none; transition: .2s; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); z-index: 50; background: var(--bg-2); border-left: 1px solid var(--line);
+  transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer-h { display: flex; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.drawer-h h3 { margin: 0; font-size: 16px; }
+.drawer-b { flex: 1; overflow-y: auto; padding: 8px 20px 20px; }
+.drawer-f { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.fgroup h4 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin: 22px 0 10px; font-weight: 600; }
+.field { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 10px; padding: 6px 0; }
+.field label { font-size: 13px; color: var(--text-2); }
+.field label em { font-style: normal; font-size: 10.5px; color: var(--warn); margin-left: 6px; }
+.inp { position: relative; }
+.inp input, .inp select, .keyrow input { width: 100%; background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 10px; color: var(--text);
+  font: 13px var(--mono); outline: none; transition: border-color .15s; }
+.inp input:focus, .inp select:focus, .keyrow input:focus { border-color: var(--brand); }
+.inp .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-3); pointer-events: none; font-family: var(--sans); }
+.inp input.has-unit { padding-right: 42px; }
+.inp select { font-family: var(--sans); appearance: none; }
+.keybox { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 14px; }
+.keybox p { margin: 6px 0 10px; font-size: 12.5px; color: var(--text-2); }
+.keyrow { display: flex; gap: 8px; }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px); background: var(--card-2); border: 1px solid var(--line-2);
+  padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 70; opacity: 0; transition: .25s; box-shadow: var(--shadow); pointer-events: none; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 30px; }
+
+/* ── responsive ───────────────────────────────── */
+@media (max-width: 1250px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1000px) {
+  .row2 { grid-template-columns: minmax(0, 1fr); }
+  .hero { grid-template-columns: 1fr; }
+  .status .txt { max-width: 180px; }
+}
+@media (max-width: 720px) {
+  .bar { padding: 10px 16px; flex-wrap: wrap; gap: 10px; }
+  .status { order: 3; width: 100%; }
+  .spacer { display: none; }
+  .actions { margin-left: auto; }
+  .brand .pill { display: none; }
+  main { padding: 16px 16px 50px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 13px 14px; }
+  .kpi .value { font-size: 19px; }
+  .kpi .kspark { display: none; }
+  .hero { padding: 26px 20px; }
+  .hero h1 { font-size: 24px; }
+  .positions { grid-template-columns: 1fr; }
+  .funnel { grid-template-columns: repeat(2, 1fr); }
+  .hide-sm { display: none; }
+  .actions .btn .lbl { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 17l6-7 4 3 8-9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      Momentum
+      <span class="pill paper">PAPER TRADING</span>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="statusTxt">Connecting to app…</span><span class="faint num" id="uptime"></span></div>
+    <div class="spacer"></div>
+    <div class="actions" id="actions"></div>
+  </div>
+</header>
+
+<main>
+  <div id="notice"></div>
+  <div id="hero"></div>
+  <div id="dash" hidden>
+    <section class="grid kpis" id="kpis"></section>
+
+    <section class="grid row2">
+      <div class="card">
+        <div class="card-h"><h2>Equity</h2><div class="legend-inline" id="eqLegend"></div></div>
+        <div class="card-b"><div class="chart-wrap" id="eqChart"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Filter funnel</h2></div>
+        <div class="card-b"><div class="funnel" id="funnel"></div><div class="reasons" id="reasons"></div></div>
+      </div>
+    </section>
+
+    <section class="card section">
+      <div class="card-h"><h2>Open positions</h2><span class="count" id="posCount"></span></div>
+      <div class="card-b"><div class="positions" id="positions"></div></div>
+    </section>
+
+    <section class="grid row2">
+      <div class="card">
+        <div class="card-h"><h2>Watchlist</h2><span class="count" id="watchCount"></span></div>
+        <div class="card-b"><div class="tbl-wrap"><table id="watch"></table></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Activity</h2>
+          <div class="feed-filters">
+            <button class="chip on" data-f="trades">Trades</button>
+            <button class="chip" data-f="all">All</button>
+          </div>
+        </div>
+        <div class="card-b"><div class="feed" id="feed"></div></div>
+      </div>
+    </section>
+
+    <section class="card section">
+      <div class="card-h"><h2>Trade history</h2><span class="count" id="histCount"></span></div>
+      <div class="card-b"><div class="tbl-wrap"><table id="hist"></table></div></div>
+    </section>
+    <footer>Paper trading only · no wallet, no private key, no real orders · not financial advice</footer>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Settings">
+  <div class="drawer-h"><h3>Strategy settings</h3><div class="spacer"></div><button class="btn icon" id="closeDrawer" aria-label="Close">✕</button></div>
+  <div class="drawer-b" id="settingsBody"></div>
+  <div class="drawer-f">
+    <button class="btn" id="resetSettings">Reset to defaults</button>
+    <div class="spacer"></div>
+    <button class="btn primary" id="saveSettings">Save changes</button>
+  </div>
+</aside>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+
+/* theme */
+try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = cur;
+  try { localStorage.setItem("mm-theme", cur); } catch (e) {}
+  render();
+}
+
+/* formatting */
+const sol = (v, d = 3) => (v == null ? "—" : Number(v).toFixed(d));
+const signed = (v, d = 3) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const pct = (v, d = 1) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d) + "%";
+const cls = v => (v > 0 ? "up" : v < 0 ? "down" : "muted");
+const dur = s => { s = Math.max(0, Math.round(s)); if (s < 60) return s + "s"; const m = Math.floor(s / 60); if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s"; return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m"; };
+const ago = s => s < 5 ? "now" : s < 60 ? Math.round(s) + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : Math.round(s / 3600) + "h ago";
+const compact = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+function hue(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+function avatar(sym, mint) { const h = hue(mint || sym); return `<div class="avatar" style="background:linear-gradient(135deg,hsl(${h} 70% 55%),hsl(${(h + 50) % 360} 75% 45%))">${esc((sym || "?").slice(0, 2))}</div>`; }
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* tiny sparkline */
+function spark(pts, w = 120, h = 34, color, baseline) {
+  if (!pts || pts.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
+  let lo = Math.min(...pts), hi = Math.max(...pts);
+  if (baseline != null) { lo = Math.min(lo, baseline); hi = Math.max(hi, baseline); }
+  const r = hi - lo || 1, pad = 2;
+  const X = i => (i / (pts.length - 1)) * w, Y = v => h - pad - ((v - lo) / r) * (h - pad * 2);
+  const d = pts.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
+  const id = "g" + Math.random().toString(36).slice(2, 8);
+  const c = color || (pts[pts.length - 1] >= pts[0] ? "var(--up)" : "var(--down)");
+  const base = baseline != null ? `<line x1="0" x2="${w}" y1="${Y(baseline)}" y2="${Y(baseline)}" stroke="var(--text-3)" stroke-dasharray="3 3" stroke-width="1" opacity=".6"/>` : "";
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;width:100%;max-width:${w}px">
+    <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".28"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+    ${base}<path d="${d} L${w} ${h} L0 ${h}Z" fill="url(#${id})"/><path d="${d}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+/* ── API ─────────────────────────────────── */
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function start(mode) {
+  if (mode === "live" && !META?.has_key) { openDrawer(true); toast("Add your PumpPortal API key to run live paper trading"); return; }
+  if (S?.stats?.closed && !confirm("Starting again begins a fresh session. Your past trades stay saved in the data folder. Continue?")) return;
+  try { META = await api("/api/start", { mode, speed: 3 }); firstFeed = true; seenEv.clear(); toast(mode === "demo" ? "Demo started · synthetic tokens" : "Live paper trading started"); render(); }
+  catch (e) { toast(e.message); }
+}
+async function stop() { try { META = await api("/api/stop", {}); toast("Stopped · open positions closed at market"); render(); } catch (e) { toast(e.message); } }
+async function setSpeed(s) { try { META = await api("/api/speed", { speed: s }); render(); } catch (e) {} }
+
+/* ── socket ──────────────────────────────── */
+let lastMsg = 0;
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; lastMsg = Date.now(); render(); };
+  ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
+}
+connect();
+
+/* ── render ──────────────────────────────── */
+function render() { renderHeader(); renderBody(); }
+
+function renderHeader(lost) {
+  const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
+  if (lost || !META) { dot.className = "dot err"; txt.textContent = "App not reachable. Is app.py running?"; up.textContent = ""; $("#actions").innerHTML = ""; return; }
+  dot.className = "dot " + (META.running ? (META.mode === "demo" ? "demo" : (META.connected ? "live" : "err")) : "");
+  txt.textContent = META.running ? (META.mode === "demo" ? META.status : (META.connected ? "Live · streaming pump.fun" : META.status)) : "Stopped";
+  up.textContent = META.running && META.started_at ? "· " + dur(Date.now() / 1000 - META.started_at) : "";
+  const gear = `<button class="btn icon" onclick="openDrawer()" title="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></button>`;
+  const theme = `<button class="btn icon" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">${document.documentElement.dataset.theme === "light" ? "☾" : "☀"}</button>`;
+  let a;
+  if (META.running) {
+    const speed = META.mode === "demo" ? `<div class="seg hide-sm">${[1, 3, 10].map(s => `<button class="${META.speed === s ? "on" : ""}" onclick="setSpeed(${s})">${s}×</button>`).join("")}</div>` : "";
+    a = `${speed}<button class="btn danger" onclick="stop()"><svg width="12" height="12" viewBox="0 0 12 12"><rect width="12" height="12" rx="2" fill="currentColor"/></svg><span class="lbl">Stop</span></button>`;
+  } else {
+    a = `<button class="btn" onclick="start('demo')"><span>◇</span><span class="lbl">Demo</span></button>
+         <button class="btn primary" onclick="start('live')"><svg width="11" height="12" viewBox="0 0 11 12"><path d="M0 0l11 6-11 6z" fill="currentColor"/></svg><span class="lbl">Start live</span></button>`;
+  }
+  $("#actions").innerHTML = a + theme + gear;
+}
+
+function renderBody() {
+  const hasData = S && (META?.running || S.stats.closed || S.positions.length);
+  // notices
+  let n = "";
+  if (META && !META.has_key && !(META.running && META.mode === "demo") && hasData)
+    n = `<div class="notice"><span>🔑</span><div><b>No API key.</b> Live mode can see launches but not their trades, so it can't find entries.</div><button class="btn" onclick="openDrawer(true)">Add key</button></div>`;
+  if (META?.running && META.mode === "demo")
+    n = `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>◇</span><div><b style="color:var(--brand)">Demo mode.</b> Every token here is synthetic. Use it to learn the dashboard, not to judge the strategy.</div></div>`;
+  if (META?.running && META.mode === "live" && META.rugcheck_errors >= 5 && META.rugcheck_errors / Math.max(1, META.rugcheck_checks) > 0.3 && S?.stats?.rugcheck)
+    n += `<div class="notice"><span>🛡</span><div><b>RugCheck isn't responding reliably</b> (${META.rugcheck_errors} of ${META.rugcheck_checks} checks failed${META.rugcheck_last_error ? ", last: " + esc(META.rugcheck_last_error) : ""}). ${META.rugcheck_on_error === "allow" ? "Tokens it can't check are being watched without it." : "Tokens it can't check are being skipped, so you may see very few trades."}</div><button class="btn" onclick="openDrawer()">Settings</button></div>`;
+  if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
+  $("#notice").innerHTML = n;
+
+  if (!hasData) { $("#dash").hidden = true; renderHero(); return; }
+  $("#hero").innerHTML = ""; $("#dash").hidden = false;
+  renderKpis(); renderChart(); renderFunnel(); renderPositions(); renderWatch(); renderFeed(); renderHistory();
+}
+
+function renderHero() {
+  if ($("#hero").dataset.done === String(!!META?.has_key)) return;
+  $("#hero").dataset.done = String(!!META?.has_key);
+  $("#hero").innerHTML = `<div class="card hero">
+    <div>
+      <span class="pill brand" style="margin-bottom:14px">Solana · pump.fun</span>
+      <h1>Find out if a momentum strategy <em>actually works</em> before you risk a cent.</h1>
+      <p>Momentum security-checks every new launch, watches only the ones that pass, skips the sniper window, and paper-buys tokens with broad, organic-looking demand. Every fill is simulated with fees, slippage and latency, so it's harsh on purpose.</p>
+      <div class="cta">
+        <button class="btn primary" onclick="start('live')"><svg width="11" height="12" viewBox="0 0 11 12"><path d="M0 0l11 6-11 6z" fill="currentColor"/></svg>Start live paper trading</button>
+        <button class="btn" onclick="start('demo')">◇ Try the demo</button>
+      </div>
+    </div>
+    <div class="steps">
+      <div class="step"><i>1</i><div><b>Try the demo</b><span>Synthetic launches at 3× speed. No setup, see how everything works.</span></div></div>
+      <div class="step"><i>2</i><div><b>${META?.has_key ? "API key connected ✓" : "Add a PumpPortal API key"}</b><span>${META?.has_key ? "Ready for live paper trading on real launches." : "Needed for per-token trade data (≈0.01 SOL per 10k messages)."}</span></div></div>
+      <div class="step"><i>3</i><div><b>Run it for 1–2 weeks</b><span>Tune filters in Settings. Trust the trend, not one lucky moonshot.</span></div></div>
+    </div></div>`;
+}
+
+function renderKpis() {
+  const s = S.stats, eqChange = s.equity - s.start, eqPts = S.equity.map(p => p[1]);
+  const wr = s.win_rate == null ? "—" : s.win_rate.toFixed(0) + "%";
+  const wlw = s.closed ? (s.wins / s.closed * 100) : 0;
+  $("#kpis").innerHTML = `
+    <div class="card kpi"><div class="label">Equity</div>
+      <div class="value num">${sol(s.equity)}<small>SOL</small></div>
+      <div class="sub"><span class="${cls(eqChange)} num">${pct(eqChange / s.start * 100, 2)}</span> vs ${s.start} start</div>
+      <div class="kspark">${spark(eqPts.slice(-80), 70, 30)}</div></div>
+    <div class="card kpi"><div class="label">Realized P&amp;L</div>
+      <div class="value num ${cls(s.realised)}">${signed(s.realised)}<small>SOL</small></div>
+      <div class="sub">${s.closed} closed trade${s.closed === 1 ? "" : "s"}</div></div>
+    <div class="card kpi"><div class="label">Today</div>
+      <div class="value num ${cls(s.day_pnl)}">${signed(s.day_pnl)}<small>SOL</small></div>
+      <div class="meter" title="Daily loss limit used"><i style="width:${Math.min(100, Math.max(0, -s.day_pnl / s.loss_limit * 100))}%;background:var(--down)"></i></div>
+      <div class="sub">loss limit ${s.loss_limit} SOL</div></div>
+    <div class="card kpi"><div class="label">Win rate</div>
+      <div class="value num">${wr}</div>
+      <div class="wl"><i style="width:${wlw}%;background:var(--up)"></i><i style="width:${s.closed ? 100 - wlw : 0}%;background:var(--down)"></i></div>
+      <div class="sub">${s.wins}W · ${s.losses}L</div></div>
+    <div class="card kpi"><div class="label">Open positions</div>
+      <div class="value num">${s.open}<small>/ ${s.max_open}</small></div>
+      <div class="slots">${Array.from({ length: s.max_open }, (_, i) => `<i class="${i < s.open ? "on" : ""}"></i>`).join("")}</div>
+      <div class="sub">${s.watching} tokens on watch</div></div>
+    <div class="card kpi"><div class="label">Data used today</div>
+      <div class="value num">${compact(s.msgs_today)}<small>msgs</small></div>
+      <div class="meter"><i style="width:${Math.min(100, s.msgs_today / s.msg_budget * 100)}%"></i></div>
+      <div class="sub">≈${s.data_cost.toFixed(4)} SOL · budget ${compact(s.msg_budget)}</div></div>`;
+}
+
+function renderChart() {
+  const el = $("#eqChart"), pts = S.equity, start = S.stats.start;
+  const w = el.clientWidth || 600, h = el.clientHeight || 250, pl = 8, pr = 58, pt = 12, pb = 26;
+  $("#eqLegend").innerHTML = `<span><span style="display:inline-block;width:16px;border-top:2px dashed var(--text-3);vertical-align:middle;margin-right:6px"></span>Starting balance</span>`;
+  if (pts.length < 2) { el.innerHTML = `<div class="empty" style="padding-top:90px"><div class="ico">〰</div>The equity curve fills in as the bot runs</div>`; return; }
+  const vals = pts.map(p => p[1]);
+  let lo = Math.min(...vals, start), hi = Math.max(...vals, start);
+  const padv = (hi - lo) * 0.15 || 0.05; lo -= padv; hi += padv;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  const X = t => pl + ((t - t0) / (t1 - t0 || 1)) * (w - pl - pr), Y = v => pt + (1 - (v - lo) / (hi - lo)) * (h - pt - pb);
+  const d = pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+  const last = vals[vals.length - 1], c = last >= start ? css("--up") : css("--down");
+  let grid = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * i / 4, y = Y(v);
+    grid += `<line x1="${pl}" x2="${w - pr}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${w - pr + 8}" y="${y + 4}" fill="var(--text-3)" font-size="11" font-family="var(--mono)">${v.toFixed(3)}</text>`;
+  }
+  const span = t1 - t0, ticks = 5;
+  for (let i = 0; i <= ticks; i++) {
+    const t = t0 + span * i / ticks, x = X(t);
+    const lbl = i === ticks ? "now" : "−" + dur(t1 - t).replace(/ \d+s$/, "");
+    grid += `<text x="${x}" y="${h - 6}" fill="var(--text-3)" font-size="11" text-anchor="${i === 0 ? "start" : i === ticks ? "end" : "middle"}">${lbl}</text>`;
+  }
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" id="eqSvg">
+    <defs><linearGradient id="eqg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".3"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+    ${grid}
+    <line x1="${pl}" x2="${w - pr}" y1="${Y(start)}" y2="${Y(start)}" stroke="var(--text-3)" stroke-dasharray="4 4" stroke-width="1"/>
+    <path d="${d} L${X(t1)} ${h - pb} L${X(t0)} ${h - pb}Z" fill="url(#eqg)"/>
+    <path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="${X(t1)}" cy="${Y(last)}" r="4" fill="${c}"/><circle cx="${X(t1)}" cy="${Y(last)}" r="9" fill="${c}" opacity=".18"/>
+    <g id="eqHover" style="display:none"><line id="hx" y1="${pt}" y2="${h - pb}" stroke="var(--text-3)" stroke-width="1"/><circle id="hc" r="4" fill="var(--card)" stroke="${c}" stroke-width="2"/></g>
+  </svg><div class="chart-tip" id="eqTip"></div>`;
+  const svg = $("#eqSvg");
+  const show = ev => {
+    const r = svg.getBoundingClientRect(), mx = (ev.clientX - r.left) * (w / r.width);
+    let best = 0, bd = 1e9; pts.forEach((p, i) => { const dd = Math.abs(X(p[0]) - mx); if (dd < bd) { bd = dd; best = i; } });
+    const p = pts[best], x = X(p[0]), y = Y(p[1]);
+    $("#eqHover").style.display = ""; $("#hx").setAttribute("x1", x); $("#hx").setAttribute("x2", x); $("#hc").setAttribute("cx", x); $("#hc").setAttribute("cy", y);
+    const tip = $("#eqTip"); tip.style.display = "block"; tip.style.left = (x / w * r.width) + "px"; tip.style.top = (y / h * r.height) + "px";
+    tip.innerHTML = `<b class="num">${p[1].toFixed(4)} SOL</b> <span class="${cls(p[1] - start)} num">${pct((p[1] - start) / start * 100, 2)}</span><br><span class="faint">${dur(t1 - p[0])} ago</span>`;
+    hover = ev;
+  };
+  svg.addEventListener("mousemove", show);
+  svg.addEventListener("mouseleave", () => { hover = null; $("#eqHover").style.display = "none"; $("#eqTip").style.display = "none"; });
+  if (hover && document.elementFromPoint(hover.clientX, hover.clientY)?.closest("#eqSvg")) show(hover);
+}
+
+function renderFunnel() {
+  const s = S.stats;
+  const traded = s.closed + S.positions.length;
+  $("#funnel").innerHTML = [["Launched", s.tokens_seen], ["Passed security", s.security_passed], ["Signals", s.signals], ["Traded", traded]]
+    .map(([k, v]) => `<div class="fstep"><b class="num">${compact(v)}</b><span>${k}</span></div>`).join("");
+  const passRate = s.tokens_seen ? Math.round(s.security_passed / s.tokens_seen * 100) : 0;
+  const sec = `<div class="secline"><span class="badge ${s.rugcheck ? "up" : "gray"}">🛡 RugCheck ${s.rugcheck ? "on" : "off"}</span>
+    <span class="faint">${passRate}% pass · ${s.screening} being checked · ${s.blocked_creators} creators blocked</span></div>`;
+  const group = (title, rows) => {
+    if (!rows.length) return "";
+    const max = Math.max(1, ...rows.map(r => r[1]));
+    return `<div class="rgroup">${title}</div>` + rows.map(([r, c]) => `<div class="reason"><span class="muted">${esc(r.replace(/^timed out: /, "Timed out · ").replace(/^rugcheck: /, "RugCheck · ").replace(/^./, m => m.toUpperCase()))}</span><span class="num faint">${compact(c)}</span><div class="bar2"><i style="width:${c / max * 100}%"></i></div></div>`).join("");
+  };
+  const body = group("Failed security", S.security_rejects) + group("Watched, then skipped", S.rejects);
+  $("#reasons").innerHTML = sec + (body || `<div class="faint" style="font-size:12.5px">Reasons appear here as tokens are filtered out.</div>`);
+}
+
+function trackPos(g, lo, hi) { return Math.max(0, Math.min(100, (g - lo) / (hi - lo) * 100)); }
+function renderPositions() {
+  const P = S.positions;
+  $("#posCount").textContent = P.length ? `${P.length} open` : "";
+  if (!P.length) { $("#positions").innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="ico">◎</div>No open positions. The bot is waiting for a token to pass every filter.</div>`; return; }
+  const demo = META?.mode === "demo";
+  $("#positions").innerHTML = P.map(p => {
+    const pc = p.gain_pct >= 0 ? "var(--up)" : "var(--down)";
+    const lo = p.stop, hi = Math.max(...p.tp.map(t => t.gain), p.gain_pct) * 1.12;
+    const now = trackPos(p.gain_pct, lo, hi), zero = trackPos(0, lo, hi);
+    const fillL = Math.min(now, zero), fillW = Math.abs(now - zero);
+    const marks = [`<div class="mk stop" style="left:0"><label>${p.stop}%</label></div>`, `<div class="mk" style="left:${zero}%"><label>0</label></div>`]
+      .concat(p.tp.map((t, i) => `<div class="mk ${t.done ? "done" : ""}" style="left:${trackPos(t.gain, lo, hi)}%"><label>TP${i + 1}</label></div>`)).join("");
+    const status = p.exiting ? `<span class="badge warn">Exiting · ${esc(p.exiting)}</span>` : p.dev_sold ? `<span class="badge down">Dev sold</span>` : p.left_pct < 100 ? `<span class="badge up">${p.left_pct}% left</span>` : `<span class="badge gray">Holding</span>`;
+    return `<div class="pos" style="--pc:${pc}">
+      <div class="pos-top">${avatar(p.symbol, p.mint)}<div class="tkn"><b>${esc(p.symbol)} <span class="badge ${p.entry_path === "buyer surge" ? "brand" : "gray"}" style="vertical-align:1px">${p.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></b><span>${esc(p.name)}</span></div>
+        <div class="gain"><b class="num ${cls(p.gain_pct)}">${pct(p.gain_pct)}</b><span class="num ${cls(p.upnl)}">${signed(p.upnl, 4)} SOL</span></div></div>
+      <div class="spark">${spark(p.spark, 320, 46, pc, p.entry_mcap)}</div>
+      <div class="track"><div class="fill" style="left:${fillL}%;width:${fillW}%;background:${pc};opacity:.35"></div>${marks}<div class="now" style="left:${now}%"></div></div>
+      <div class="pos-stats">
+        <div><span>Mcap in → now</span><b class="num">${p.entry_mcap.toFixed(0)} → ${p.mcap.toFixed(0)}</b></div>
+        <div><span>Held</span><b class="num">${dur(p.held_s)}</b></div>
+        <div><span>Peak gain</span><b class="num up">${pct(p.peak_gain_pct, 0)}</b></div>
+      </div>
+      <div class="links" style="align-items:center">${status}<span class="spacer" style="flex:1"></span>${demo ? `<span class="faint">synthetic token</span>` : `<a href="https://pump.fun/coin/${p.mint}" target="_blank" rel="noopener">pump.fun ↗</a><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">DexScreener ↗</a>`}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderWatch() {
+  const W = S.watching;
+  $("#watchCount").textContent = S.stats.watching ? `${S.stats.watching} watching${S.stats.watching > W.length ? ` · top ${W.length}` : ""}` : "";
+  if (!W.length) { $("#watch").innerHTML = `<tbody><tr><td class="empty" style="border:0">Waiting for new launches…</td></tr></tbody>`; return; }
+  const maxW = S_cfg_watch();
+  $("#watch").innerHTML = `<thead><tr><th>Token</th><th>Age</th><th class="r">Mcap</th><th class="hide-sm">Chart</th><th>Filters</th><th class="r">Buyers</th><th class="r hide-sm">Buy vol</th><th class="r hide-sm">B/S</th></tr></thead><tbody>` +
+    W.map((t, i) => {
+      const ratio = t.sell_vol ? t.buy_vol / t.sell_vol : null;
+      const grp = g => t.checks.filter(c => c.group === g).map(c => `<i class="${c.ok ? "ok" : "no"}"></i>`).join("");
+      const trig = (g, lbl) => t.checks.some(c => c.group === g) ? `<span class="trig ${t.fired === (g === "surge" ? "buyer surge" : "momentum") ? "on" : ""}" title="${lbl}">${g === "surge" ? "B" : "A"}</span>${grp(g)}` : "";
+      const checks = grp("core") + `<span class="sep"></span>` + trig("momentum", "Trigger A · Momentum") + trig("surge", "Trigger B · Buyer surge");
+      const p = Math.min(100, t.age_s / maxW * 100);
+      return `<tr class="${t.pending ? "pending" : ""}" data-i="${i}">
+        <td><div class="tk">${avatar(t.symbol, t.mint)}<div><b>${esc(t.symbol)}</b>${t.pending ? ` <span class="badge brand">BUYING</span>` : t.sec_state === "pending" ? ` <span class="badge gray" title="Waiting for RugCheck. Can't be bought until it passes">🛡 CHECKING</span>` : t.passed === t.total && t.total ? ` <span class="badge warn" title="Passed every filter but all position slots are full">SLOTS FULL</span>` : ""}<span>${esc(t.name)}</span></div></div></td>
+        <td><span class="ring" style="--p:${p}"><span>${t.age_s < 60 ? t.age_s + "s" : Math.floor(t.age_s / 60) + "m"}</span></span></td>
+        <td class="r num">${t.mcap.toFixed(0)}</td>
+        <td class="hide-sm" style="width:90px">${spark(t.spark, 84, 24)}</td>
+        <td><span class="checks" data-mint="${t.mint}">${checks}</span> <span class="num faint" style="font-size:11.5px;margin-left:4px">${t.passed}/${t.total}</span></td>
+        <td class="r num">${t.buyers}</td>
+        <td class="r num hide-sm">${t.buy_vol.toFixed(1)}</td>
+        <td class="r num hide-sm ${ratio == null ? "up" : ratio >= 1.5 ? "up" : ratio < 1 ? "down" : "muted"}">${ratio == null ? "∞" : ratio.toFixed(1) + "×"}</td></tr>`;
+    }).join("") + "</tbody>";
+}
+function S_cfg_watch() { return window.__maxWatch || 240; }
+
+/* filter tooltip */
+document.addEventListener("mousemove", ev => {
+  const el = ev.target.closest?.(".checks"), tip = $("#tip");
+  if (!el || !S) { tip.style.display = "none"; return; }
+  const t = S.watching.find(w => w.mint === el.dataset.mint); if (!t) { tip.style.display = "none"; return; }
+  const pct = k => ["whale", "mom", "dd", "smom"].includes(k) ? "%" : "";
+  const rows = g => t.checks.filter(c => c.group === g).map(c =>
+    `<div class="trow"><span class="muted">${esc(c.label)}</span><span class="num ${c.ok ? "ok" : "no"}">${esc(c.val)}${pct(c.key)} <span class="faint">${esc(c.need)}</span> ${c.ok ? "✓" : "✕"}</span></div>`).join("");
+  const allOk = g => t.checks.filter(c => c.group === g).every(c => c.ok);
+  const head = (g, title) => t.checks.some(c => c.group === g) ? `<div class="tgroup"><span>${title}</span>${allOk(g) ? "<b>ready</b>" : ""}</div>` + rows(g) : "";
+  tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(t.symbol)} · entry filters</div><div class="faint">🛡 ${esc(t.security)}${t.dev_pct != null ? ` · dev bought ${t.dev_pct}%` : ""}</div>`
+    + head("core", "Safety · all required") + head("momentum", "Trigger A · momentum") + head("surge", "Trigger B · buyer surge")
+    + `<div class="faint" style="margin-top:8px;font-size:11px">Buys when every safety check passes and trigger A or B is ready.</div>`;
+  tip.style.display = "block";
+  const x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 10), y = Math.min(ev.clientY + 14, innerHeight - tip.offsetHeight - 10);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+
+function renderFeed() {
+  const icons = { signal: "⚡", buy: "↗", sell: "◐", reject: "✕" };
+  const titles = { signal: "Buy signal", buy: "Bought", sell: "Partial sell", reject: "Skipped" };
+  let A = S.activity; if (feedFilter === "trades") A = A.filter(a => a.kind !== "reject");
+  if (!A.length) { $("#feed").innerHTML = `<div class="empty"><div class="ico">⌁</div>${feedFilter === "trades" ? "Signals, buys and sells will show up here." : "Nothing yet."}</div>`; return; }
+  $("#feed").innerHTML = A.slice(0, 80).map(a => {
+    const key = a.ts + a.kind + a.mint + a.text, fresh = !firstFeed && !seenEv.has(key); seenEv.add(key);
+    let ic = a.kind, title = titles[a.kind] || a.kind, right = "";
+    if (a.kind === "signal" && a.path === "buyer surge") title = "Buy signal · buyer surge";
+    if (a.kind === "close") { ic = a.pnl >= 0 ? "close-up" : "close-down"; title = a.pnl >= 0 ? "Closed in profit" : "Closed at a loss"; right = `<div class="num ${cls(a.pnl)}" style="font-size:12.5px;font-weight:600;text-align:right">${pct(a.pnl_pct, 0)}</div>`; }
+    return `<div class="ev ${fresh ? "fresh" : ""}"><div class="ic ${ic}">${a.kind === "close" ? (a.pnl >= 0 ? "✓" : "↘") : icons[a.kind] || "•"}</div>
+      <div class="t"><b>${esc(a.symbol)}</b> <span class="faint" style="font-size:12px">· ${title}</span><p>${esc(a.text)}</p></div>
+      <div>${right}<div class="when">${ago(S.now - a.ts)}</div></div></div>`;
+  }).join("");
+  firstFeed = false;
+}
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => { document.querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x === c)); feedFilter = c.dataset.f; firstFeed = true; renderFeed(); });
+
+function renderHistory() {
+  const H = S.closed;
+  const tot = H.reduce((a, c) => a + c.pnl_sol, 0);
+  $("#histCount").innerHTML = H.length ? `${S.stats.closed} trades · <span class="num ${cls(S.stats.realised)}">${signed(S.stats.realised, 4)} SOL</span>` : "";
+  if (!H.length) { $("#hist").innerHTML = `<tbody><tr><td class="empty" style="border:0">Closed trades will be listed here.</td></tr></tbody>`; return; }
+  const chip = r => {
+    const k = /take profit/.test(r) ? "up" : /stop loss|dev sold/.test(r) ? "down" : /trailing/.test(r) ? "brand" : "gray";
+    return `<span class="badge ${k}">${esc(r.replace("take profit", "TP").replace(/ \(\+\d+%\)/, ""))}</span>`;
+  };
+  $("#hist").innerHTML = `<thead><tr><th>Closed</th><th>Token</th><th class="r">Held</th><th class="r hide-sm">In</th><th class="r hide-sm">Out</th><th class="r">P&amp;L</th><th class="r">Return</th><th class="hide-sm">Entry</th><th>Exits</th></tr></thead><tbody>` +
+    H.map(c => `<tr><td class="faint num" style="font-size:12px">${esc(new Date(c.close_utc.replace(" ", "T") + "Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</td>
+      <td><div class="tk">${avatar(c.symbol, c.mint)}<b>${esc(c.symbol)}</b></div></td>
+      <td class="r num">${dur(c.hold_s)}</td>
+      <td class="r num hide-sm">${sol(c.sol_in, 4)}</td><td class="r num hide-sm">${sol(c.sol_out, 4)}</td>
+      <td class="r num ${cls(c.pnl_sol)}">${signed(c.pnl_sol, 4)}</td>
+      <td class="r"><span class="badge ${c.pnl_pct >= 0 ? "up" : "down"} num">${pct(c.pnl_pct, 0)}</span></td>
+      <td class="hide-sm"><span class="badge ${c.entry_path === "buyer surge" ? "brand" : "gray"}">${c.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></td>
+      <td><div style="display:flex;gap:4px">${c.exit_reasons.split(" | ").map(chip).join("")}</div></td></tr>`).join("") + "</tbody>";
+}
+
+/* ── settings drawer ─────────────────────── */
+let schema = null;
+async function openDrawer(focusKey) {
+  $("#drawer").classList.add("open"); $("#scrim").classList.add("open");
+  try {
+    const j = await api("/api/settings"); schema = j.schema;
+    const m = j.meta;
+    const keyBox = `<div class="keybox"><b>PumpPortal API key</b>
+      <p>${m.key_from_env ? "Using the key from your PUMPPORTAL_API_KEY environment variable." : m.has_key ? `Saved on this computer (${esc(m.key_hint)}). Only used for market data.` : `Needed for live mode. Create one at <a href="https://pumpportal.fun/trading-api/setup" target="_blank" rel="noopener">pumpportal.fun</a> and fund its wallet with ~0.05 SOL to pay for data. It's saved only in settings.json on this computer.`}</p>
+      ${m.key_from_env ? "" : `<div class="keyrow"><input id="apiKey" type="password" placeholder="${m.has_key ? "Paste a new key to replace" : "Paste your API key"}" autocomplete="off"><button class="btn" onclick="const i=$('#apiKey');i.type=i.type==='password'?'text':'password'">👁</button></div>`}</div>`;
+    $("#settingsBody").innerHTML = keyBox + schema.map(g => `<div class="fgroup"><h4>${esc(g.group)}</h4>` + g.items.map(it => {
+      const id = "f_" + it.path.replace(/\./g, "_");
+      const input = it.type === "bool"
+        ? `<select id="${id}" data-path="${it.path}"><option value="true" ${it.value ? "selected" : ""}>On</option><option value="false" ${!it.value ? "selected" : ""}>Off</option></select>`
+        : it.type === "choice"
+        ? `<select id="${id}" data-path="${it.path}">${it.choices.map(([v, l]) => `<option value="${v}" ${v === it.value ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`
+        : `<input id="${id}" data-path="${it.path}" type="number" step="any" min="0" value="${it.value}" class="${it.unit ? "has-unit" : ""}">${it.unit ? `<span class="unit">${esc(it.unit)}</span>` : ""}`;
+      return `<div class="field"><label for="${id}">${esc(it.label)}${it.restart ? "<em>next start</em>" : ""}</label><div class="inp">${input}</div></div>`;
+    }).join("") + `</div>`).join("");
+    if (focusKey === true) setTimeout(() => $("#apiKey")?.focus(), 250);
+  } catch (e) { $("#settingsBody").innerHTML = `<div class="empty">Couldn't load settings: ${esc(e.message)}</div>`; }
+}
+function closeDrawer() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); }
+$("#closeDrawer").onclick = closeDrawer; $("#scrim").onclick = closeDrawer;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+$("#saveSettings").onclick = async () => {
+  const values = {};
+  document.querySelectorAll("#settingsBody [data-path]").forEach(el => values[el.dataset.path] = el.value);
+  const body = { values }; const k = $("#apiKey")?.value.trim(); if (k) body.api_key = k;
+  try {
+    const r = await api("/api/settings", body);
+    if (r.meta) META = r.meta;
+    window.__maxWatch = +values["watch.max_watch_s"] || 240;
+    toast(r.restart_needed ? "Saved · some changes apply on the next start" : META?.running ? "Saved · applied to the running bot" : "Saved");
+    closeDrawer(); $("#hero").dataset.done = ""; render();
+  } catch (e) { toast(e.message); }
+};
+$("#resetSettings").onclick = async () => { if (!confirm("Reset all strategy settings to the defaults in config.yaml? Your API key is kept.")) return; await api("/api/settings", { reset: true }); toast("Settings reset"); openDrawer(); };
+api("/api/settings").then(j => { const w = j.schema.flatMap(g => g.items).find(i => i.path === "watch.max_watch_s"); if (w) window.__maxWatch = w.value; }).catch(() => {});
+
+let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800); }
+addEventListener("resize", () => S && renderChart());
+setInterval(() => { if (META?.running && Date.now() - lastMsg > 4000) renderHeader(); }, 2000);
+</script>
+</body>
+</html>

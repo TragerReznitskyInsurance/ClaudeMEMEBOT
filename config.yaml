@@ -1,0 +1,103 @@
+# ─────────────────────────────────────────────────────────────
+#  Memecoin momentum bot — PAPER TRADING config
+#  All amounts in SOL. Percentages are plain numbers (30 = 30%).
+# ─────────────────────────────────────────────────────────────
+
+feed:
+  # PumpPortal API key. Required for per-token trade data (metered:
+  # 0.01 SOL per 10,000 messages, billed to the wallet linked to the key).
+  # New-token and migration events are free. Can also be set with the
+  # PUMPPORTAL_API_KEY environment variable (preferred - keeps it out of this file).
+  api_key: ""
+  url: "wss://pumpportal.fun/api/data"
+
+# Which tokens to watch:
+#   new_tokens -> every fresh pump.fun launch (more chances, more rugs, more data cost)
+#   migrated   -> only tokens that graduated to PumpSwap (far fewer, cheaper, less rug-heavy)
+universe: new_tokens
+
+# Spend guard for metered data. The bot stops watching NEW tokens once this
+# many trade messages have been received today (10,000 msgs = 0.01 SOL).
+max_trade_messages_per_day: 300000     # ~0.3 SOL/day worst case
+max_concurrent_watch: 40               # tokens being watched at once (not yet bought)
+
+# ── Security gate: runs the instant a token launches ────────────
+# A token must pass ALL of these before the bot watches it at all, so tokens
+# that fail cost nothing in paid data and never appear on the watchlist.
+security:
+  max_dev_buy_pct: 5                   # dev's launch buy as % of total supply (1 SOL ≈ 3.5%)
+  max_launches_per_creator_24h: 2      # creator launched more than this in 24h -> serial launcher, skip
+                                       #   (counts launches seen since the bot started)
+  block_repeat_dumpers: true           # creators the bot has seen dump a token are blocked for good
+  name_blacklist: ["test", "rug", "scam", "honeypot"]
+  rugcheck: true                       # screen every token with RugCheck (free API) before watching
+  rugcheck_on_error: skip              # RugCheck down / slow / rate-limited: skip (strict) or allow
+  rugcheck_timeout_s: 6
+  rugcheck_block_risks:                # fail if any RugCheck risk name contains one of these
+    - "freeze authority"
+    - "mint authority"
+    - "rugged"
+    - "copycat"
+    - "honeypot"
+  rugcheck_max_score: 0                # also fail above this normalised score (0-100). 0 = off,
+                                       #   because the score flags almost every brand-new token
+
+# ── Watch window ────────────────────────────────────────────────
+watch:
+  min_age_s: 30                        # never buy in the first N seconds (snipers' zone)
+  max_watch_s: 240                     # give up if no entry signal by then
+
+# ── Entry filters: ALL must pass at the same moment ─────────────
+entry:
+  min_unique_buyers: 15
+  min_buy_count: 20
+  min_buy_volume_sol: 5.0
+  min_buy_sell_ratio: 1.5              # buy volume / sell volume
+  min_mcap_sol: 40
+  max_mcap_sol: 300
+  max_top_buyer_share_pct: 25          # one wallet (excl. dev) > this % of buy volume -> skip
+  momentum_lookback_s: 30
+  min_momentum_pct: 15                 # mcap up at least this much over the lookback
+  max_drawdown_from_peak_pct: 20       # don't buy something already dumping off its high
+  reject_if_dev_sold: true
+  # The safety filters above (buyers, volume, mcap range, whale share, drop from peak,
+  # dev) are ALWAYS required. On top of them, a token is bought when EITHER trigger fires:
+  #   A) momentum:     min_buy_sell_ratio (all-time) + min_momentum_pct over momentum_lookback_s
+  #   B) buyer surge:  a burst of NEW buyers, even if early sellers dragged the all-time ratio down
+  buyer_surge:
+    enabled: true
+    window_s: 20                       # look at the last N seconds
+    min_new_buyers: 10                 # wallets buying for the first time in that window
+    min_recent_buy_sell_ratio: 1.2     # buy vs sell volume in that window only
+    min_momentum_pct: 5                # price must still be rising over the window
+
+# ── Exits ───────────────────────────────────────────────────────
+exit:
+  stop_loss_pct: 30                    # hard stop, measured from entry price
+  take_profit:                         # ladder: at +X%, sell Y% of the ORIGINAL position
+    - { gain_pct: 50,  sell_pct: 40 }
+    - { gain_pct: 150, sell_pct: 30 }
+  trailing_stop_pct: 25                # from the peak price since entry
+  trailing_arms_after_gain_pct: 30     # trailing stop only active once up this much
+  max_hold_s: 900                      # time stop
+  stale_after_s: 90                    # no trades for this long = dead token, exit
+  exit_on_dev_sell: true
+
+# ── Simulated execution (keep these pessimistic) ────────────────
+execution:
+  position_size_sol: 0.1
+  latency_s: 1.5                       # fill at the first price seen this long after the decision
+  platform_fee_pct: 1.25               # pump.fun / PumpSwap fee per side
+  priority_fee_sol: 0.0005             # per transaction
+  extra_slippage_pct: 2.0              # on top of modelled price impact
+
+# ── Risk limits ─────────────────────────────────────────────────
+risk:
+  starting_balance_sol: 5.0
+  max_open_positions: 3
+  daily_loss_limit_sol: 1.0            # stop opening new positions after this much loss in a day
+
+# ── Output ──────────────────────────────────────────────────────
+output:
+  dir: "data"
+  record_raw_events: true              # saves the feed so backtest.py can replay it with new settings
