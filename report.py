@@ -48,7 +48,10 @@ if any(r.get("entry_path") for r in rows):
     for path in sorted({r.get("entry_path") or "momentum" for r in rows}):
         sub = [float(r["pnl_sol"]) for r in rows if (r.get("entry_path") or "momentum") == path]
         w = sum(1 for p in sub if p > 0)
-        print(f"  {path:<13} {len(sub):>4} trades  win {w / len(sub) * 100:>4.0f}%  pnl {sum(sub):+.4f} SOL")
+        gaps = [float(r["entry_gap_pct"]) for r in rows if (r.get("entry_path") or "momentum") == path and r.get("entry_gap_pct") not in (None, "", "None")]
+        xg = [float(r["exit_gap_pct"]) for r in rows if (r.get("entry_path") or "momentum") == path and r.get("exit_gap_pct") not in (None, "", "None")]
+        extra = (f"  entry gap {sum(gaps) / len(gaps):+.1f}%" if gaps else "") + (f"  exit gap {sum(xg) / len(xg):+.1f}%" if xg else "")
+        print(f"  {path:<20} {len(sub):>4} trades  win {w / len(sub) * 100:>4.0f}%  pnl {sum(sub):+.4f} SOL{extra}")
 print("\nFinal exit reason:")
 for k, v in last_exit.most_common():
     print(f"  {v:>5}  {k}")

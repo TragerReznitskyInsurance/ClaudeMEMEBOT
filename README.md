@@ -114,6 +114,19 @@ When that wallet buys, Momentum paper-buys the same token after your simulated d
 
 To test copying on its own, turn **Also run momentum strategy** off. Copied positions have their own limit (**Max copied positions**) and don't use up the momentum strategy's slots.
 
+## Real-money copy trading
+
+Mirrors followed wallets with real SOL, using a **dedicated trading wallet** the dashboard creates. Its key is saved only in `data/trading_wallet.json` on your computer and is never uploaded to GitHub. Never use your main wallet.
+
+1. The **💵 Real money** panel appears once you turn **Trade real money** on in Settings. Click **Create trading wallet**, copy its address, and send it a small amount of SOL.
+2. In **Settings → Real money**: **Each copied buy** ($2.50 by default), **Budget per wallet** ($10: the most tied up per followed wallet at once, and also its loss limit), and max open positions.
+3. **Start live.** The header shows **REAL MONEY ON**. Buys go through PumpPortal's local transaction API, are signed on your computer, sent via your Helius connection, confirmed, and then the real amounts are read back from the chain. When a followed wallet sells X%, we sell X% of ours. After a full exit, the empty token account is closed to get back its ~0.002 SOL rent.
+4. Controls: **Pause buys** (sells are still mirrored), **Sell** per position, **Sell all**, and **Withdraw** (sends the whole balance to an address once everything is sold). Real results are logged to `data/live_trades.csv`.
+
+Real positions are only managed while the bot is running live. If you stop it, the panel warns you about any positions still open.
+
+**Costs:** each trade pays PumpPortal 0.5%, the pump.fun fee (about 1%), slippage and network fees. On $2–3 trades a round trip costs roughly 5–6% even if the price doesn't move, so small tests understate what the same trades would make at larger size.
+
 ## Wallet Lab: learn from a wallet that trades well
 
 Click **🔬 Wallet Lab** in the dashboard, paste any Solana wallet, and Momentum rebuilds every memecoin trade that wallet made. It shows:

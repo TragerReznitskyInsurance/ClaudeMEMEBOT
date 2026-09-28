@@ -23,6 +23,7 @@ from memebot.engine import Engine, Journal
 from memebot.live import LiveFeed, stream, tick_loop
 from memebot import wallet as WL
 from memebot.chain import ChainBackup
+from memebot.live_trader import LiveTrader
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -47,6 +48,9 @@ class Runner:
         self.screener = None
         self.chain = None
         self.copy_log = None
+        self.live = LiveTrader(os.path.join(HERE, "data"),
+                               lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
+                               lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
 
     # ------------------------------------------------------------------ helpers
     def api_key(self):
@@ -102,6 +106,17 @@ class Runner:
                           asyncio.create_task(tick_loop(self.engine))]
             if self.chain:
                 self.tasks.append(asyncio.create_task(self.chain.run()))
+            # real-money copies: only ever active inside a live session
+            eng = self.engine
+            self.live.price_of = lambda m: (eng.tokens[m].price if m in eng.tokens else None)
+            self.live.active = True
+            eng.live = self.live
+            for m in list(self.live.positions):
+                feed.subscribe(m)                        # keep pricing positions carried over from before
+            self.tasks.append(asyncio.create_task(self.live.recheck()))
+            self.tasks.append(asyncio.create_task(self.live.refresh_balance(force=True)))
+            if self.live.enabled():
+                self.live._event("info", "Real-money copy trading is ON for this session")
         else:
             self.engine = Engine(self.cfg, None, self.journal)
             self.screener = DemoScreener(self.engine)
@@ -111,6 +126,7 @@ class Runner:
         log.info("started %s mode", mode)
 
     async def stop(self):
+        self.live.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -200,7 +216,8 @@ class Runner:
 
     def snapshot(self):
         snap = self.engine.snapshot() if self.engine else None
-        return {"type": "state", "meta": self.meta(), "data": snap}
+        cw = self.engine.copy_wallets() if self.engine else set()
+        return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw)}
 
 
 # ---------------------------------------------------------------------- routes
@@ -244,6 +261,7 @@ async def broadcaster(app):
     yield
     task.cancel()
     price_task.cancel()
+    await runner.live.close()
     await runner.stop()
 
 
@@ -398,6 +416,54 @@ async def api_wallet_download(request):
                             headers={"Content-Disposition": f'attachment; filename="{zips[0]}"'})
 
 
+# ---------------------------------------------------------------------- real money
+async def api_live_create(request):
+    try:
+        addr = runner.live.create_wallet()
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    return web.json_response({"address": addr})
+
+
+async def api_live_refresh(request):
+    await runner.live.refresh_balance(force=True)
+    return web.json_response({"balance": runner.live.balance})
+
+
+async def api_live_pause(request):
+    body = await request.json()
+    runner.live.paused = bool(body.get("paused"))
+    runner.live._save()
+    runner.live._event("info", "Real-money copying PAUSED (no new buys; sells still mirrored)" if runner.live.paused
+                       else "Real-money copying resumed")
+    return web.json_response({"paused": runner.live.paused})
+
+
+async def api_live_sell(request):
+    body = await request.json()
+    if not runner.live.kp:
+        return web.json_response({"error": "No trading wallet"}, status=400)
+    if body.get("all"):
+        asyncio.create_task(runner.live.sell_all())
+    elif body.get("mint") in runner.live.positions:
+        asyncio.create_task(runner.live.sell_now(body["mint"]))
+    else:
+        return web.json_response({"error": "No such live position"}, status=400)
+    return web.json_response({"ok": True})
+
+
+async def api_live_withdraw(request):
+    body = await request.json()
+    addr = str(body.get("address", "")).strip()
+    if not WL.valid_address(addr):
+        return web.json_response({"error": "That doesn't look like a Solana address"}, status=400)
+    try:
+        sig = await runner.live.withdraw(addr)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
+    return web.json_response({"signature": sig})
+
+
 def make_app():
     app = web.Application()
     app.router.add_get("/", index)
@@ -411,6 +477,11 @@ def make_app():
     app.router.add_get("/api/wallet/status", api_wallet_status)
     app.router.add_get("/api/wallet/list", api_wallet_list)
     app.router.add_get("/api/wallet/download", api_wallet_download)
+    app.router.add_post("/api/live/create_wallet", api_live_create)
+    app.router.add_post("/api/live/refresh", api_live_refresh)
+    app.router.add_post("/api/live/pause", api_live_pause)
+    app.router.add_post("/api/live/sell", api_live_sell)
+    app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
     return app

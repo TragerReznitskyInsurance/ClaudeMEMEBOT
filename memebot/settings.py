@@ -46,6 +46,15 @@ SCHEMA = [
         {"path": "entry.buyer_surge.min_recent_buy_sell_ratio", "label": "Min buy/sell in window", "unit": "×", "type": "float"},
         {"path": "entry.buyer_surge.min_momentum_pct", "label": "Min price rise in window", "unit": "%", "type": "float"},
     ]},
+    {"group": "Real money", "items": [
+        {"path": "live.enabled", "label": "Trade real money", "type": "bool"},
+        {"path": "live.trade_usd", "label": "Each copied buy", "unit": "$", "type": "float"},
+        {"path": "live.budget_usd_per_wallet", "label": "Budget per wallet (also loss limit)", "unit": "$", "type": "float"},
+        {"path": "live.max_open_per_wallet", "label": "Max open per wallet", "type": "int"},
+        {"path": "live.buy_slippage_pct", "label": "Buy slippage", "unit": "%", "type": "float"},
+        {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
+        {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
+    ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
         {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
@@ -182,5 +191,5 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
-_ORDER = ["Copy trading", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
+_ORDER = ["Copy trading", "Real money", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

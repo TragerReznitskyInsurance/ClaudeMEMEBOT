@@ -140,6 +140,8 @@ class Position:
     mode: str = "strategy"            # strategy | copy
     copy_wallet: str = ""
     wallet_entry_mcap: float = 0.0
+    wallet_sell_mcap: float = 0.0     # mcap at the wallet's latest sell (for exit gap)
+    exit_gaps: list = field(default_factory=list)
     tp_done: set = field(default_factory=set)
     pending_sell: Order | None = None
     exit_reasons: list = field(default_factory=list)
@@ -155,7 +157,8 @@ class Journal:
             "fills": ["time_utc", "mint", "symbol", "side", "reason", "sol", "tokens",
                       "market_price", "mcap_sol", "balance_after"],
             "positions": ["open_utc", "close_utc", "mint", "symbol", "hold_s", "sol_in",
-                          "sol_out", "pnl_sol", "pnl_pct", "exit_reasons", "entry_path"],
+                          "sol_out", "pnl_sol", "pnl_pct", "exit_reasons", "entry_path", "entry_gap_pct",
+                          "exit_gap_pct"],
             "decisions": ["time_utc", "mint", "symbol", "outcome", "reason", "age_s",
                           "buyers", "buy_vol", "mcap_sol"],
         }
@@ -206,6 +209,7 @@ class Engine:
         self.copy_stats = Counter()
         self.copy_wallet_mcap = {}                 # mint -> mcap the wallet bought at
         self.chain = None                          # ChainBackup (live mode with a Helius key)
+        self.live = None                           # LiveTrader (real-money copies), live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -412,6 +416,32 @@ class Engine:
         self._fill_due(ts)
 
     # ---------------------------------------------------------- copy trading
+    @staticmethod
+    def _entry_gap(p):
+        if p.mode != "copy" or not p.wallet_entry_mcap or not p.entry_mcap:
+            return None
+        return round((p.entry_mcap / p.wallet_entry_mcap - 1) * 100, 1)
+
+    def _per_wallet(self):
+        out = {}
+        for w in sorted(self.copy_wallets()):
+            short = w[:4] + "…" + w[-4:]
+            tag = f"copy: {short}"
+            cl = [c for c in self.closed if c.get("entry_path") == tag]
+            op = [p for p in self.positions.values() if p.entry_path == tag]
+            gaps = [c["entry_gap_pct"] for c in cl if c.get("entry_gap_pct") is not None] + \
+                   [g for g in (self._entry_gap(p) for p in op) if g is not None]
+            xg = [c["exit_gap_pct"] for c in cl if c.get("exit_gap_pct") is not None]
+            wins = sum(1 for c in cl if c["pnl_sol"] > 0)
+            upnl = sum(p.sol_out + self._position_value(p) - p.sol_in for p in op)
+            out[short] = dict(wallet=w, open=len(op), closed=len(cl), wins=wins,
+                              win_rate=round(wins / len(cl) * 100, 1) if cl else None,
+                              pnl=round(sum(c["pnl_sol"] for c in cl), 4), open_pnl=round(upnl, 4),
+                              sol_in=round(sum(c["sol_in"] for c in cl), 4),
+                              avg_entry_gap=round(sum(gaps) / len(gaps), 1) if gaps else None,
+                              avg_exit_gap=round(sum(xg) / len(xg), 1) if xg else None)
+        return out
+
     def seen_signature(self, sig: str) -> bool:
         return sig in self._seen_set
 
@@ -484,6 +514,8 @@ class Engine:
             self.feed.subscribe(mint)                     # need live prices for fills and marking
             if first:
                 self.copy_wallet_mcap[mint] = _f(ev.get("marketCapSol")) or (t.mcap or 0.0)
+                if self.live:
+                    self.live.on_copy_buy(w, mint, wsol, t.symbol)
             mode = cp.get("size_mode", "fixed")
 
             def sized(wallet_sol, fixed):
@@ -523,6 +555,8 @@ class Engine:
                 t.update_market(ev, ts)
                 t.last_trade_ts = ts
             if held <= 0:
+                if self.live and mint in self.live.positions:
+                    self.live.on_copy_sell_unknown(w, mint, tok)   # live position from before a restart
                 self.copy_stats["older_sells"] += 1       # a position it opened before we started following
                 return
             self.copy_stats["followed_sells"] += 1
@@ -531,6 +565,8 @@ class Engine:
             if frac > 0.97 or self.copy_hold[key] <= held * 0.01:
                 frac = 1.0
                 self.copy_hold.pop(key, None)
+            if self.live:
+                self.live.on_copy_sell(w, mint, frac)
             if mint in self.pending_buys:
                 o = self.pending_buys[mint]
                 if frac >= 1.0 and mint not in self.positions:
@@ -546,6 +582,8 @@ class Engine:
             p = self.positions.get(mint)
             if not p or not cp.get("follow_sells", True):
                 return
+            if _f(ev.get("marketCapSol")):
+                p.wallet_sell_mcap = _f(ev.get("marketCapSol"))
             if p.pending_sell is not None:
                 prev = p.pending_sell.frac_of_left if p.pending_sell.frac_of_left is not None else 1.0
                 frac = 1 - (1 - prev) * (1 - frac)
@@ -810,6 +848,8 @@ class Engine:
             p.pending_sell = None
             self.balance += proceeds
             self._fill_row(ts, t, "SELL", o.reason, proceeds, qty)
+            if p.mode == "copy" and o.reason.startswith("copied sell") and p.wallet_sell_mcap and t.mcap:
+                p.exit_gaps.append(round((t.mcap / p.wallet_sell_mcap - 1) * 100, 1))
             if p.tokens_left > p.tokens_initial * 1e-6:   # partial; full exits get a 'close' entry
                 self._act("sell", t, f"{o.reason[:1].upper() + o.reason[1:]} · sold {qty / p.tokens_initial * 100:.0f}% "
                                      f"for {proceeds:.3f} SOL", sol=proceeds)
@@ -826,7 +866,9 @@ class Engine:
         rec = dict(open_utc=_iso(p.open_ts), close_utc=_iso(ts), mint=p.mint, symbol=p.symbol,
                    hold_s=round(ts - p.open_ts), sol_in=round(p.sol_in, 5), sol_out=round(p.sol_out, 5),
                    pnl_sol=round(pnl, 5), pnl_pct=round(pnl / p.sol_in * 100, 1),
-                   exit_reasons=" | ".join(p.exit_reasons), entry_path=p.entry_path)
+                   exit_reasons=" | ".join(p.exit_reasons), entry_path=p.entry_path,
+                   entry_gap_pct=self._entry_gap(p), exit_gap_pct=round(sum(p.exit_gaps) / len(p.exit_gaps), 1)
+                   if p.exit_gaps else None)
         self.closed.append(rec)
         if self.journal:
             self.journal.write("positions", list(rec.values()))
@@ -887,7 +929,7 @@ class Engine:
             positions.append(dict(
                 mint=p.mint, symbol=p.symbol, name=t.name, held_s=round(ts - p.open_ts), entry_path=p.entry_path,
                 mode=p.mode, copy_wallet=p.copy_wallet, wallet_entry_mcap=round(p.wallet_entry_mcap, 1),
-                wallet_left_pct=self._wallet_left_pct(p),
+                wallet_left_pct=self._wallet_left_pct(p), entry_gap_pct=self._entry_gap(p),
                 sol_in=round(p.sol_in, 4), sol_out=round(p.sol_out, 4), value=round(val, 4),
                 upnl=round(p.sol_out + val - p.sol_in, 4), gain_pct=round(gain, 1),
                 peak_gain_pct=round((p.peak_price / p.entry_price - 1) * 100, 1),
@@ -961,7 +1003,8 @@ class Engine:
                       **{k: v for k, v in self.copy_stats.items() if isinstance(k, str)},
                       open=sum(1 for p in self.positions.values() if p.mode == "copy"),
                       closed=sum(1 for c in self.closed if str(c.get("entry_path", "")).startswith("copy")),
-                      pnl=round(sum(c["pnl_sol"] for c in self.closed if str(c.get("entry_path", "")).startswith("copy")), 4)),
+                      pnl=round(sum(c["pnl_sol"] for c in self.closed if str(c.get("entry_path", "")).startswith("copy")), 4),
+                      per_wallet=self._per_wallet()),
             security_rejects=[(r[10:], c) for r, c in self.reject_reasons.most_common()
                               if r.startswith("security: ")][:6],
         )

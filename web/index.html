@@ -318,6 +318,18 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 .wtab .share i { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .wtab .share em { display: block; height: 100%; background: var(--brand); }
 .wtitle { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 4px; font-weight: 600; }
+
+/* ── real money ───────────────────────────────── */
+#realmoney .card { border-color: color-mix(in srgb, var(--up) 35%, var(--line)); margin-bottom: 16px; }
+.rm-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 18px 0; }
+.rm-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--up); }
+.rm-addr { font: 12px var(--mono); color: var(--text-2); background: var(--card-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+.rm-bal { font-size: 13px; }
+.rm-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.rm-actions .btn { padding: 6px 11px; font-size: 12.5px; }
+.rm-events { margin-top: 10px; display: grid; gap: 4px; font-size: 12px; max-height: 150px; overflow-y: auto; }
+.rm-events div { display: flex; gap: 8px; } .rm-events .t { color: var(--text-3); white-space: nowrap; font-family: var(--mono); font-size: 11px; }
+.rm-events .error { color: var(--down); } .rm-events .skip { color: var(--text-3); }
 /* ── responsive ───────────────────────────────── */
 @media (max-width: 1250px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1000px) {
@@ -351,7 +363,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
     <div class="brand">
       <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 17l6-7 4 3 8-9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       Momentum
-      <span class="pill paper">PAPER TRADING</span>
+      <span class="pill paper" id="modePill">PAPER TRADING</span>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span class="txt" id="statusTxt">Connecting to app…</span><span class="faint num" id="uptime"></span></div>
     <div class="spacer"></div>
@@ -361,6 +373,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 
 <main>
   <div id="notice"></div>
+  <section id="realmoney"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
     <section class="grid kpis" id="kpis"></section>
@@ -425,7 +438,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+let LIVE = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
 
 /* theme */
 try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -487,13 +500,13 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); }
+function render() { renderHeader(); renderBody(); renderLive(); }
 
 function renderHeader(lost) {
   const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
@@ -536,7 +549,12 @@ function renderBody() {
       ` · we copied ${C.copied_buys || 0} buys and mirrored ${C.mirrored_sells || 0} sells · ${C.open} open · ${C.closed} closed <span class="num ${cls(C.pnl)}">${signed(C.pnl, 4)} SOL</span>`;
     const backup = META.mode !== "live" ? "" : B ? `<div class="faint" style="font-size:12px;margin-top:3px">🛡 On-chain backup active · ${B.recovered} missed trades recovered · ${B.resolved} amounts looked up${B.errors ? ` · ${B.errors} errors (${esc(B.last_error)})` : ""}</div>`
       : `<div style="font-size:12px;margin-top:3px;color:var(--warn)">⚠ No Helius key, so there's no on-chain backup. Sells the live feed misses or sends without amounts may not be mirrored. Add the key in Wallet Lab, then restart.</div>`;
-    n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${detail}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}${backup}</div></div>`;
+    const PW = C.per_wallet || {};
+    const gapTxt = g => g == null ? "—" : `<span class="${g > 5 ? "down" : g < -2 ? "up" : ""}">${g > 0 ? "+" : ""}${g}%</span>`;
+    const board = Object.keys(PW).length ? `<table class="wtab" style="margin:8px 0 2px;background:var(--card);border-radius:8px"><tr class="faint"><td>Wallet</td><td class="r">Open</td><td class="r">Closed</td><td class="r">Win</td><td class="r">Realized</td><td class="r">Open P&L</td><td class="r" title="How much higher our buy price was than the wallet's (the cost of copying 1.5s late)">Entry gap</td><td class="r" title="Our sell price vs the wallet's sell price (negative = we sold lower)">Exit gap</td></tr>
+      ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}</td><td class="r num">${v.closed}</td><td class="r num">${v.win_rate == null ? "—" : v.win_rate + "%"}</td>
+        <td class="r num ${cls(v.pnl)}">${signed(v.pnl, 3)}</td><td class="r num ${cls(v.open_pnl)}">${signed(v.open_pnl, 3)}</td><td class="r num">${gapTxt(v.avg_entry_gap)}</td><td class="r num">${v.avg_exit_gap == null ? "—" : `<span class="${v.avg_exit_gap < -2 ? "down" : v.avg_exit_gap > 2 ? "up" : ""}">${v.avg_exit_gap > 0 ? "+" : ""}${v.avg_exit_gap}%</span>`}</td></tr>`).join("")}</table>` : "";
+    n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div style="flex:1;min-width:0"><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${detail}${board}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}${backup}</div></div>`;
   }
   if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
   $("#notice").innerHTML = n;
@@ -682,7 +700,7 @@ function renderPositions() {
 ${p.mode === "copy" ? "" : `<div class="track"><div class="fill" style="left:${fillL}%;width:${fillW}%;background:${pc};opacity:.35"></div>${marks}<div class="now" style="left:${now}%"></div></div>`}
       <div class="pos-stats">
         <div><span>Mcap in → now</span><b class="num">${META?.sol_usd ? usd(usdOf(p.entry_mcap)) + " → " + usd(usdOf(p.mcap)) : p.entry_mcap.toFixed(0) + " → " + p.mcap.toFixed(0) + " SOL"}</b>${META?.sol_usd ? `<span class="subnum num">${p.entry_mcap.toFixed(0)} → ${p.mcap.toFixed(0)} SOL</span>` : ""}</div>
-        <div><span>${p.mode === "copy" ? "Wallet in at" : "Held"}</span><b class="num">${p.mode === "copy" ? (META?.sol_usd ? usd(usdOf(p.wallet_entry_mcap)) : p.wallet_entry_mcap.toFixed(0) + " SOL") + ` <span class="faint">· ${dur(p.held_s)}</span>` : dur(p.held_s)}</b></div>
+        <div><span>${p.mode === "copy" ? "Wallet in at · our gap" : "Held"}</span><b class="num">${p.mode === "copy" ? (META?.sol_usd ? usd(usdOf(p.wallet_entry_mcap)) : p.wallet_entry_mcap.toFixed(0) + " SOL") + (p.entry_gap_pct != null ? ` <span class="${p.entry_gap_pct > 5 ? "down" : p.entry_gap_pct < -2 ? "up" : "faint"}">${p.entry_gap_pct > 0 ? "+" : ""}${p.entry_gap_pct}%</span>` : "") + `<span class="faint" style="display:block;font-size:11px">${esc(p.copy_wallet)} · ${dur(p.held_s)}</span>` : dur(p.held_s)}</b></div>
         <div><span>Peak gain</span><b class="num up">${pct(p.peak_gain_pct, 0)}</b></div>
       </div>
       <div class="links" style="align-items:center">${walletHold}${status}<span class="spacer" style="flex:1"></span>${demo ? `<span class="faint">synthetic token</span>` : `<a href="https://pump.fun/coin/${p.mint}" target="_blank" rel="noopener">pump.fun ↗</a><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">DexScreener ↗</a>`}</div>
@@ -768,7 +786,7 @@ function renderHistory() {
       <td class="r num hide-sm">${sol(c.sol_in, 4)}</td><td class="r num hide-sm">${sol(c.sol_out, 4)}</td>
       <td class="r num ${cls(c.pnl_sol)}">${signed(c.pnl_sol, 4)}</td>
       <td class="r"><span class="badge ${c.pnl_pct >= 0 ? "up" : "down"} num">${pct(c.pnl_pct, 0)}</span></td>
-      <td class="hide-sm"><span class="badge ${String(c.entry_path).startsWith("copy") ? "warn" : c.entry_path === "buyer surge" ? "brand" : "gray"}">${String(c.entry_path).startsWith("copy") ? "Copy" : c.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span></td>
+      <td class="hide-sm"><span class="badge ${String(c.entry_path).startsWith("copy") ? "warn" : c.entry_path === "buyer surge" ? "brand" : "gray"}">${String(c.entry_path).startsWith("copy") ? "Copy " + esc(String(c.entry_path).slice(6)) : c.entry_path === "buyer surge" ? "Surge" : "Momentum"}</span>${c.entry_gap_pct != null ? ` <span class="faint num" style="font-size:11px" title="entry gap / exit gap vs the wallet">${c.entry_gap_pct > 0 ? "+" : ""}${c.entry_gap_pct}%${c.exit_gap_pct != null ? " / " + (c.exit_gap_pct > 0 ? "+" : "") + c.exit_gap_pct + "%" : ""}</span>` : ""}</td>
       <td><div style="display:flex;gap:4px">${c.exit_reasons.split(" | ").map(chip).join("")}</div></td></tr>`).join("") + "</tbody>";
 }
 
@@ -925,6 +943,66 @@ function renderLab() {
     h += `<div class="empty" style="margin-top:20px"><div class="ico">🔬</div>Results appear here. A 30-day scan takes a few minutes, a bit longer for busy wallets, because it also profiles every token it bought.</div>`;
   }
   $("#labBody").innerHTML = h;
+}
+
+
+/* ── real money panel ─────────────────────── */
+function renderLive() {
+  const L = LIVE, el = $("#realmoney");
+  const pill = $("#modePill"), realOn = L && L.ready && L.active && !L.paused;
+  pill.textContent = realOn ? "REAL MONEY ON" : L && L.ready && L.active ? "REAL MONEY PAUSED" : "PAPER TRADING";
+  pill.style.cssText = realOn ? "background:var(--down-soft);color:var(--down)" : "";
+  if (!L || (!L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
+  const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
+  const running = META?.running && META.mode === "live";
+  const status = !L.has_wallet ? `<span class="badge gray">No wallet yet</span>`
+    : !L.enabled ? `<span class="badge gray">OFF in Settings</span>`
+    : !L.has_helius ? `<span class="badge down">Needs Helius key</span>`
+    : !running ? `<span class="badge warn">Not running (Start live)</span>`
+    : L.paused ? `<span class="badge warn">PAUSED</span>` : `<span class="badge up">● LIVE</span>`;
+  let h = `<div class="card"><div class="rm-head"><h2>💵 Real money</h2>${status}`;
+  if (L.has_wallet) h += `<span class="rm-addr" title="Click to copy. Send SOL here to fund it." onclick="navigator.clipboard.writeText('${L.address}');toast('Address copied')">${L.address.slice(0, 6)}…${L.address.slice(-6)} ⧉</span>
+      <span class="rm-bal num">${L.balance == null ? "balance —" : `<b>${L.balance.toFixed(4)} SOL</b> <span class="faint">${$u(L.balance)}</span>`}</span>
+      <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
+  h += `<div class="rm-actions">`;
+  if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{})">↻</button>
+      <button class="btn" onclick="livePause(${!L.paused})">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>
+      <button class="btn danger" onclick="liveSellAll()" ${L.positions.length ? "" : "disabled"}>Sell all</button>
+      <button class="btn" onclick="liveWithdraw()">Withdraw</button>`;
+  h += `</div></div><div class="card-b">`;
+  if (!L.has_wallet) {
+    h += `<p class="muted" style="margin:0 0 10px;font-size:13px">Copy trades use a <b>separate wallet created just for this bot</b>. Its key is saved only on this computer (data/trading_wallet.json). Never use your main wallet. Fund it only with what you're willing to lose.</p>
+      <button class="btn primary" onclick="liveCreate()">Create trading wallet</button>`;
+  } else {
+    if (L.positions.length && !running) h += `<div class="lab-err" style="margin:0 0 10px">⚠ You hold ${L.positions.length} real position(s) but the bot isn't running, so the followed wallets' sells are NOT being copied. Start live, or sell them.</div>`;
+    const PW = L.per_wallet || {};
+    if (Object.keys(PW).length) h += `<table class="wtab"><tr class="faint"><td>Copying</td><td class="r">Open</td><td class="r">In use / budget</td><td class="r">Closed</td><td class="r">Realized</td><td class="r">Open value</td></tr>
+      ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed} / $${L.budget_usd}</td>
+        <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
+        <td class="r num">${v.open && v.open_value != null ? v.open_value.toFixed(4) + " SOL" : "—"}</td></tr>`).join("")}</table>`;
+    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>Copying</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
+      ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a></td>
+        <td class="num">${esc(p.wallet)}</td><td class="r num">${p.sol_in.toFixed(4)}</td>
+        <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}">${p.value != null ? p.value.toFixed(4) : "—"}</td>
+        <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>
+        <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>
+        <td class="r"><button class="btn" style="padding:4px 9px;font-size:12px" onclick="liveSell('${p.mint}')" ${p.status === "open" ? "" : "disabled"}>Sell</button></td></tr>`).join("")}</tbody></table></div>`;
+    else h += `<div class="faint" style="font-size:12.5px">No open real positions. Each copied buy is $${L.trade_usd}, up to ${L.max_open} per wallet and $${L.budget_usd} in use per wallet.</div>`;
+    if (L.events.length) h += `<div class="rm-events">${L.events.slice(0, 12).map(e => `<div class="${e.kind}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span>${esc(e.text)}${e.sig ? ` <a class="faint" href="https://solscan.io/tx/${e.sig}" target="_blank" rel="noopener">↗</a>` : ""}</span></div>`).join("")}</div>`;
+  }
+  el.innerHTML = h + `</div></div>`;
+}
+async function liveCreate() {
+  if (!confirm("Create a new trading wallet on this computer? You'll fund it with a small amount of SOL.")) return;
+  try { const r = await api("/api/live/create_wallet", {}); navigator.clipboard?.writeText(r.address); toast("Wallet created. Address copied, send SOL to it"); } catch (e) { toast(e.message); }
+}
+async function livePause(p) { try { await api("/api/live/pause", { paused: p }); } catch (e) { toast(e.message); } }
+async function liveSell(m) { if (!confirm("Sell this whole position now with real money?")) return; try { await api("/api/live/sell", { mint: m }); toast("Selling…"); } catch (e) { toast(e.message); } }
+async function liveSellAll() { if (!confirm("Sell ALL real positions now?")) return; try { await api("/api/live/sell", { all: true }); toast("Selling everything…"); } catch (e) { toast(e.message); } }
+async function liveWithdraw() {
+  const a = prompt("Send the whole trading-wallet balance to which Solana address?\n(All positions must be sold first.)");
+  if (!a) return;
+  try { const r = await api("/api/live/withdraw", { address: a.trim() }); toast("Withdrawal sent"); } catch (e) { toast(e.message); }
 }
 
 let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800); }
