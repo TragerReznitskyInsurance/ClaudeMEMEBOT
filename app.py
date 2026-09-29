@@ -65,7 +65,7 @@ class Runner:
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"))
+        self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
 
     def name_targets(self):
@@ -334,6 +334,7 @@ async def broadcaster(app):
     live_px_task = asyncio.create_task(runner.live.price_loop())
     lk_task = asyncio.create_task(runner.lookalike.run())
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
+    nr_task = asyncio.create_task(runner.narr.run())
     yield
     task.cancel()
     price_task.cancel()
@@ -342,6 +343,8 @@ async def broadcaster(app):
     live_px_task.cancel()
     lk_task.cancel()
     rc_task.cancel()
+    nr_task.cancel()
+    await runner.narr.close()
     await runner.lookalike.close()
     await runner.reclaim.close()
     await runner.names.close()
@@ -553,6 +556,14 @@ async def api_live_withdraw(request):
 SAFE_EXCLUDE = {"trading_wallet.json"}             # never leaves the computer
 
 
+async def api_narrative_coins(request):
+    q = request.rel_url.query
+    key, metric = q.get("key") or None, q.get("metric") or None
+    if metric and metric not in ("hit44", "hit80", "hit3x", "hit6x", "grad", "launch"):
+        return web.json_response({"error": "bad metric"}, status=400)
+    return web.json_response({"coins": runner.narr.coins(key, metric, limit=int(q.get("limit", 200)))})
+
+
 async def api_diagnostics(request):
     """One zip with everything needed to review a session - never the trading wallet key or API keys."""
     import glob
@@ -591,6 +602,7 @@ def make_app():
     app.router.add_post("/api/stop", api_stop)
     app.router.add_post("/api/speed", api_speed)
     app.router.add_get("/api/settings", api_get_settings)
+    app.router.add_get("/api/narratives/coins", api_narrative_coins)
     app.router.add_post("/api/settings", api_save_settings)
     app.router.add_post("/api/wallet/analyze", api_wallet_analyze)
     app.router.add_get("/api/wallet/status", api_wallet_status)

@@ -11,12 +11,18 @@ Counts are kept in hourly buckets (data/narratives.json, 72 h) so the tracker su
 """
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
 import os
 import re
 import time
 from collections import defaultdict
+
+import aiohttp
+
+from memebot.chain import curve_address, parse_curve
 
 log = logging.getLogger("memebot")
 
@@ -39,6 +45,12 @@ STOP = {"the", "and", "coin", "token", "of", "on", "in", "to", "is", "it", "my",
         "me", "i", "no", "yes", "all", "one", "big", "little", "super", "mr", "de", "la", "el", "le"}
 WORD_TO_GROUP = {w: g for g, ws in GROUPS.items() for w in ws}
 HOUR = 3600
+RPC = "https://mainnet.helius-rpc.com/?api-key={key}"
+ENTRY_MCAP = 44.0                 # our strategies' entry level
+X3_MCAP = ENTRY_MCAP * 3          # "3x" = 44 -> 132 SOL
+X6_MCAP = ENTRY_MCAP * 6          # "6x" = 44 -> 264 SOL
+TRACK_H = 6                       # after 44 SOL, keep reading the coin on-chain this long
+METRICS = ("hit44", "hit80", "hit3x", "hit6x", "grad")
 
 
 def words(name: str, symbol: str) -> set[str]:
@@ -59,11 +71,13 @@ def themes(name: str, symbol: str) -> tuple[set[str], set[str]]:
 
 
 class Narratives:
-    def __init__(self, path: str):
+    def __init__(self, path: str, key_getter=lambda: ""):
         self.path = path
-        self.buckets: dict[int, dict] = {}      # hour -> {key: {launch, grad, watched, hit44, hit80}}
-        self.mints: dict[str, list] = {}        # mint -> [launch ts, [keys]]  (48 h, to attribute later events)
-        self.hits: dict[str, set] = defaultdict(set)
+        self._key = key_getter
+        self.session: aiohttp.ClientSession | None = None
+        self.buckets: dict[int, dict] = {}      # hour -> {key: {launch, grad, watched, hit44, hit80, hit3x}}
+        self.mints: dict[str, dict] = {}        # mint -> {ts, keys, name, symbol, hits: {field: ts}, peak} (48 h)
+        self.last_error = ""
         self.dirty = False
         self.last_save = 0.0
         self._cache, self._cache_ts = None, 0.0
@@ -75,7 +89,10 @@ class Narratives:
             with open(self.path, encoding="utf-8", errors="replace") as fh:
                 s = json.load(fh)
             self.buckets = {int(k): v for k, v in s.get("buckets", {}).items()}
-            self.mints = s.get("mints", {})
+            for m, v in (s.get("mints") or {}).items():
+                if isinstance(v, list):                    # older format: [ts, keys]
+                    v = dict(ts=v[0], keys=v[1], name="", symbol="", hits={}, peak=0.0)
+                self.mints[m] = v
         except (OSError, ValueError):
             pass
 
@@ -90,9 +107,7 @@ class Narratives:
             if h < old:
                 for k in [k for k, row in b.items() if k.startswith("w:") and row == {"launch": 1}]:
                     b.pop(k)
-        self.mints = {m: v for m, v in self.mints.items() if now - v[0] < 48 * HOUR}
-        for m in [m for m in self.hits if m not in self.mints]:
-            self.hits.pop(m)
+        self.mints = {m: v for m, v in self.mints.items() if now - v["ts"] < 48 * HOUR}
         try:
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
@@ -117,28 +132,110 @@ class Narratives:
             return
         groups, ws = themes(str(name or ""), str(symbol or ""))
         keys = [f"g:{g}" for g in groups] + [f"w:{w}" for w in ws]
-        self.mints[mint] = [ts, keys]
+        self.mints[mint] = dict(ts=ts, keys=keys, name=str(name or "")[:40], symbol=str(symbol or "")[:14], hits={}, peak=0.0)
         self._bump(ts, keys, "launch")
 
     def _event(self, mint, ts, field):
         v = self.mints.get(mint)
-        if not v or field in self.hits[mint]:
+        if not v or field in v["hits"]:
             return
-        self.hits[mint].add(field)
-        self._bump(ts, v[1], field)
+        v["hits"][field] = round(ts)
+        self._bump(ts, v["keys"], field)
 
     def on_graduate(self, mint, ts):
+        v = self.mints.get(mint)
+        if v:
+            self._check_levels(mint, v, max(v.get("peak", 0.0), 410.0), ts)   # graduating means it passed 80 / 3x / 6x
         self._event(mint, ts, "grad")
 
     def on_watched(self, mint, ts):
         self._event(mint, ts, "watched")
 
     def on_mcap(self, mint, prev, now, ts):
-        if prev and now:
-            if prev < 44 <= now:
-                self._event(mint, ts, "hit44")
-            if prev < 80 <= now:
-                self._event(mint, ts, "hit80")
+        v = self.mints.get(mint)
+        if not v or not now:
+            return
+        v["peak"] = max(v.get("peak", 0.0), now)
+        if prev and prev < ENTRY_MCAP <= now:
+            self._event(mint, ts, "hit44")
+        self._check_levels(mint, v, now, ts)
+
+    def _check_levels(self, mint, v, mcap, ts):
+        if mcap >= 80 and "watched" in v["hits"]:          # a share of watched coins, so only count those
+            self._event(mint, ts, "hit80")
+        if mcap >= X3_MCAP and "hit44" in v["hits"]:
+            self._event(mint, ts, "hit3x")
+        if mcap >= X6_MCAP and "hit44" in v["hits"]:
+            self._event(mint, ts, "hit6x")
+
+    # ------------------------------------------------------------------ on-chain follow-up after 44 SOL
+    async def track(self):
+        """Coins that passed 44 SOL keep being read from their curve (batched) for TRACK_H hours,
+        so runs that happen after the bot stopped watching still count."""
+        key = self._key()
+        now = time.time()
+        todo = [m for m, v in self.mints.items() if "hit44" in v["hits"] and "grad" not in v["hits"]
+                and "hit6x" not in v["hits"] and now - v["hits"]["hit44"] < TRACK_H * HOUR]
+        if not key or not todo:
+            return
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        for i in range(0, len(todo), 100):
+            chunk = todo[i:i + 100]
+            try:
+                addrs = [curve_address(m) for m in chunk]
+            except ValueError:
+                continue
+            async with self.session.post(RPC.format(key=key), json={"jsonrpc": "2.0", "id": 1, "method": "getMultipleAccounts",
+                                                                   "params": [addrs, {"encoding": "base64", "commitment": "confirmed"}]},
+                                         timeout=aiohttp.ClientTimeout(total=15)) as r:
+                j = await r.json(content_type=None)
+            for m, acc in zip(chunk, (j.get("result") or {}).get("value") or []):
+                if not acc:
+                    continue
+                data = base64.b64decode(acc["data"][0])
+                v = self.mints[m]
+                if len(data) >= 49 and data[48]:
+                    self._check_levels(m, v, max(v.get("peak", 0.0), 410.0), now)   # graduating passes 80 / 3x / 6x
+                    self._event(m, now, "grad")            # curve completed: graduated
+                    continue
+                px = parse_curve(data)
+                if px:
+                    mc = px * 1e9
+                    v["peak"] = max(v.get("peak", 0.0), mc)
+                    self._check_levels(m, v, mc, now)
+
+    async def run(self, every=30):
+        while True:
+            await asyncio.sleep(every)
+            try:
+                await self.track()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.last_error = str(e) or type(e).__name__
+
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+
+    def coins(self, key=None, metric=None, limit=200):
+        """Coins (last 48 h) that hit a milestone, optionally for one theme / one milestone. Newest first."""
+        out = []
+        for m, v in self.mints.items():
+            if key and key not in v["keys"]:
+                continue
+            hits = {k: t for k, t in v["hits"].items() if k in METRICS}
+            if metric and metric not in hits:
+                continue
+            if not hits and not (key and metric == "launch"):
+                continue
+            out.append(dict(mint=m, name=v.get("name", ""), symbol=v.get("symbol", ""), launched=round(v["ts"]),
+                            hits=hits, peak_mcap=round(v.get("peak", 0.0), 1),
+                            last=max(hits.values()) if hits else v["ts"],
+                            themes=[k[2:] for k in v["keys"] if k.startswith("g:")]))
+        out.sort(key=lambda x: -x["last"])
+        return out[:limit]
 
     # ------------------------------------------------------------------ report
     def _sum(self, h_from, h_to):
@@ -181,6 +278,10 @@ class Narratives:
                         grad_vs_avg=round(grad_rate / base_grad, 2) if base_grad else None,
                         watched_24h=w, hit80_24h=a.get("hit80", 0),
                         hit80_rate_pct=round(a.get("hit80", 0) / w * 100, 1) if w else None,
+                        hit44_24h=a.get("hit44", 0), hit3x_24h=a.get("hit3x", 0),
+                        hit3x_rate_pct=round(a.get("hit3x", 0) / a["hit44"] * 100, 1) if a.get("hit44") else None,
+                        hit6x_24h=a.get("hit6x", 0),
+                        hit6x_rate_pct=round(a.get("hit6x", 0) / a["hit44"] * 100, 1) if a.get("hit44") else None,
                         new=prev_hours >= 6 and p.get("launch", 0) <= 1 and s6.get("launch", 0) >= 5)
 
         keys = [k for k in last24 if k != "*"]
@@ -193,7 +294,11 @@ class Narratives:
                         key=lambda r: -(r["heat"] or 0))[:top]
         busiest = sorted(wrows, key=lambda r: -r["launches_24h"])[:top]
         return dict(
+            computed_at=round(time.time()),
             hours=hours_seen, launches_24h=tot24.get("launch", 0), grads_24h=tot24.get("grad", 0),
+            hit44_24h=tot24.get("hit44", 0), hit80_24h=tot24.get("hit80", 0), hit3x_24h=tot24.get("hit3x", 0),
+            hit6x_24h=tot24.get("hit6x", 0),
+            base_hit3x_rate_pct=round(tot24.get("hit3x", 0) / tot24["hit44"] * 100, 1) if tot24.get("hit44") else None,
             launches_1h=last1.get("*", {}).get("launch", 0),
             base_grad_rate_pct=round(base_grad * 100, 2) if base_grad is not None else None,
             base_hit80_rate_pct=round(base_80 * 100, 1) if base_80 is not None else None,
@@ -203,4 +308,4 @@ class Narratives:
 
     def themes_of(self, mint):
         v = self.mints.get(mint)
-        return v[1] if v else []
+        return v["keys"] if v else []

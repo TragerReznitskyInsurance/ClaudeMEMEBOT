@@ -991,27 +991,69 @@ function renderStrat(el, L, title) {
 }
 
 /* ── narratives ───────────────────────────── */
-let nrOpen = true, nrTab = "hot";
+let nrOpen = true, nrTab = "hot", nrSel = null, nrMetric = "", nrCoins = null, nrLoading = false, nrLoadedAt = 0, nrVer = 0, nrSig = "";
+const NR_METRICS = [["", "Any milestone"], ["hit80", "Hit 80 SOL"], ["hit3x", "3× from 44"], ["hit6x", "6× from 44"], ["grad", "Graduated"]];
+const NR_BADGE = {hit44: ["44 SOL", "gray"], hit80: ["80 SOL", "brand"], hit3x: ["3×", "up"], hit6x: ["6×", "up"], grad: ["graduated", "warn"]};
+async function nrLoad() {
+  nrLoading = true; renderNarratives();
+  try {
+    const q = new URLSearchParams(); if (nrSel && nrSel !== "*") q.set("key", nrSel); if (nrMetric) q.set("metric", nrMetric);
+    const r = await fetch("/api/narratives/coins?" + q); nrCoins = (await r.json()).coins || [];
+  } catch (e) { nrCoins = []; }
+  nrLoading = false; nrLoadedAt = Date.now(); nrVer++; renderNarratives();
+}
+function nrPick(key) { nrSel = nrSel === key ? null : key; nrCoins = null; if (nrSel) nrLoad(); else renderNarratives(); }
+function nrSetMetric(m) { nrMetric = m; nrLoad(); }
+function nrCoinList() {
+  const title = nrSel === "*" ? "All coins" : esc(nrSel.slice(2));
+  let h = `<div class="card" style="margin-top:10px;background:var(--bg-2, transparent)"><div class="card-b">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b>${title}</b><span class="faint" style="font-size:12px">coins that reached a milestone in the last 48h</span>
+    <div style="flex:1"></div>${NR_METRICS.map(([k, t]) => `<button class="btn" style="padding:3px 9px;font-size:12px;${k === nrMetric ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="nrSetMetric('${k}')">${t}</button>`).join("")}
+    <button class="btn" style="padding:3px 9px;font-size:12px" onclick="nrPick(nrSel)">✕</button></div>`;
+  if (nrLoading || nrCoins == null) return h + `<div class="faint">Loading…</div></div></div>`;
+  if (!nrCoins.length) return h + `<div class="faint" style="font-size:12.5px">No coins yet for this filter.</div></div></div>`;
+  h += `<div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Coin</th><th>Milestones</th><th class="r">Peak seen</th><th class="r">Launched</th><th class="r">Latest milestone</th></tr></thead><tbody>
+    ${nrCoins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol || c.mint.slice(0, 6))}</b> <span class="ext">↗</span></a>${c.name && c.name !== c.symbol ? `<div class="faint" style="font-size:11.5px">${esc(c.name)}</div>` : ""}</td>
+      <td>${["hit44", "hit80", "hit3x", "hit6x", "grad"].filter(k => c.hits[k]).map(k => `<span class="badge ${NR_BADGE[k][1]}" style="margin-right:3px">${NR_BADGE[k][0]}</span>`).join("")}</td>
+      <td class="r num">${c.peak_mcap ? `${Math.round(c.peak_mcap)} SOL${META?.sol_usd ? `<div class="faint" style="font-size:11px">${usd(c.peak_mcap * META.sol_usd)}</div>` : ""}` : "—"}</td>
+      <td class="r num faint">${new Date(c.launched * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}</td>
+      <td class="r num faint">${new Date(c.last * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}</td></tr>`).join("")}</tbody></table></div>`;
+  return h + `</div></div>`;
+}
 function renderNarratives() {
   const el = $("#narratives"), N = NR;
-  if (!N || !N.launches_24h) { el.innerHTML = ""; return; }
-  const tabs = [["hot", "🔥 Taking off"], ["rising", "📈 Heating up"], ["groups", "🗂 Themes"], ["busiest", "🏭 Most launched"], ["new", "✨ New today"]];
+  if (!N || !N.launches_24h) { el.innerHTML = ""; nrSig = ""; return; }
+  if (nrSel && !nrLoading && Date.now() - nrLoadedAt > 30000) { nrLoad(); return; }
+  const sig = JSON.stringify([N.computed_at, nrOpen, nrTab, nrSel, nrMetric, nrLoading, nrVer, META?.sol_usd ? 1 : 0]);
+  if (sig === nrSig) return;                          // nothing changed: don't reset scroll positions
+  nrSig = sig;
+  const tabs = [["hot", "🔥 Taking off"], ["rising", "📈 Heating up"], ["groups", "🗂 Themes"], ["busiest", "🏭 Most launched"], ["new", "✨ New today"], ["coins", "🏁 Coins"]];
   const rows = (N[nrTab] || []);
   const x = v => v == null ? "—" : v.toFixed(v >= 10 ? 0 : 1) + "×";
+  const cnt = (n, pct, of) => n ? `${n} <span class="faint">(${pct}%${of ? " of " + of : ""})</span>` : `<span class="faint">0</span>`;
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔥 Narratives</h2>
-    <span class="faint" style="font-size:12px">${N.launches_24h.toLocaleString()} launches · ${N.grads_24h} graduated (${N.base_grad_rate_pct ?? "—"}%) in the last ${N.hours}h · ${N.launches_1h} launches this hour</span>
+    <span class="faint" style="font-size:12px">${N.launches_24h.toLocaleString()} launches · ${N.hit44_24h ?? 0} hit 44 SOL · ${N.hit3x_24h ?? 0} went 3× · ${N.hit6x_24h ?? 0} went 6× · ${N.grads_24h} graduated (${N.base_grad_rate_pct ?? "—"}%) · last ${N.hours}h</span>
     <div class="rm-actions"><button class="btn" onclick="nrOpen=!nrOpen;renderNarratives()">${nrOpen ? "Hide" : "Show"}</button></div></div>`;
   if (nrOpen) {
-    h += `<div class="card-b"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs.map(([k, t]) => `<button class="btn" style="padding:4px 10px;font-size:12px;${k === nrTab ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="nrTab='${k}';renderNarratives()">${t}</button>`).join("")}</div>`;
-    h += `<div class="faint" style="font-size:12px;margin-bottom:6px">${{hot: "Themes whose coins graduate far more often than the average coin (min. 15 launches, 2 graduations in 24h).", rising: "Themes launched much more in the last 6h than their 24h pace.", groups: "Big theme groups by launches.", busiest: "Words creators used most in the last 24h.", new: "Words that barely existed yesterday and have 5+ launches in the last 6h."}[nrTab]}</div>`;
-    h += rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Theme</th><th class="r">Launches 24h</th><th class="r">Last 6h</th><th class="r" title="Last 6h pace vs 24h pace">Heat</th><th class="r">Graduated</th><th class="r" title="Graduation rate vs the average coin">vs avg</th><th class="r" title="Of the coins the bot watched, how many reached 80 SOL">Hit 80 SOL</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td><b>${esc(r.theme)}</b>${r.kind === "group" ? ` <span class="badge gray">group</span>` : ""}${r.new ? ` <span class="badge brand">new</span>` : ""}</td>
-        <td class="r num">${r.launches_24h}</td><td class="r num">${r.launches_6h}</td>
-        <td class="r num ${r.heat >= 1.5 ? "up" : r.heat != null && r.heat < 0.7 ? "down" : ""}">${x(r.heat)}</td>
-        <td class="r num">${r.grads_24h} <span class="faint">(${r.grad_rate_pct}%)</span></td>
-        <td class="r num ${r.grad_vs_avg >= 2 ? "up" : r.grad_vs_avg != null && r.grad_vs_avg < 0.5 ? "down" : ""}">${x(r.grad_vs_avg)}</td>
-        <td class="r num">${r.hit80_rate_pct == null ? "—" : r.hit80_rate_pct + "%"} <span class="faint">${r.watched_24h ? "of " + r.watched_24h : ""}</span></td></tr>`).join("")}</tbody></table></div>`
-      : `<div class="faint" style="font-size:12.5px">Not enough data yet. This fills in over the first few hours of running.</div>`;
+    h += `<div class="card-b"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs.map(([k, t]) => `<button class="btn" style="padding:4px 10px;font-size:12px;${k === nrTab ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="nrTab='${k}';${k === "coins" ? "nrSel='*';nrLoad()" : "renderNarratives()"}">${t}</button>`).join("")}</div>`;
+    if (nrTab === "coins") {
+      h += `<div class="faint" style="font-size:12px;margin-bottom:6px">Every coin that reached a milestone, newest first. Click a coin to open it on pump.fun.</div>` + nrCoinList();
+    } else {
+      h += `<div class="faint" style="font-size:12px;margin-bottom:6px">${{hot: "Themes whose coins graduate far more often than the average coin (min. 15 launches, 2 graduations in 24h).", rising: "Themes launched much more in the last 6h than their 24h pace.", groups: "Big theme groups by launches.", busiest: "Words creators used most in the last 24h.", new: "Words that barely existed yesterday and have 5+ launches in the last 6h."}[nrTab]} <b>Click a theme to see its coins.</b></div>`;
+      h += rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Theme</th><th class="r">Launches 24h</th><th class="r">Last 6h</th><th class="r" title="Last 6h pace vs 24h pace">Heat</th>
+        <th class="r" title="Of the coins the bot watched, how many reached 80 SOL">Hit 80 SOL</th><th class="r" title="Of the coins that reached 44 SOL, how many went on to 132 SOL">3× from 44</th><th class="r" title="Of the coins that reached 44 SOL, how many went on to 264 SOL">6× from 44</th>
+        <th class="r">Graduated</th><th class="r" title="Graduation rate vs the average coin">vs avg</th></tr></thead><tbody>
+        ${rows.map(r => `<tr style="cursor:pointer;${nrSel === r.key ? "background:var(--brand-soft)" : ""}" onclick="nrPick('${r.key.replace(/'/g, "")}')"><td><b>${esc(r.theme)}</b>${r.kind === "group" ? ` <span class="badge gray">group</span>` : ""}${r.new ? ` <span class="badge brand">new</span>` : ""} <span class="faint" style="font-size:11px">${nrSel === r.key ? "▾" : "▸"}</span></td>
+          <td class="r num">${r.launches_24h}</td><td class="r num">${r.launches_6h}</td>
+          <td class="r num ${r.heat >= 1.5 ? "up" : r.heat != null && r.heat < 0.7 ? "down" : ""}">${x(r.heat)}</td>
+          <td class="r num">${r.hit80_rate_pct == null ? "—" : `${r.hit80_24h} <span class="faint">(${r.hit80_rate_pct}% of ${r.watched_24h})</span>`}</td>
+          <td class="r num">${r.hit44_24h ? cnt(r.hit3x_24h, r.hit3x_rate_pct, r.hit44_24h) : "—"}</td>
+          <td class="r num">${r.hit44_24h ? cnt(r.hit6x_24h, r.hit6x_rate_pct, r.hit44_24h) : "—"}</td>
+          <td class="r num">${r.grads_24h} <span class="faint">(${r.grad_rate_pct}%)</span></td>
+          <td class="r num ${r.grad_vs_avg >= 2 ? "up" : r.grad_vs_avg != null && r.grad_vs_avg < 0.5 ? "down" : ""}">${x(r.grad_vs_avg)}</td></tr>
+          ${nrSel === r.key ? `<tr><td colspan="9" style="padding:0 0 8px">${nrCoinList()}</td></tr>` : ""}`).join("")}</tbody></table></div>`
+        : `<div class="faint" style="font-size:12.5px">Not enough data yet. This fills in over the first few hours of running.</div>`;
+    }
     h += `</div>`;
   }
   el.innerHTML = h + `</div>`;
