@@ -71,6 +71,29 @@ lookalike:
   real_max_open: 20                    # max real lookalike coins open at once
   real_daily_loss_usd: 25              # stop real lookalike buys for the day after losing this much
 
+# ── Reclaim (PAPER ONLY) ────────────────────────────────────────
+# Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
+reclaim:
+  enabled: true
+  run_mcap_sol: 80                     # a candidate must have reached this market cap while watched
+  min_age_min: 30                      # only buy coins at least this old
+  pullback_pct: 40                     # ...that fell at least this far from their peak
+  bounce_pct: 25                       # ...and have bounced this much off the low since
+  max_of_peak_pct: 80                  # ...but are still at most this % of the old peak
+  min_entry_mcap_sol: 35
+  min_trades_2m: 15                    # activity: at least this many trades in the last 2 minutes
+  dead_mcap_sol: 25                    # stop tracking below this
+  max_age_h: 6                         # stop tracking candidates older than this
+  max_candidates: 400
+  size_usd: 25                         # paper size per coin (cheapest size once fees + impact are counted)
+  max_open: 100
+  stop_pct: 25                         # stop until the coin has been up trail_arm_mult
+  trail_arm_mult: 1.5
+  trail_pct: 35                        # then trail this far below the highest point
+  tp_mult: 2                           # sell tp_frac_pct at this multiple
+  tp_frac_pct: 33.3
+  max_hold_h: 24
+
 # ── REAL MONEY copy trading ─────────────────────────────────────
 # Uses a dedicated trading wallet created in the dashboard (key stays in data/trading_wallet.json).
 # Only active while "Start live" is running. Fund the wallet only with what you can afford to lose.

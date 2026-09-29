@@ -55,6 +55,22 @@ SCHEMA = [
         {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
         {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
     ]},
+    {"group": "Reclaim (paper test)", "items": [
+        {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},
+        {"path": "reclaim.run_mcap_sol", "label": "First run: coin reached at least", "unit": "SOL mcap", "type": "float"},
+        {"path": "reclaim.min_age_min", "label": "Coin at least this old", "unit": "min", "type": "float"},
+        {"path": "reclaim.pullback_pct", "label": "Pulled back from its peak by at least", "unit": "%", "type": "float"},
+        {"path": "reclaim.bounce_pct", "label": "Bounced off the low by at least", "unit": "%", "type": "float"},
+        {"path": "reclaim.max_of_peak_pct", "label": "Still at most this % of the old peak", "unit": "%", "type": "float"},
+        {"path": "reclaim.min_trades_2m", "label": "Trades in the last 2 minutes, at least", "type": "int"},
+        {"path": "reclaim.size_usd", "label": "Paper size per coin", "unit": "$", "type": "float"},
+        {"path": "reclaim.stop_pct", "label": "Stop loss (until the trailing stop arms)", "unit": "%", "type": "float"},
+        {"path": "reclaim.trail_arm_mult", "label": "Trailing stop arms at", "unit": "x", "type": "float"},
+        {"path": "reclaim.trail_pct", "label": "Trailing stop below the high", "unit": "%", "type": "float"},
+        {"path": "reclaim.tp_mult", "label": "Take partial profit at", "unit": "x", "type": "float"},
+        {"path": "reclaim.tp_frac_pct", "label": "Partial profit amount", "unit": "%", "type": "float"},
+        {"path": "reclaim.max_hold_h", "label": "Time limit", "unit": "h", "type": "float"},
+    ]},
     {"group": "Lookalike (paper test)", "items": [
         {"path": "lookalike.enabled", "label": "Run the lookalike paper test", "type": "bool"},
         {"path": "lookalike.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
@@ -215,5 +231,5 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
-_ORDER = ["Copy trading", "Real money", "Lookalike", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
+_ORDER = ["Copy trading", "Real money", "Lookalike", "Reclaim", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

@@ -28,6 +28,7 @@ from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
+from memebot.reclaim import Reclaim
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -60,12 +61,16 @@ class Runner:
                                    lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                    lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.lookalike.live = self.live
+        self.reclaim = Reclaim(os.path.join(HERE, "data"),
+                               lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
+                               lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
 
     def name_targets(self):
         from memebot.names import is_placeholder
         out = self.live.name_targets()
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
+        out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
         return list(dict.fromkeys(out))
@@ -73,6 +78,7 @@ class Runner:
     def apply_name(self, mint, info):
         self.live.rename(mint, info["symbol"], info.get("name", ""))
         self.lookalike.rename(mint, info["symbol"])
+        self.reclaim.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
@@ -150,6 +156,9 @@ class Runner:
                     return t.price, time.time() - t.last_trade_ts
                 return None
             self.lookalike.feed_price = feed_price
+            self.reclaim.active = True
+            self.reclaim.feed_price = feed_price
+            eng.reclaim = self.reclaim
             for m in list(self.live.positions):
                 feed.subscribe(m)                        # keep pricing positions carried over from before
             self.tasks.append(asyncio.create_task(self.live.recheck()))
@@ -169,6 +178,7 @@ class Runner:
     async def stop(self):
         self.live.active = False
         self.lookalike.active = False
+        self.reclaim.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -263,7 +273,7 @@ class Runner:
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
-                "lookalike": self.lookalike.state()}
+                "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state()}
 
 
 # ---------------------------------------------------------------------- routes
@@ -307,13 +317,16 @@ async def broadcaster(app):
     names_task = asyncio.create_task(runner.names.run(runner.name_targets, runner.apply_name))
     live_px_task = asyncio.create_task(runner.live.price_loop())
     lk_task = asyncio.create_task(runner.lookalike.run())
+    rc_task = asyncio.create_task(runner.reclaim.run(every=10))
     yield
     task.cancel()
     price_task.cancel()
     names_task.cancel()
     live_px_task.cancel()
     lk_task.cancel()
+    rc_task.cancel()
     await runner.lookalike.close()
+    await runner.reclaim.close()
     await runner.names.close()
     await runner.live.close()
     await runner.stop()
@@ -533,7 +546,8 @@ async def api_diagnostics(request):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
         for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl",
-                     "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv"):
+                     "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
+                     "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

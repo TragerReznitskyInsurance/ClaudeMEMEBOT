@@ -56,9 +56,11 @@ def curve_sell(tokens, px):
 
 
 class Lookalike:
+    NAME = "lookalike"                             # config section, file prefix, real-money tag
+
     def __init__(self, data_dir, cfg_getter, key_getter, sol_usd_getter):
         self.dir = data_dir
-        self.state_path = os.path.join(data_dir, "lookalike_state.json")
+        self.state_path = os.path.join(data_dir, f"{self.NAME}_state.json")
         self._cfg = cfg_getter
         self._key = key_getter
         self._usd = sol_usd_getter
@@ -76,7 +78,7 @@ class Lookalike:
 
     # ------------------------------------------------------------------ config / state
     def cfg(self):
-        return self._cfg().get("lookalike") or {}
+        return self._cfg().get(self.NAME) or {}
 
     def enabled(self):
         return bool(self.cfg().get("enabled", True))
@@ -94,7 +96,7 @@ class Lookalike:
     def _repair(self):
         """Remove trades created by bad price readings (before the sanity checks existed): any coin 'sold' above
         11x within 10 minutes of the buy - impossible on a pump.fun curve (44 -> ~450 SOL is the whole curve)."""
-        path = os.path.join(self.dir, "lookalike_fills.csv")
+        path = os.path.join(self.dir, f"{self.NAME}_fills.csv")
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
                 lines = fh.read().splitlines()
@@ -125,7 +127,7 @@ class Lookalike:
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(head + "\n" + "".join(",".join(r) + "\n" for r in rows if len(r) < 2 or r[1] not in bad))
         os.replace(tmp, path)
-        tpath = os.path.join(self.dir, "lookalike_trades.csv")
+        tpath = os.path.join(self.dir, f"{self.NAME}_trades.csv")
         try:
             with open(tpath, encoding="utf-8", errors="replace") as fh:
                 tl = fh.read().splitlines()
@@ -136,7 +138,7 @@ class Lookalike:
         except (OSError, IndexError):
             pass
         self._save()
-        log.info("LOOKALIKE removed %d trade(s) caused by bad price readings", len(bad))
+        log.info("%s removed %d trade(s) caused by bad price readings", self.NAME.upper(), len(bad))
 
     def _save(self):
         tmp = self.state_path + ".tmp"
@@ -227,18 +229,18 @@ class Lookalike:
             why = "not a pump.fun bonding-curve coin" if src != "curve" else \
                 f"on-chain price didn't match the feed ({px / p['entry_px']:.2f}x)"
             self._event("skip", f"{p['symbol']}: skipped - {why}", mint=p["mint"])
-            log.info("LOOKALIKE skipped %s: %s", p["symbol"], why)
+            log.info("%s skipped %s: %s", self.NAME.upper(), p["symbol"], why)
             return False
         p["verified"] = True
-        self._csv("lookalike_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
+        self._csv(f"{self.NAME}_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
                   [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(p["opened"])), p["mint"], p["symbol"], "BUY",
                    f"entry at {p['entry_mcap']:.0f} SOL mcap", "1.00", round(p["sol_in"], 6), round(p["tokens"], 2)])
         self._event("buy", f"Paper buy {p['symbol']} at {p['entry_mcap']:.0f} SOL mcap (${p.get('size_usd', 0):.2f})",
                     mint=p["mint"])
-        log.info("LOOKALIKE buy %s at mcap %.0f SOL", p["symbol"], p["entry_mcap"])
+        log.info("%s buy %s at mcap %.0f SOL", self.NAME.upper(), p["symbol"], p["entry_mcap"])
         c = self.cfg()
         if c.get("real_enabled") and self.live is not None:
-            why = self.live.open_strategy("lookalike", p["mint"], p["symbol"], float(c.get("real_size_usd", 2.5)),
+            why = self.live.open_strategy(self.NAME, p["mint"], p["symbol"], float(c.get("real_size_usd", 2.5)),
                                           int(c.get("real_max_open", 20)), float(c.get("real_daily_loss_usd", 25)))
             if why is None:
                 p["real"] = True
@@ -250,14 +252,14 @@ class Lookalike:
     # ------------------------------------------------------------------ exits
     def _sell(self, p, frac, reason, px, ts):
         if p.get("real") and self.live is not None:
-            self.live.strategy_sell("lookalike", p["mint"], 1.0 if frac >= 0.999 else frac, reason)
+            self.live.strategy_sell(self.NAME, p["mint"], 1.0 if frac >= 0.999 else frac, reason)
         qty = p["tokens"] if frac >= 0.999 else p["tokens"] * frac
         got = self._sell_value(qty, px)
         p["tokens"] -= qty
         p["sol_out"] += got
         mult = px / p["entry_px"]
         p["sells"].append(dict(ts=ts, reason=reason, mult=round(mult, 2), sol=round(got, 6)))
-        self._csv("lookalike_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
+        self._csv(f"{self.NAME}_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
                   [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts)), p["mint"], p["symbol"], "SELL", reason,
                    f"{mult:.2f}", round(got, 6), round(qty, 2)])
         if p["tokens"] <= p["tokens_bought"] * 1e-6:
@@ -276,7 +278,7 @@ class Lookalike:
                    peak_mult=round(p["peak_mult"], 2), stages=",".join(p["done"]),
                    exit=p["sells"][-1]["reason"] if p["sells"] else "")
         self.closed.append(rec)
-        self._csv("lookalike_trades.csv",
+        self._csv(f"{self.NAME}_trades.csv",
                   "opened_utc,closed_utc,mint,symbol,entry_mcap_sol,hold_min,sol_in,sol_out,pnl_sol,pnl_pct,pnl_usd,peak_mult,stages,last_exit",
                   [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(p["opened"])),
                    time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts)), p["mint"], p["symbol"], p["entry_mcap"],
@@ -422,7 +424,7 @@ class Lookalike:
                 raise
             except Exception as e:
                 self.last_error = str(e) or type(e).__name__
-                log.debug("lookalike tick failed: %s", e)
+                log.debug("%s tick failed: %s", self.NAME, e)
             await asyncio.sleep(every)
 
     async def close(self):
@@ -450,10 +452,11 @@ class Lookalike:
         open_cost_left = sum(p["sol_in"] - p["sol_out"] for p in live_pos)
         ups = sum(1 for x in cl if "2x" in x["stages"])
         return dict(
+            name=self.NAME, desc=f"Buys coins rising through {c.get('entry_mcap_sol', 44)} SOL mcap · ${c.get('size_usd', 2.5)} each",
             enabled=self.enabled(), active=self.active, size_usd=c.get("size_usd", 2.5),
             real_enabled=bool(c.get("real_enabled")), real_size_usd=c.get("real_size_usd", 2.5),
             real_max_open=c.get("real_max_open", 20), real_daily_loss_usd=c.get("real_daily_loss_usd", 25),
-            real_today_usd=round(self.live.realized_today_usd("lookalike"), 2) if self.live is not None else None,
+            real_today_usd=round(self.live.realized_today_usd(self.NAME), 2) if self.live is not None else None,
             entry_mcap_sol=c.get("entry_mcap_sol", 44), sol_usd=usd, last_error=self.last_error,
             open=len(live_pos), closed=len(cl), wins=len(wins),
             win_rate=round(len(wins) / len(cl) * 100, 1) if cl else None,

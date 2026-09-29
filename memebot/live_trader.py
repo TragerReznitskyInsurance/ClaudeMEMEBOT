@@ -43,7 +43,7 @@ LAMPORTS = 1_000_000_000
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
 
-STRATEGY_TAGS = {"lookalike": "Lookalike"}      # real positions opened by our own strategies (not copies)
+STRATEGY_TAGS = {"lookalike": "Lookalike", "reclaim": "Reclaim"}      # real positions opened by our own strategies (not copies)
 
 
 def _short(w):
