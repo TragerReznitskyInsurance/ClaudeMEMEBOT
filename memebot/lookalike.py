@@ -224,9 +224,10 @@ class Lookalike:
 
     def _verify(self, p, px, src, ts):
         """First on-chain look at a new paper buy: must be a live pump.fun curve coin priced like the feed said."""
-        if src != "curve" or not (0.7 <= px / p["entry_px"] <= 1.3):
+        on_curve = src in ("curve", "feed")                # 'feed' is only returned when the curve exists and agrees
+        if not on_curve or not (0.7 <= px / p["entry_px"] <= 1.3):
             self.positions.pop(p["mint"], None)
-            why = "not a pump.fun bonding-curve coin" if src != "curve" else \
+            why = "not a pump.fun bonding-curve coin" if not on_curve else \
                 f"on-chain price didn't match the feed ({px / p['entry_px']:.2f}x)"
             self._event("skip", f"{p['symbol']}: skipped - {why}", mint=p["mint"])
             log.info("%s skipped %s: %s", self.NAME.upper(), p["symbol"], why)
