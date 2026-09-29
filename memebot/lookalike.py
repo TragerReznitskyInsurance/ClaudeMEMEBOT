@@ -71,6 +71,7 @@ class Lookalike:
         self.session: aiohttp.ClientSession | None = None
         self.last_error = ""
         self._load()
+        self._repair()
 
     # ------------------------------------------------------------------ config / state
     def cfg(self):
@@ -88,6 +89,53 @@ class Lookalike:
             self.traded = set(s.get("traded", []))
         except (OSError, ValueError):
             pass
+
+    def _repair(self):
+        """Remove trades created by bad price readings (before the sanity checks existed): any coin 'sold' above
+        11x within 10 minutes of the buy - impossible on a pump.fun curve (44 -> ~450 SOL is the whole curve)."""
+        path = os.path.join(self.dir, "lookalike_fills.csv")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            return
+        if len(lines) < 2:
+            return
+        head, rows = lines[0], [ln.split(",") for ln in lines[1:] if ln.strip()]
+        bought, bad = {}, set()
+        for r in rows:
+            if len(r) < 8:
+                continue
+            try:
+                ts = time.mktime(time.strptime(r[0], "%Y-%m-%d %H:%M:%S"))
+                mult = float(r[5])
+            except ValueError:
+                continue
+            if r[3] == "BUY":
+                bought[r[1]] = ts
+            elif r[1] in bought and mult > 11 and ts - bought[r[1]] < 600:
+                bad.add(r[1])
+        if not bad:
+            return
+        self.closed = [c for c in self.closed if c["mint"] not in bad]
+        for m in bad:
+            self.positions.pop(m, None)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(head + "\n" + "".join(",".join(r) + "\n" for r in rows if len(r) < 2 or r[1] not in bad))
+        os.replace(tmp, path)
+        tpath = os.path.join(self.dir, "lookalike_trades.csv")
+        try:
+            with open(tpath, encoding="utf-8", errors="replace") as fh:
+                tl = fh.read().splitlines()
+            with open(tpath + ".tmp", "w", encoding="utf-8") as fh:
+                keep = [ln for i, ln in enumerate(tl) if i == 0 or (ln.split(",") + ["", "", ""])[2] not in bad]
+                fh.write("".join(ln + "\n" for ln in keep))
+            os.replace(tpath + ".tmp", tpath)
+        except (OSError, IndexError):
+            pass
+        self._save()
+        log.info("LOOKALIKE removed %d trade(s) caused by bad price readings", len(bad))
 
     def _save(self):
         tmp = self.state_path + ".tmp"
@@ -151,13 +199,26 @@ class Lookalike:
             mint=t.mint, symbol=t.symbol, name=t.name, opened=ts, entry_px=t.price, entry_mcap=round(t.mcap, 1),
             age_at_entry_s=round(ts - t.created_ts), sol_in=size + prio, sol_out=0.0, tokens=tokens,
             tokens_bought=tokens, peak_mult=1.0, floor_mult=1.0 - float(c.get("stop_pct", 30)) / 100,
-            done=[], last_px=t.price, last_px_ts=ts, sells=[])
-        self._csv("lookalike_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
-                  [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts)), t.mint, t.symbol, "BUY", "entry at "
-                   f"{t.mcap:.0f} SOL mcap", "1.00", round(size + prio, 6), round(tokens, 2)])
-        self._event("buy", f"Paper buy {t.symbol} at {t.mcap:.0f} SOL mcap (${size * usd:.2f})", mint=t.mint)
-        log.info("LOOKALIKE buy %s at mcap %.0f SOL", t.symbol, t.mcap)
+            done=[], last_px=t.price, last_px_ts=ts, sells=[], verified=False, size_usd=round(size * usd, 2))
         self._save()
+        return True
+
+    def _verify(self, p, px, src, ts):
+        """First on-chain look at a new paper buy: must be a live pump.fun curve coin priced like the feed said."""
+        if src != "curve" or not (0.7 <= px / p["entry_px"] <= 1.3):
+            self.positions.pop(p["mint"], None)
+            why = "not a pump.fun bonding-curve coin" if src != "curve" else \
+                f"on-chain price didn't match the feed ({px / p['entry_px']:.2f}x)"
+            self._event("skip", f"{p['symbol']}: skipped - {why}", mint=p["mint"])
+            log.info("LOOKALIKE skipped %s: %s", p["symbol"], why)
+            return False
+        p["verified"] = True
+        self._csv("lookalike_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
+                  [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(p["opened"])), p["mint"], p["symbol"], "BUY",
+                   f"entry at {p['entry_mcap']:.0f} SOL mcap", "1.00", round(p["sol_in"], 6), round(p["tokens"], 2)])
+        self._event("buy", f"Paper buy {p['symbol']} at {p['entry_mcap']:.0f} SOL mcap (${p.get('size_usd', 0):.2f})",
+                    mint=p["mint"])
+        log.info("LOOKALIKE buy %s at mcap %.0f SOL", p["symbol"], p["entry_mcap"])
         return True
 
     # ------------------------------------------------------------------ exits
@@ -252,31 +313,31 @@ class Lookalike:
         return j.get("result")
 
     async def prices(self, mints):
-        """{mint: SOL per token} - live feed if fresh, else bonding curve, else Jupiter."""
-        out, need = {}, []
+        """{mint: (SOL per token, source)}. Sources: 'curve' (pump.fun bonding curve, on-chain), 'feed' (live feed,
+        only for coins still on the curve), 'jupiter' (only after the curve says the coin graduated).
+        Coins with no pump.fun curve get no price at all."""
+        out, curves = {}, {}
         for m in mints:
-            fp = self.feed_price(m)
-            if fp and fp[1] < 15:
-                out[m] = fp[0]
-            else:
-                need.append(m)
-        grads, curves = [], {}
-        for m in need:
             try:
                 curves[m] = curve_address(m)
             except ValueError:
                 continue                                   # not a valid address - skip, don't break the batch
-        need = list(curves)
+        need, grads = list(curves), []
         for i in range(0, len(need), 100):
             chunk = need[i:i + 100]
             r = await self._rpc("getMultipleAccounts", [[curves[m] for m in chunk],
                                                         {"encoding": "base64", "commitment": "confirmed"}])
             for m, acc in zip(chunk, (r or {}).get("value") or []):
-                px = parse_curve(base64.b64decode(acc["data"][0])) if acc else None
+                data = base64.b64decode(acc["data"][0]) if acc else b""
+                if len(data) < 49:
+                    continue                               # no pump.fun curve: never trust another source
+                if data[48]:
+                    grads.append(m)                        # graduated: priced from its pool via Jupiter
+                    continue
+                px = parse_curve(data)
                 if px:
-                    out[m] = px
-                else:
-                    grads.append(m)
+                    fp = self.feed_price(m)
+                    out[m] = (fp[0], "feed") if fp and fp[1] < 15 and 0.5 < fp[0] / px < 2 else (px, "curve")
         usd = self._usd()
         if grads and usd:
             s = await self._sess()
@@ -288,19 +349,39 @@ class Lookalike:
                     for m in chunk:
                         v = float(((j or {}).get(m) or {}).get("usdPrice") or 0)
                         if v > 0:
-                            out[m] = v / usd
+                            out[m] = (v / usd, "jupiter")
                 except Exception:
                     pass
         return out
+
+    def _accept(self, p, px, ts):
+        """Sanity gate: a reading more than 3x away from the last accepted price must be seen twice in a row
+        (within 25%) before the exit plan acts on it - one bad number can't trigger a sale."""
+        last = p.get("last_px") or p["entry_px"]
+        if 1 / 3 <= px / last <= 3:
+            p.pop("suspect_px", None)
+            return True
+        prev = p.get("suspect_px")
+        if prev and 0.8 <= px / prev <= 1.25:
+            p.pop("suspect_px", None)
+            return True
+        p["suspect_px"] = px
+        return False
 
     async def tick(self):
         if not self.positions or not self._key():
             return
         now = time.time()
         px = await self.prices(list(self.positions))
-        for m, price in px.items():
+        for m in list(self.positions):
             p = self.positions.get(m)
-            if p and price > 0:
+            price, src = px.get(m, (None, None))
+            if not p.get("verified", True):
+                if price is None:
+                    price, src = 0.0, "none"
+                if not self._verify(p, price, src, now):
+                    continue
+            if p and price and price > 0 and self._accept(p, price, now):
                 self.check(p, price, now)
         self._save()
 
@@ -336,15 +417,16 @@ class Lookalike:
         cl = self.closed
         wins = [x for x in cl if x["pnl_sol"] > 0]
         realized = sum(x["pnl_sol"] for x in cl)
-        open_val = sum(self._sell_value(p["tokens"], p["last_px"]) for p in self.positions.values())
-        open_cost_left = sum(p["sol_in"] - p["sol_out"] for p in self.positions.values())
+        live_pos = [p for p in self.positions.values() if p.get("verified", True)]
+        open_val = sum(self._sell_value(p["tokens"], p["last_px"]) for p in live_pos)
+        open_cost_left = sum(p["sol_in"] - p["sol_out"] for p in live_pos)
         ups = sum(1 for x in cl if "2x" in x["stages"])
         return dict(
             enabled=self.enabled(), active=self.active, size_usd=c.get("size_usd", 2.5),
             entry_mcap_sol=c.get("entry_mcap_sol", 44), sol_usd=usd, last_error=self.last_error,
-            open=len(self.positions), closed=len(cl), wins=len(wins),
+            open=len(live_pos), closed=len(cl), wins=len(wins),
             win_rate=round(len(wins) / len(cl) * 100, 1) if cl else None,
-            hit_2x=ups, hit_6x=sum(1 for x in cl if "6x" in x["stages"]) + sum(1 for p in self.positions.values() if "6x" in p["done"]),
+            hit_2x=ups, hit_6x=sum(1 for x in cl if "6x" in x["stages"]) + sum(1 for p in live_pos if "6x" in p["done"]),
             realized=round(realized, 5), realized_usd=round(realized * usd, 2) if usd else None,
             open_value=round(open_val, 5), open_pnl=round(open_val - open_cost_left, 5),
             open_pnl_usd=round((open_val - open_cost_left) * usd, 2) if usd else None,
@@ -355,7 +437,7 @@ class Lookalike:
                                    age_min=round((time.time() - p["opened"]) / 60),
                                    value=round(self._sell_value(p["tokens"], p["last_px"]), 6),
                                    cost_left=round(p["sol_in"] - p["sol_out"], 6))
-                              for p in self.positions.values()], key=lambda x: -x["mult"])[:60],
+                              for p in live_pos], key=lambda x: -x["mult"])[:60],
             recent=cl[-25:][::-1],
             events=self.events[-30:][::-1],
         )
