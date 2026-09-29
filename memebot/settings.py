@@ -83,6 +83,8 @@ SCHEMA = [
         {"path": "copy_trade.max_hold_h", "label": "Max hold (0 = off)", "unit": "h", "type": "float"},
         {"path": "copy_trade.max_entry_gap_pct", "label": "Don't chase: skip if price is already up (0 = off)", "unit": "%",
          "type": "float"},
+        {"path": "copy_trade.dip_wait_min", "label": "…instead wait for a dip back for up to (0 = skip)", "unit": "min", "type": "float"},
+        {"path": "copy_trade.dip_floor_pct", "label": "…cancel if it drops below the wallet's price by", "unit": "%", "type": "float"},
         {"path": "snapshots.enabled", "label": "Record token snapshots (for lookalike research)", "type": "bool"},
         {"path": "snapshots.cross_mcap_sol", "label": "Comparison tokens: snapshot at mcap", "unit": "SOL", "type": "float"},
         {"path": "strategies.momentum", "label": "Also run momentum strategy", "type": "bool"},

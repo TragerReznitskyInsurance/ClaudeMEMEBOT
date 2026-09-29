@@ -35,7 +35,9 @@ copy_trade:
   max_open: 100                        # max copied positions open at once
   safety_stop_pct: 0                   # optional stop of our own (0 = pure mirror)
   max_hold_h: 0                        # optional time limit in hours (0 = pure mirror)
-  max_entry_gap_pct: 15                # don't chase: skip a copy if the price is already this much above what the wallet paid (0 = off)
+  max_entry_gap_pct: 15                # don't chase: don't buy while the price is more than this above what the wallet paid (0 = off)
+  dip_wait_min: 10                     # real money: if it is, wait up to this long for a dip back to the limit (0 = just skip)
+  dip_floor_pct: 10                    # ...but cancel if it falls this far below the wallet's price (coin dumping)
 
 # ── Token snapshots (research for a "lookalike" strategy) ──────
 # When a followed wallet buys, record what the token looked like; also record tokens the bot

@@ -69,6 +69,8 @@ class LiveTrader:
         self.prices: dict = {}             # mint -> (SOL per token, ts): our own on-chain price reads
         self.active = False                # true only while a live session is running
         self.late_waits = (45, 120)        # re-check a timed-out buy after these many seconds
+        self.dip_poll_s = 1.5              # waiting for a dip: check the price this often (live feed)...
+        self.dip_rpc_every_s = 12          # ...and read it on-chain this often (Helius credits)
         self.external_seen: set = set()    # wallet transactions already checked for outside sells
         self.ignored: set = set()          # tokens that showed up without us buying them (airdrops / spam)
         self.fill_cache: dict = {}         # our own tx signature -> parsed trade (or None)
@@ -107,6 +109,8 @@ class LiveTrader:
             self.closed = s.get("closed", [])
             self.paused = s.get("paused", False)
             self.ignored = set(s.get("ignored", []))
+            for m in [m for m, p in self.positions.items() if p["status"] == "waiting"]:
+                self.positions.pop(m)                    # was only waiting for a dip - nothing was bought
             for p in self.positions.values():            # anything mid-flight when we stopped
                 if p["status"] in ("buying", "selling"):
                     p["status"] = "check"
@@ -385,7 +389,7 @@ class LiveTrader:
         p = self.positions.get(mint)
         if not p or p["wallet"] != wallet or not (self.cfg().get("follow_sells", True)):
             return
-        if p["status"] == "buying":
+        if p["status"] in ("buying", "waiting"):
             p["queued_sell"] = 1 - (1 - p["queued_sell"]) * (1 - frac)
             self._save()
             return
@@ -451,29 +455,81 @@ class LiveTrader:
         if p["queued_sell"] > 0:
             await self._sell(mint, p["queued_sell"], "copied sell (during our buy)")
 
+    async def _current_px(self, mint, rpc=True):
+        """SOL per token right now: on-chain curve/Jupiter read (if rpc), else the live feed."""
+        px = None
+        if rpc:
+            try:
+                px, _ = await spot_price(self.rpc, await self._session(), mint, self._usd())
+            except Exception:
+                px = None
+        if not px:
+            try:
+                px = self.price_of(mint)
+            except Exception:
+                px = None
+        return px
+
     async def _pre_buy_check(self, p):
-        """Reason not to buy (the wallet already left, or the price ran away), or None."""
+        """Reason not to buy (the wallet already left, the price ran away and never came back...), or None.
+        If the price is above the don't-chase limit, waits for a dip back to it (copy_trade.dip_wait_min)."""
         if p.get("queued_sell", 0) >= 0.99:
             return f"{_short(p['wallet'])} already sold out before our buy - skipped"
-        lim = float((self._cfg().get("copy_trade") or {}).get("max_entry_gap_pct") or 0)
+        cp = self._cfg().get("copy_trade") or {}
+        lim = float(cp.get("max_entry_gap_pct") or 0)
         wpx = p.get("wallet_px")
         if not lim or not wpx:
             return None
-        try:
-            px, src = await spot_price(self.rpc, await self._session(), p["mint"], self._usd())
-        except Exception:
-            px, src = None, ""
-        if not px:
-            px, src = self.price_of(p["mint"]), "feed"
+        floor = float(cp.get("dip_floor_pct", 10) or 0)
+        px = await self._current_px(p["mint"])
+        if px and abs(px / wpx - 1) > 5:                  # >500% off: a bad price read, try the live feed
+            feed = self.price_of(p["mint"])
+            px = feed if feed and abs(feed / wpx - 1) <= 5 else None
+            if not px:
+                return "couldn't read a reliable price - skipped"
         if not px:
             self._event("info", f"{p['symbol']}: couldn't read the current price, buying without the chase check")
             return None
         gap = (px / wpx - 1) * 100
         p["quote_gap_pct"] = round(gap, 1)
-        if gap > lim:
+        if floor and gap < -floor:
+            return f"price already {gap:.0f}% below what {_short(p['wallet'])} paid (coin dropping) - skipped"
+        if gap <= lim:
+            return None
+        wait = float(cp.get("dip_wait_min", 10) or 0)
+        if not wait:
             return (f"price already +{gap:.0f}% above what {_short(p['wallet'])} paid "
                     f"(limit {lim:g}%) - not chasing")
-        return None
+        return await self._wait_for_dip(p, wpx, lim, floor, wait, gap)
+
+    async def _wait_for_dip(self, p, wpx, lim, floor, wait_min, gap):
+        mint, sym = p["mint"], p["symbol"]
+        p["status"] = "waiting"
+        self._save()
+        self._event("info", f"{sym}: +{gap:.0f}% above what {_short(p['wallet'])} paid - waiting up to {wait_min:g} min "
+                            f"for a dip back to +{lim:g}%", mint=mint)
+        deadline, last_rpc = time.time() + wait_min * 60, time.time()
+        while time.time() < deadline:
+            await asyncio.sleep(self.dip_poll_s)
+            if mint not in self.positions:
+                return "cancelled"
+            if p.get("queued_sell", 0) > 0:
+                return f"{_short(p['wallet'])} started selling before the price dipped - cancelled"
+            use_rpc = time.time() - last_rpc >= self.dip_rpc_every_s   # live feed every tick, chain every ~12s
+            if use_rpc:
+                last_rpc = time.time()
+            px = await self._current_px(mint, rpc=use_rpc)
+            if not px or abs(px / wpx - 1) > 5:
+                continue
+            gap = (px / wpx - 1) * 100
+            p["quote_gap_pct"] = round(gap, 1)
+            if floor and gap < -floor:
+                return f"fell to {gap:.0f}% below what {_short(p['wallet'])} paid while waiting (coin dropping) - cancelled"
+            if gap <= lim:
+                p["status"] = "buying"
+                self._event("info", f"{sym}: dipped back to {gap:+.0f}% - buying now", mint=mint)
+                return None
+        return f"never dipped back to +{lim:g}% within {wait_min:g} min - skipped"
 
     async def _late_check(self, mint, p, sig):
         for wait in self.late_waits:
@@ -755,7 +811,7 @@ class LiveTrader:
         return feed or (own[0] if own else None)
 
     async def refresh_prices(self):
-        mints = [m for m, p in self.positions.items() if p["status"] != "buying"]
+        mints = [m for m, p in self.positions.items() if p["status"] not in ("buying", "waiting")]
         if not mints or not self._hkey():
             return
         grads = []
@@ -882,7 +938,7 @@ class LiveTrader:
         per = {}
         for w in wallets:
             op, cl, deployed, realized = self.per_wallet(w)
-            priced = [p for p in op if p["status"] != "buying" and self.px(p["mint"])]
+            priced = [p for p in op if p["status"] not in ("buying", "waiting") and self.px(p["mint"])]
             val = sum(p["tokens"] * self.px(p["mint"]) for p in priced) if priced else None
             per[_short(w)] = dict(open=len(op), closed=len(cl), wins=sum(1 for x in cl if x["pnl_sol"] > 0),
                                   deployed=round(deployed, 4), realized=round(realized, 5),
@@ -898,7 +954,7 @@ class LiveTrader:
                             sol_in=round(p["sol_in"] or p["size"], 5), sol_out=round(p["sol_out"], 5),
                             left_pct=round(p["tokens"] / p["tokens_bought"] * 100) if p.get("tokens_bought") else None,
                             value=round(p["tokens"] * self.px(p["mint"]), 5)
-                            if p["status"] != "buying" and self.px(p["mint"]) else None,
+                            if p["status"] not in ("buying", "waiting") and self.px(p["mint"]) else None,
                             age_s=round(time.time() - p["opened"]), last_sig=(p["sigs"] or [None])[-1])
                        for p in self.positions.values()],
             closed=self.closed[-30:][::-1],
