@@ -67,6 +67,7 @@ class Lookalike:
         self.traded: set[str] = set()
         self.events: list[dict] = []
         self.feed_price = lambda mint: None        # set by the app: (price, age_s) from the live feed, or None
+        self.live = None                           # LiveTrader, set by the app: real-money mirror of this strategy
         self.active = False
         self.session: aiohttp.ClientSession | None = None
         self.last_error = ""
@@ -201,7 +202,23 @@ class Lookalike:
             tokens_bought=tokens, peak_mult=1.0, floor_mult=1.0 - float(c.get("stop_pct", 30)) / 100,
             done=[], last_px=t.price, last_px_ts=ts, sells=[], verified=False, size_usd=round(size * usd, 2))
         self._save()
+        try:
+            asyncio.get_running_loop().create_task(self._quick_verify(t.mint))
+        except RuntimeError:
+            pass                                           # no running loop (tests): the price loop verifies it
         return True
+
+    async def _quick_verify(self, mint):
+        try:
+            px = await self.prices([mint])
+        except Exception as e:
+            self.last_error = str(e) or type(e).__name__
+            return
+        p = self.positions.get(mint)
+        if p and not p.get("verified", True):
+            price, src = px.get(mint, (0.0, "none"))
+            self._verify(p, price, src, time.time())
+            self._save()
 
     def _verify(self, p, px, src, ts):
         """First on-chain look at a new paper buy: must be a live pump.fun curve coin priced like the feed said."""
@@ -219,10 +236,21 @@ class Lookalike:
         self._event("buy", f"Paper buy {p['symbol']} at {p['entry_mcap']:.0f} SOL mcap (${p.get('size_usd', 0):.2f})",
                     mint=p["mint"])
         log.info("LOOKALIKE buy %s at mcap %.0f SOL", p["symbol"], p["entry_mcap"])
+        c = self.cfg()
+        if c.get("real_enabled") and self.live is not None:
+            why = self.live.open_strategy("lookalike", p["mint"], p["symbol"], float(c.get("real_size_usd", 2.5)),
+                                          int(c.get("real_max_open", 20)), float(c.get("real_daily_loss_usd", 25)))
+            if why is None:
+                p["real"] = True
+                self._event("buy", f"{p['symbol']}: REAL buy placed (${float(c.get('real_size_usd', 2.5)):.2f})", mint=p["mint"])
+            else:
+                self._event("skip", f"{p['symbol']}: no real buy - {why}", mint=p["mint"])
         return True
 
     # ------------------------------------------------------------------ exits
     def _sell(self, p, frac, reason, px, ts):
+        if p.get("real") and self.live is not None:
+            self.live.strategy_sell("lookalike", p["mint"], 1.0 if frac >= 0.999 else frac, reason)
         qty = p["tokens"] if frac >= 0.999 else p["tokens"] * frac
         got = self._sell_value(qty, px)
         p["tokens"] -= qty
@@ -423,6 +451,9 @@ class Lookalike:
         ups = sum(1 for x in cl if "2x" in x["stages"])
         return dict(
             enabled=self.enabled(), active=self.active, size_usd=c.get("size_usd", 2.5),
+            real_enabled=bool(c.get("real_enabled")), real_size_usd=c.get("real_size_usd", 2.5),
+            real_max_open=c.get("real_max_open", 20), real_daily_loss_usd=c.get("real_daily_loss_usd", 25),
+            real_today_usd=round(self.live.realized_today_usd("lookalike"), 2) if self.live is not None else None,
             entry_mcap_sol=c.get("entry_mcap_sol", 44), sol_usd=usd, last_error=self.last_error,
             open=len(live_pos), closed=len(cl), wins=len(wins),
             win_rate=round(len(wins) / len(cl) * 100, 1) if cl else None,

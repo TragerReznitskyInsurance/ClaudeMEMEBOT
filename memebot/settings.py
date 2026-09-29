@@ -68,6 +68,10 @@ SCHEMA = [
         {"path": "lookalike.tp10_sell_pct", "label": "Partial sell #2 amount (of what's left)", "unit": "%", "type": "float"},
         {"path": "lookalike.moon_mult", "label": "Sell everything at", "unit": "x", "type": "float"},
         {"path": "lookalike.max_open", "label": "Max open paper positions", "type": "int"},
+        {"path": "lookalike.real_enabled", "label": "REAL MONEY: also trade it for real", "type": "bool"},
+        {"path": "lookalike.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
+        {"path": "lookalike.real_max_open", "label": "Max real coins open", "type": "int"},
+        {"path": "lookalike.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
     ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},

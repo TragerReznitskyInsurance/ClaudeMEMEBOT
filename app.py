@@ -59,6 +59,7 @@ class Runner:
         self.lookalike = Lookalike(os.path.join(HERE, "data"),
                                    lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                    lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.lookalike.live = self.live
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
 
     def name_targets(self):

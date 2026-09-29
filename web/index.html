@@ -966,6 +966,11 @@ function renderLookalike() {
     <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>
     <td class="r num ${cls(L.realized)}">${$u(L.realized) || signed(L.realized, 4)}</td><td class="r num ${cls(L.open_pnl)}">${$u(L.open_pnl) || signed(L.open_pnl, 4)}</td><td class="r num ${cls(tot)}"><b>${$u(tot) || signed(tot, 4)}</b></td></tr></table>`;
   if (L.last_error) h += `<div class="faint" style="font-size:12px;color:var(--warn)">Price check error: ${esc(L.last_error)}</div>`;
+  const RW = (LIVE?.per_wallet || {})["Lookalike"];
+  h += L.real_enabled
+    ? `<div class="notice" style="margin:4px 0 10px;background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>💵</span><div style="flex:1"><b style="color:var(--down)">REAL MONEY ON</b> · $${L.real_size_usd} per coin · max ${L.real_max_open} open · stops buying after −$${L.real_daily_loss_usd} in a day
+        <div class="num" style="font-size:12.5px;margin-top:3px">Real so far: ${RW ? `${RW.open} open · ${RW.closed} closed (${RW.wins}W) · realized <b class="${cls(RW.realized)}">${RW.realized_usd != null ? (RW.realized_usd < 0 ? "−$" : "$") + Math.abs(RW.realized_usd).toFixed(2) : signed(RW.realized, 4) + " SOL"}</b>${RW.open && RW.open_value != null ? ` · open worth ${$u(RW.open_value)}` : ""}` : "no real trades yet"} · today ${L.real_today_usd != null ? (L.real_today_usd < 0 ? "−$" : "$") + Math.abs(L.real_today_usd).toFixed(2) : "—"}</div></div></div>`
+    : `<div class="faint" style="font-size:12px;margin:2px 0 8px">Paper only. Turn on "REAL MONEY: also trade it for real" in Settings → Lookalike to mirror these trades with real SOL.</div>`;
   if (lkOpen) {
     const stage = p => p.stages.includes("10x") ? "past 10x" : p.stages.includes("6x") ? "past 6x · floor at entry" : p.stages.includes("2x") ? "initial out · free ride" : "stop at −30%";
     if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Now</th><th class="r">Peak</th><th>Stage</th><th class="r">Worth</th><th class="r">Held</th></tr></thead><tbody>

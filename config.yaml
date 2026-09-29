@@ -65,6 +65,11 @@ lookalike:
   tp10_mult: 10
   tp10_sell_pct: 25
   moon_mult: 100                       # full exit
+  # REAL MONEY for this strategy (uses the trading wallet; mirrors every paper buy/sale above)
+  real_enabled: false
+  real_size_usd: 2.5                   # real buy per coin
+  real_max_open: 20                    # max real lookalike coins open at once
+  real_daily_loss_usd: 25              # stop real lookalike buys for the day after losing this much
 
 # ── REAL MONEY copy trading ─────────────────────────────────────
 # Uses a dedicated trading wallet created in the dashboard (key stays in data/trading_wallet.json).

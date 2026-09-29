@@ -43,7 +43,12 @@ LAMPORTS = 1_000_000_000
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
 
+STRATEGY_TAGS = {"lookalike": "Lookalike"}      # real positions opened by our own strategies (not copies)
+
+
 def _short(w):
+    if w in STRATEGY_TAGS:
+        return STRATEGY_TAGS[w]
     return "untracked" if w == "unknown" else w[:4] + "…" + w[-4:]
 
 
@@ -384,6 +389,50 @@ class LiveTrader:
         self.ignored.discard(mint)
         self._save()
         asyncio.get_running_loop().create_task(self._buy(mint))
+
+    # ------------------------------------------------------------------ our own strategies (lookalike)
+    def realized_today_usd(self, tag):
+        day = time.strftime("%Y-%m-%d")
+        return sum(c.get("pnl_usd") or 0 for c in self.closed
+                   if c.get("wallet") == tag and time.strftime("%Y-%m-%d", time.localtime(c["closed"])) == day)
+
+    def open_strategy(self, tag, mint, symbol, usd, max_open, daily_loss_usd):
+        """Real buy for a strategy signal. Returns None if placed, else the reason it was skipped."""
+        if not (self.active and self.kp is not None and self._hkey()):
+            return "real money not ready (no wallet / Helius key / not running)"
+        if self.paused:
+            return "real buys are paused"
+        if mint in self.positions:
+            return "already holding this coin"
+        size = self._sol(usd)
+        if not size:
+            return "no SOL price yet"
+        op = [p for p in self.positions.values() if p["wallet"] == tag]
+        if len(op) >= max_open:
+            return f"{len(op)} real {STRATEGY_TAGS.get(tag, tag)} positions open (max {max_open})"
+        lost = self.realized_today_usd(tag)
+        if daily_loss_usd and lost <= -daily_loss_usd:
+            return f"daily loss limit hit (${lost:.2f} today, limit ${daily_loss_usd:g})"
+        if self.balance is not None and self.balance < size + RESERVE_SOL:
+            return f"trading wallet balance too low ({self.balance:.4f} SOL)"
+        self.positions[mint] = dict(mint=mint, symbol=symbol or mint[:5], wallet=tag, status="buying", size=size,
+                                    sol_in=0.0, sol_out=0.0, tokens=0.0, tokens_bought=0.0, opened=time.time(),
+                                    queued_sell=0.0, sigs=[], wallet_sol=0.0, wallet_px=None)
+        self.ignored.discard(mint)
+        self._save()
+        asyncio.get_running_loop().create_task(self._buy(mint))
+        return None
+
+    def strategy_sell(self, tag, mint, frac, reason):
+        """Mirror a strategy's sale (same share of what's left) on the real position."""
+        p = self.positions.get(mint)
+        if not p or p["wallet"] != tag:
+            return
+        if p["status"] in ("buying", "waiting"):
+            p["queued_sell"] = 1 - (1 - p["queued_sell"]) * (1 - frac)
+            self._save()
+            return
+        asyncio.get_running_loop().create_task(self._sell(mint, frac, reason))
 
     def on_copy_sell(self, wallet, mint, frac):
         p = self.positions.get(mint)
