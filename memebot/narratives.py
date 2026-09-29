@@ -51,6 +51,8 @@ X3_MCAP = ENTRY_MCAP * 3          # "3x" = 44 -> 132 SOL
 X6_MCAP = ENTRY_MCAP * 6          # "6x" = 44 -> 264 SOL
 TRACK_H = 6                       # after 44 SOL, keep reading the coin on-chain this long
 METRICS = ("hit44", "hit80", "hit3x", "hit6x", "grad")
+INSTANT_GRAD_S = 180              # graduating this soon after launch = creator bought the curve out (bundled setup)
+MAYHEM_OFFSET = 81                # pump.fun BondingCurve.is_mayhem_mode (1 byte, added after the 32-byte creator)
 
 
 def words(name: str, symbol: str) -> set[str]:
@@ -78,6 +80,7 @@ class Narratives:
         self.buckets: dict[int, dict] = {}      # hour -> {key: {launch, grad, watched, hit44, hit80, hit3x}}
         self.mints: dict[str, dict] = {}        # mint -> {ts, keys, name, symbol, hits: {field: ts}, peak} (48 h)
         self.last_error = ""
+        self.early_grads: dict[str, float] = {}   # graduation seen before its launch message (same transaction)
         self.dirty = False
         self.last_save = 0.0
         self._cache, self._cache_ts = None, 0.0
@@ -95,6 +98,22 @@ class Narratives:
                 self.mints[m] = v
         except (OSError, ValueError):
             pass
+        for m, v in list(self.mints.items()):             # clean data recorded before these checks existed
+            g = v["hits"].get("grad")
+            if g is not None and g - v["ts"] < INSTANT_GRAD_S and not v.get("excluded"):
+                v["excluded"] = "instant graduation"
+        self._rebuild()
+
+    def _rebuild(self):
+        """Hourly totals are always re-derived from the per-coin records on start, so they can't drift."""
+        self.buckets = {}
+        for v in self.mints.values():
+            if v.get("excluded"):
+                continue
+            self._bump(v["ts"], v["keys"], "launch")
+            for field, t in v["hits"].items():
+                self._bump(t, v["keys"], field)
+        self.dirty = False
 
     def save(self, force=False):
         now = time.time()
@@ -134,18 +153,48 @@ class Narratives:
         keys = [f"g:{g}" for g in groups] + [f"w:{w}" for w in ws]
         self.mints[mint] = dict(ts=ts, keys=keys, name=str(name or "")[:40], symbol=str(symbol or "")[:14], hits={}, peak=0.0)
         self._bump(ts, keys, "launch")
+        if mint in self.early_grads:                       # graduated in its own launch transaction
+            self.early_grads.pop(mint)
+            self._exclude(mint, "instant graduation")
 
     def _event(self, mint, ts, field):
         v = self.mints.get(mint)
-        if not v or field in v["hits"]:
+        if not v or field in v["hits"] or v.get("excluded"):
             return
-        v["hits"][field] = round(ts)
+        v["hits"][field] = int(ts)
         self._bump(ts, v["keys"], field)
+
+    def _exclude(self, mint, reason):
+        """Take a coin out of every count (bundled instant graduations, mayhem mode, not pump.fun)."""
+        v = self.mints.get(mint)
+        if not v or v.get("excluded"):
+            return
+        for field, t in [("launch", v["ts"])] + list(v["hits"].items()):
+            b = self.buckets.get(int(t // HOUR))
+            if not b:
+                continue
+            for k in v["keys"] + ["*"]:
+                row = b.get(k)
+                if row and row.get(field):
+                    row[field] -= 1
+                    if row[field] <= 0:
+                        row.pop(field)
+                    if not row:
+                        b.pop(k)
+        v["excluded"] = reason
+        self.dirty = True
+        self._cache_ts = 0.0
 
     def on_graduate(self, mint, ts):
         v = self.mints.get(mint)
-        if v:
-            self._check_levels(mint, v, max(v.get("peak", 0.0), 410.0), ts)   # graduating means it passed 80 / 3x / 6x
+        if not v:
+            self.early_grads[mint] = ts                    # launch message may still be on its way
+            for m in [m for m, t in self.early_grads.items() if ts - t > 600]:
+                self.early_grads.pop(m)
+            return
+        if ts - v["ts"] < INSTANT_GRAD_S:
+            return self._exclude(mint, "instant graduation")
+        self._check_levels(mint, v, max(v.get("peak", 0.0), 410.0), ts)   # graduating means it passed 80 / 3x / 6x
         self._event(mint, ts, "grad")
 
     def on_watched(self, mint, ts):
@@ -169,31 +218,60 @@ class Narratives:
             self._event(mint, ts, "hit6x")
 
     # ------------------------------------------------------------------ on-chain follow-up after 44 SOL
-    async def track(self):
-        """Coins that passed 44 SOL keep being read from their curve (batched) for TRACK_H hours,
-        so runs that happen after the bot stopped watching still count."""
+    async def _curves(self, mints):
+        """[(mint, raw bonding-curve bytes or None)] for up to 100 coins per call."""
         key = self._key()
-        now = time.time()
-        todo = [m for m, v in self.mints.items() if "hit44" in v["hits"] and "grad" not in v["hits"]
-                and "hit6x" not in v["hits"] and now - v["hits"]["hit44"] < TRACK_H * HOUR]
-        if not key or not todo:
-            return
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
-        for i in range(0, len(todo), 100):
-            chunk = todo[i:i + 100]
-            try:
-                addrs = [curve_address(m) for m in chunk]
-            except ValueError:
+        out = []
+        for i in range(0, len(mints), 100):
+            chunk, addrs = [], []
+            for m in mints[i:i + 100]:
+                try:
+                    addrs.append(curve_address(m))
+                    chunk.append(m)
+                except ValueError:
+                    out.append((m, None))
+            if not chunk:
                 continue
             async with self.session.post(RPC.format(key=key), json={"jsonrpc": "2.0", "id": 1, "method": "getMultipleAccounts",
                                                                    "params": [addrs, {"encoding": "base64", "commitment": "confirmed"}]},
                                          timeout=aiohttp.ClientTimeout(total=15)) as r:
                 j = await r.json(content_type=None)
             for m, acc in zip(chunk, (j.get("result") or {}).get("value") or []):
-                if not acc:
+                out.append((m, base64.b64decode(acc["data"][0]) if acc else None))
+        return out
+
+    async def check_launches(self):
+        """Every new launch is read once on-chain: mayhem-mode coins and coins without a pump.fun curve are excluded."""
+        now = time.time()
+        todo = [m for m, v in self.mints.items() if not v.get("chk") and not v.get("excluded") and now - v["ts"] > 20][:1500]
+        if not self._key() or not todo:
+            return
+        for m, data in await self._curves(todo):
+            v = self.mints.get(m)
+            if not v:
+                continue
+            if data is None or len(data) < 49:
+                if now - v["ts"] > 120:                    # give brand-new accounts a moment to be readable
+                    v["chk"] = True
+                    self._exclude(m, "not a pump.fun coin")
+                continue
+            v["chk"] = True
+            if len(data) > MAYHEM_OFFSET and data[MAYHEM_OFFSET] == 1:
+                self._exclude(m, "mayhem mode")
+
+    async def track(self):
+        """Coins that passed 44 SOL keep being read from their curve (batched) for TRACK_H hours,
+        so runs that happen after the bot stopped watching still count."""
+        now = time.time()
+        todo = [m for m, v in self.mints.items() if "hit44" in v["hits"] and "grad" not in v["hits"] and not v.get("excluded")
+                and "hit6x" not in v["hits"] and now - v["hits"]["hit44"] < TRACK_H * HOUR]
+        if not self._key() or not todo:
+            return
+        for m, data in await self._curves(todo):
+                if not data:
                     continue
-                data = base64.b64decode(acc["data"][0])
                 v = self.mints[m]
                 if len(data) >= 49 and data[48]:
                     self._check_levels(m, v, max(v.get("peak", 0.0), 410.0), now)   # graduating passes 80 / 3x / 6x
@@ -209,6 +287,7 @@ class Narratives:
         while True:
             await asyncio.sleep(every)
             try:
+                await self.check_launches()
                 await self.track()
             except asyncio.CancelledError:
                 raise
@@ -225,7 +304,14 @@ class Narratives:
         for m, v in self.mints.items():
             if key and key not in v["keys"]:
                 continue
+            if (metric == "excluded") != bool(v.get("excluded")):
+                continue
             hits = {k: t for k, t in v["hits"].items() if k in METRICS}
+            if metric == "excluded":
+                out.append(dict(mint=m, name=v.get("name", ""), symbol=v.get("symbol", ""), launched=round(v["ts"]),
+                                hits=hits, peak_mcap=round(v.get("peak", 0.0), 1), last=v["ts"], excluded=v["excluded"],
+                                themes=[k[2:] for k in v["keys"] if k.startswith("g:")]))
+                continue
             if metric and metric not in hits:
                 continue
             if not hits and not (key and metric == "launch"):
@@ -295,6 +381,7 @@ class Narratives:
         busiest = sorted(wrows, key=lambda r: -r["launches_24h"])[:top]
         return dict(
             computed_at=round(time.time()),
+            excluded=self._excluded_24h(),
             hours=hours_seen, launches_24h=tot24.get("launch", 0), grads_24h=tot24.get("grad", 0),
             hit44_24h=tot24.get("hit44", 0), hit80_24h=tot24.get("hit80", 0), hit3x_24h=tot24.get("hit3x", 0),
             hit6x_24h=tot24.get("hit6x", 0),
@@ -305,6 +392,14 @@ class Narratives:
             groups=groups, hot=hot, rising=rising, busiest=busiest,
             new=[r for r in wrows if r["new"]][:top],
         )
+
+    def _excluded_24h(self):
+        cut = time.time() - 24 * HOUR
+        out = defaultdict(int)
+        for v in self.mints.values():
+            if v.get("excluded") and v["ts"] >= cut:
+                out[v["excluded"]] += 1
+        return dict(out)
 
     def themes_of(self, mint):
         v = self.mints.get(mint)

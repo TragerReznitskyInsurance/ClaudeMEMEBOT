@@ -143,7 +143,7 @@ class Reclaim(Lookalike):
                 continue
             age = now - cd["created"]
             price, src = px.get(m, (None, None))
-            if age > float(c.get("max_age_h", 6)) * 3600 or src == "jupiter":
+            if age > float(c.get("max_age_h", 6)) * 3600 or src in ("jupiter", "mayhem"):
                 self.cands.pop(m, None)                    # too old, or graduated off the curve
                 continue
             if price is None:

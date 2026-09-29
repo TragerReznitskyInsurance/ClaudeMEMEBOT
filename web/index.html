@@ -992,7 +992,7 @@ function renderStrat(el, L, title) {
 
 /* ── narratives ───────────────────────────── */
 let nrOpen = true, nrTab = "hot", nrSel = null, nrMetric = "", nrCoins = null, nrLoading = false, nrLoadedAt = 0, nrVer = 0, nrSig = "";
-const NR_METRICS = [["", "Any milestone"], ["hit80", "Hit 80 SOL"], ["hit3x", "3× from 44"], ["hit6x", "6× from 44"], ["grad", "Graduated"]];
+const NR_METRICS = [["", "Any milestone"], ["hit80", "Hit 80 SOL"], ["hit3x", "3× from 44"], ["hit6x", "6× from 44"], ["grad", "Graduated"], ["excluded", "🚫 Excluded"]];
 const NR_BADGE = {hit44: ["44 SOL", "gray"], hit80: ["80 SOL", "brand"], hit3x: ["3×", "up"], hit6x: ["6×", "up"], grad: ["graduated", "warn"]};
 async function nrLoad() {
   nrLoading = true; renderNarratives();
@@ -1014,7 +1014,7 @@ function nrCoinList() {
   if (!nrCoins.length) return h + `<div class="faint" style="font-size:12.5px">No coins yet for this filter.</div></div></div>`;
   h += `<div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Coin</th><th>Milestones</th><th class="r">Peak seen</th><th class="r">Launched</th><th class="r">Latest milestone</th></tr></thead><tbody>
     ${nrCoins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol || c.mint.slice(0, 6))}</b> <span class="ext">↗</span></a>${c.name && c.name !== c.symbol ? `<div class="faint" style="font-size:11.5px">${esc(c.name)}</div>` : ""}</td>
-      <td>${["hit44", "hit80", "hit3x", "hit6x", "grad"].filter(k => c.hits[k]).map(k => `<span class="badge ${NR_BADGE[k][1]}" style="margin-right:3px">${NR_BADGE[k][0]}</span>`).join("")}</td>
+      <td>${c.excluded ? `<span class="badge down">${esc(c.excluded)}</span>` : ["hit44", "hit80", "hit3x", "hit6x", "grad"].filter(k => c.hits[k]).map(k => `<span class="badge ${NR_BADGE[k][1]}" style="margin-right:3px">${NR_BADGE[k][0]}</span>`).join("")}</td>
       <td class="r num">${c.peak_mcap ? `${Math.round(c.peak_mcap)} SOL${META?.sol_usd ? `<div class="faint" style="font-size:11px">${usd(c.peak_mcap * META.sol_usd)}</div>` : ""}` : "—"}</td>
       <td class="r num faint">${new Date(c.launched * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}</td>
       <td class="r num faint">${new Date(c.last * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}</td></tr>`).join("")}</tbody></table></div>`;
@@ -1032,7 +1032,7 @@ function renderNarratives() {
   const x = v => v == null ? "—" : v.toFixed(v >= 10 ? 0 : 1) + "×";
   const cnt = (n, pct, of) => n ? `${n} <span class="faint">(${pct}%${of ? " of " + of : ""})</span>` : `<span class="faint">0</span>`;
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔥 Narratives</h2>
-    <span class="faint" style="font-size:12px">${N.launches_24h.toLocaleString()} launches · ${N.hit44_24h ?? 0} hit 44 SOL · ${N.hit3x_24h ?? 0} went 3× · ${N.hit6x_24h ?? 0} went 6× · ${N.grads_24h} graduated (${N.base_grad_rate_pct ?? "—"}%) · last ${N.hours}h</span>
+    <span class="faint" style="font-size:12px">${N.launches_24h.toLocaleString()} launches · ${N.hit44_24h ?? 0} hit 44 SOL · ${N.hit3x_24h ?? 0} went 3× · ${N.hit6x_24h ?? 0} went 6× · ${N.grads_24h} graduated (${N.base_grad_rate_pct ?? "—"}%) · last ${N.hours}h${N.excluded && Object.keys(N.excluded).length ? ` · <span title="Left out of every count above. See them under 🏁 Coins → 🚫 Excluded">🚫 excluded: ${Object.entries(N.excluded).map(([k, v]) => `${v} ${esc(k)}`).join(", ")}</span>` : ""}</span>
     <div class="rm-actions"><button class="btn" onclick="nrOpen=!nrOpen;renderNarratives()">${nrOpen ? "Hide" : "Show"}</button></div></div>`;
   if (nrOpen) {
     h += `<div class="card-b"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs.map(([k, t]) => `<button class="btn" style="padding:4px 10px;font-size:12px;${k === nrTab ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="nrTab='${k}';${k === "coins" ? "nrSel='*';nrLoad()" : "renderNarratives()"}">${t}</button>`).join("")}</div>`;

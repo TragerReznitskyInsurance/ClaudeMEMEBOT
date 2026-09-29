@@ -227,7 +227,7 @@ class Lookalike:
         on_curve = src in ("curve", "feed")                # 'feed' is only returned when the curve exists and agrees
         if not on_curve or not (0.7 <= px / p["entry_px"] <= 1.3):
             self.positions.pop(p["mint"], None)
-            why = "not a pump.fun bonding-curve coin" if not on_curve else \
+            why = "Mayhem-mode coin (not traded)" if src == "mayhem" else "not a pump.fun bonding-curve coin" if not on_curve else \
                 f"on-chain price didn't match the feed ({px / p['entry_px']:.2f}x)"
             self._event("skip", f"{p['symbol']}: skipped - {why}", mint=p["mint"])
             log.info("%s skipped %s: %s", self.NAME.upper(), p["symbol"], why)
@@ -362,6 +362,9 @@ class Lookalike:
                 data = base64.b64decode(acc["data"][0]) if acc else b""
                 if len(data) < 49:
                     continue                               # no pump.fun curve: never trust another source
+                if len(data) > 81 and data[81] == 1:
+                    out[m] = (0.0, "mayhem")               # mayhem-mode coin (different supply): not traded
+                    continue
                 if data[48]:
                     grads.append(m)                        # graduated: priced from its pool via Jupiter
                     continue

@@ -559,7 +559,7 @@ SAFE_EXCLUDE = {"trading_wallet.json"}             # never leaves the computer
 async def api_narrative_coins(request):
     q = request.rel_url.query
     key, metric = q.get("key") or None, q.get("metric") or None
-    if metric and metric not in ("hit44", "hit80", "hit3x", "hit6x", "grad", "launch"):
+    if metric and metric not in ("hit44", "hit80", "hit3x", "hit6x", "grad", "launch", "excluded"):
         return web.json_response({"error": "bad metric"}, status=400)
     return web.json_response({"coins": runner.narr.coins(key, metric, limit=int(q.get("limit", 200)))})
 
