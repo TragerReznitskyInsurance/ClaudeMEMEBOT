@@ -534,6 +534,7 @@ function renderHeader(lost) {
 function renderBody() {
   const hasData = S && (META?.running || S.stats.closed || S.positions.length);
   // notices
+  const silentFeed = META && META.trade_feed_silent_s != null ? `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>📡</span><div><b style="color:var(--down)">No trade data from PumpPortal for ${Math.round(META.trade_feed_silent_s / 60)} min.</b> New coins still arrive, but their trades don't, so nothing can be bought and copied trades only come through the slower on-chain backup. Most likely your PumpPortal data credit is used up: top up the wallet linked to your PumpPortal API key at pumpportal.fun, then restart.</div></div>` : "";
   let n = "";
   if (META && !META.has_key && !(META.running && META.mode === "demo") && hasData)
     n = `<div class="notice"><span>🔑</span><div><b>No API key.</b> Live mode can see launches but not their trades, so it can't find entries.</div><button class="btn" onclick="openDrawer(true)">Add key</button></div>`;
@@ -562,7 +563,7 @@ function renderBody() {
     n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div style="flex:1;min-width:0"><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${detail}${board}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}${backup}${snapLine}</div></div>`;
   }
   if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
-  $("#notice").innerHTML = n;
+  $("#notice").innerHTML = silentFeed + n;
 
   if (!hasData) { $("#dash").hidden = true; renderHero(); return; }
   $("#hero").innerHTML = ""; $("#dash").hidden = false;

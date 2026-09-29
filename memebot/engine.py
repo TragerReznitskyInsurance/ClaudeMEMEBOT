@@ -11,6 +11,7 @@ import csv
 import json
 import logging
 import os
+import time
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -214,6 +215,7 @@ class Engine:
         self.chain = None                          # ChainBackup (live mode with a Helius key)
         self.live = None                           # LiveTrader (real-money copies), live mode only
         self.snaps = None                          # SnapshotRecorder (lookalike research), live mode only
+        self.last_feed_trade_ts = 0.0              # last trade message from the live feed (wall clock)
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
@@ -263,6 +265,8 @@ class Engine:
         elif tx in ("buy", "sell"):
             self.day_trade_msgs += 1
             self.total_trade_msgs += 1
+            if not ev.get("_chain"):
+                self.last_feed_trade_ts = time.time()     # wall clock: is PumpPortal still sending trades?
             self._on_trade(ev, ts)
 
     def on_tick(self, ts: float):

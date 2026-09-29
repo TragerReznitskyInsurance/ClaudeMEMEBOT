@@ -101,7 +101,18 @@ class Runner:
                     rugcheck_on_error=self.cfg["security"].get("rugcheck_on_error", "skip"),
                     rugcheck_errors=getattr(self.screener, "stats", {}).get("error", 0),
                     rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
-                    rugcheck_last_error=getattr(self.screener, "last_error", ""))
+                    rugcheck_last_error=getattr(self.screener, "last_error", ""),
+                    trade_feed_silent_s=self.trade_feed_silent())
+
+    def trade_feed_silent(self):
+        """Seconds the live feed has been connected and watching coins without sending one trade (None = fine)."""
+        eng = self.engine
+        if self.mode != "live" or not self.running or not self.connected or eng is None:
+            return None
+        watching = sum(1 for t in eng.tokens.values() if t.status == "watching")
+        since = max(eng.last_feed_trade_ts, self.started_at or 0)
+        silent = time.time() - since
+        return round(silent) if watching >= 5 and silent > 300 else None
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self, mode: str, speed: int = 3):
