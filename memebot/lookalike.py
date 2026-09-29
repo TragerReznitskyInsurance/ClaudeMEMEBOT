@@ -33,6 +33,26 @@ from memebot.chain import JUP_PRICE, curve_address, parse_curve
 log = logging.getLogger("memebot")
 RPC = "https://mainnet.helius-rpc.com/?api-key={key}"
 SUPPLY = 1_000_000_000
+K = 30.0 * 1_073_000_000          # pump.fun bonding curve: virtual SOL x virtual tokens (constant product)
+CURVE_MAX_MCAP = 450.0            # above this the coin has graduated to a pool: use a flat price instead
+
+
+def curve_buy(sol_net, px):
+    """Tokens received for `sol_net` SOL at spot price `px`, including the buy's own price impact."""
+    if px * SUPPLY > CURVE_MAX_MCAP:
+        return sol_net / px
+    vs = (px * K) ** 0.5
+    vt = K / vs
+    return vt - K / (vs + sol_net)
+
+
+def curve_sell(tokens, px):
+    """SOL received for selling `tokens` at spot price `px`, including the sale's own price impact."""
+    if px * SUPPLY > CURVE_MAX_MCAP:
+        return tokens * px
+    vs = (px * K) ** 0.5
+    vt = K / vs
+    return vs - K / (vt + tokens)
 
 
 class Lookalike:
@@ -102,7 +122,7 @@ class Lookalike:
 
     def _sell_value(self, tokens, px):
         fee, slip, prio = self._x()
-        return max(tokens * px * (1 - slip) * (1 - fee) - prio, 0.0)
+        return max(curve_sell(tokens, px) * (1 - slip) * (1 - fee) - prio, 0.0)
 
     # ------------------------------------------------------------------ entry (called by the engine)
     def maybe_enter(self, t, prev_mcap, ts):
@@ -126,8 +146,7 @@ class Lookalike:
             return True
         size = float(c.get("size_usd", 2.5)) / usd
         fee, slip, prio = self._x()
-        fill_px = t.price * (1 + slip)
-        tokens = size * (1 - fee) / fill_px
+        tokens = curve_buy(size * (1 - fee), t.price) * (1 - slip)     # bigger buys pay more price impact
         self.positions[t.mint] = dict(
             mint=t.mint, symbol=t.symbol, name=t.name, opened=ts, entry_px=t.price, entry_mcap=round(t.mcap, 1),
             age_at_entry_s=round(ts - t.created_ts), sol_in=size + prio, sol_out=0.0, tokens=tokens,
@@ -192,10 +211,18 @@ class Lookalike:
             return self._sell(p, 1.0, f"{c.get('moon_mult', 100):g}x - full exit", px, ts)
         if mult >= float(c.get("tp_initial_mult", 2)) and "2x" not in done:
             done.append("2x")
-            fee, slip, prio = self._x()
-            gross = p["tokens"] * px * (1 - slip) * (1 - fee)            # before this sale's network fee
-            need = max(p["sol_in"] - p["sol_out"], 0.0) + prio
-            frac = min(1.0, need / gross) if gross > 0 else 1.0
+            need = max(p["sol_in"] - p["sol_out"], 0.0)
+            if self._sell_value(p["tokens"], px) <= need:
+                frac = 1.0
+            else:                                                       # smallest share that brings the initial back
+                lo, hi = 0.0, 1.0
+                for _ in range(40):
+                    mid = (lo + hi) / 2
+                    if self._sell_value(p["tokens"] * mid, px) >= need:
+                        hi = mid
+                    else:
+                        lo = mid
+                frac = hi
             self._sell(p, frac, "2x - initial back", px, ts)
             if p["mint"] not in self.positions:
                 return
