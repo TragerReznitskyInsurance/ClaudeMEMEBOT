@@ -29,6 +29,7 @@ from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
+from memebot.lookalike_grad import LookalikeGrad
 from memebot.narratives import Narratives
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
@@ -62,6 +63,9 @@ class Runner:
                                    lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                    lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.lookalike.live = self.live
+        self.lookalike_grad = LookalikeGrad(os.path.join(HERE, "data"),
+                                            lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
+                                            lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -73,6 +77,7 @@ class Runner:
         out = self.live.name_targets()
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
+        out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
         return list(dict.fromkeys(out))
@@ -81,6 +86,7 @@ class Runner:
         self.live.rename(mint, info["symbol"], info.get("name", ""))
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
+        self.lookalike_grad.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
@@ -171,6 +177,9 @@ class Runner:
             self.lookalike.feed_price = feed_price
             self.reclaim.active = True
             self.reclaim.feed_price = feed_price
+            self.lookalike_grad.active = True
+            self.lookalike_grad.feed_price = feed_price
+            eng.lookalike_grad = self.lookalike_grad
             eng.reclaim = self.reclaim
             eng.narr = self.narr
             for m in list(self.live.positions):
@@ -193,6 +202,7 @@ class Runner:
         self.live.active = False
         self.lookalike.active = False
         self.reclaim.active = False
+        self.lookalike_grad.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -288,6 +298,7 @@ class Runner:
         cw = self.engine.copy_wallets() if self.engine else set()
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
                 "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
+                "lookalike_grad": self.lookalike_grad.state(),
                 "narratives": self.narr.state()}
 
 
@@ -334,6 +345,7 @@ async def broadcaster(app):
     live_px_task = asyncio.create_task(runner.live.price_loop())
     lk_task = asyncio.create_task(runner.lookalike.run())
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
+    lg_task = asyncio.create_task(runner.lookalike_grad.run())
     nr_task = asyncio.create_task(runner.narr.run())
     yield
     task.cancel()
@@ -343,6 +355,8 @@ async def broadcaster(app):
     live_px_task.cancel()
     lk_task.cancel()
     rc_task.cancel()
+    lg_task.cancel()
+    await runner.lookalike_grad.close()
     nr_task.cancel()
     await runner.narr.close()
     await runner.lookalike.close()
@@ -576,7 +590,8 @@ async def api_diagnostics(request):
         for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl",
                      "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
-                     "narratives.json"):
+                     "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
+                     "lookalike_grad_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

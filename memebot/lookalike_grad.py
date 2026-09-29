@@ -1,0 +1,70 @@
+"""
+"Lookalike · graduation exit" paper test - the SAME entries as the lookalike (a watched coin rising
+through 44 SOL mcap, 5+ min old), with an exit plan built around pump.fun graduation (~410 SOL mcap),
+modelled on how wallet #1 cashes out its big winners (mostly on the curve at 343-390 SOL, the rest after
+graduation on PumpSwap).
+
+Exit (multiples of the entry price; market caps in SOL):
+  - before 3x: stop at -stop_pct (30%) -> sell everything
+  - 3x: sell tp_pct (1/3)
+  - after 3x: trailing stop trail_pct (35%) below the highest price since the buy
+  - graduation zone (mcap >= zone_mcap_sol, 350 ~ 8x): sell zone_sell_pct (2/3) of what is left, on the curve,
+    before the migration dump - also done at the first reading after graduation if the zone was jumped
+  - the rest (moonbag): trailing stop moon_trail_pct (25%) below its high; after graduation it is also sold
+    if the price falls below the graduation price
+  - time limit max_hold_h (48 h)
+"""
+from __future__ import annotations
+
+from memebot.lookalike import Lookalike
+
+SUPPLY = 1_000_000_000
+GRAD_MCAP = 410.0
+
+
+class LookalikeGrad(Lookalike):
+    NAME = "lookalike_grad"
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        p["last_px"], p["last_px_ts"] = px, ts
+        mult = px / p["entry_px"]
+        p["peak_mult"] = max(p["peak_mult"], mult)
+        done = p["done"]
+        graduated = p.get("src") == "jupiter"
+        mcap = px * SUPPLY
+        if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:
+            return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 48):g}h", px, ts)
+        if "zone" in done:                                   # moonbag
+            p["moon_peak"] = max(p.get("moon_peak", mult), mult)
+            if mult <= p["moon_peak"] * (1 - float(c.get("moon_trail_pct", 25)) / 100):
+                return self._sell(p, 1.0, f"moonbag trailing stop ({p['moon_peak']:.1f}x high)", px, ts)
+            if graduated and mcap < float(c.get("grad_floor_mcap_sol", GRAD_MCAP)):
+                return self._sell(p, 1.0, "moonbag fell below the graduation price", px, ts)
+            return
+        if "3x" not in done:
+            if mult <= 1 - float(c.get("stop_pct", 30)) / 100:
+                return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 30):g}%", px, ts)
+        elif mult <= p["peak_mult"] * (1 - float(c.get("trail_pct", 35)) / 100):
+            return self._sell(p, 1.0, f"trailing stop ({p['peak_mult']:.1f}x high)", px, ts)
+        if mult >= float(c.get("tp_mult", 3)) and "3x" not in done:
+            done.append("3x")
+            self._sell(p, float(c.get("tp_pct", 33.3)) / 100, f"{c.get('tp_mult', 3):g}x - sold a third", px, ts)
+            if p["mint"] not in self.positions:
+                return
+        if (mcap >= float(c.get("zone_mcap_sol", 350)) or graduated) and "zone" not in done:
+            done.append("zone")
+            p["moon_peak"] = mult
+            where = "after graduation" if graduated else f"graduation zone {mcap:.0f} SOL"
+            self._sell(p, float(c.get("zone_sell_pct", 66.7)) / 100, f"{where} - sold 2/3 of the rest", px, ts)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, desc=(f"Same entries as the lookalike ({c.get('entry_mcap_sol', 44)} SOL, ${c.get('size_usd', 2.5)}) · "
+                                       f"exit: ⅓ at {c.get('tp_mult', 3):g}x, trail {c.get('trail_pct', 35):g}%, "
+                                       f"⅔ of the rest at {c.get('zone_mcap_sol', 350):g} SOL (before graduation), moonbag rides"))
+        for pos, p in zip(s["positions"], [self.positions.get(x["mint"]) for x in s["positions"]]):
+            if p:
+                pos["graduated"] = p.get("src") == "jupiter"
+        return s

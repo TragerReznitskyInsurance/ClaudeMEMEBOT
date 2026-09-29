@@ -415,6 +415,8 @@ class Lookalike:
                     price, src = 0.0, "none"
                 if not self._verify(p, price, src, now):
                     continue
+            if p and src:
+                p["src"] = src                                 # 'jupiter' = graduated (priced from its PumpSwap pool)
             if p and price and price > 0 and self._accept(p, price, now):
                 self.check(p, price, now)
         self._save()
@@ -471,7 +473,7 @@ class Lookalike:
             best=max(cl, key=lambda x: x["pnl_pct"], default=None),
             positions=sorted([dict(mint=p["mint"], symbol=p["symbol"], name=p.get("name", ""),
                                    mult=round(p["last_px"] / p["entry_px"], 2), peak=round(p["peak_mult"], 2),
-                                   floor=round(p["floor_mult"], 2), stages=p["done"], entry_mcap=p["entry_mcap"],
+                                   floor=round(p.get("floor_mult", 0.0), 2), stages=p["done"], entry_mcap=p["entry_mcap"],
                                    age_min=round((time.time() - p["opened"]) / 60),
                                    value=round(self._sell_value(p["tokens"], p["last_px"]), 6),
                                    cost_left=round(p["sol_in"] - p["sol_out"], 6))

@@ -375,6 +375,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <div id="notice"></div>
   <section id="realmoney"></section>
   <section id="lookalike"></section>
+  <section id="lookalike_grad"></section>
   <section id="reclaim"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
@@ -441,7 +442,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let LIVE = null, LK = null, RC = null, NR = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+let LIVE = null, LK = null, LG = null, RC = null, NR = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
 
 /* theme */
 try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -503,13 +504,13 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; RC = j.reclaim; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderReclaim(); renderNarratives(); }
+function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderLookalikeGrad(); renderReclaim(); renderNarratives(); }
 
 function renderHeader(lost) {
   const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
@@ -954,7 +955,8 @@ function renderLab() {
 
 
 /* ── lookalike paper test ─────────────────── */
-const stratOpen = {lookalike: true, reclaim: true};
+const stratOpen = {lookalike: true, reclaim: true, lookalike_grad: true};
+function renderLookalikeGrad() { renderStrat($("#lookalike_grad"), LG, "🎓 Lookalike · graduation exit"); }
 function renderLookalike() { renderStrat($("#lookalike"), LK, "🧪 Lookalike test"); }
 function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); }
 function renderStrat(el, L, title) {
@@ -976,7 +978,9 @@ function renderStrat(el, L, title) {
         <div class="num" style="font-size:12.5px;margin-top:3px">Real so far: ${RW ? `${RW.open} open · ${RW.closed} closed (${RW.wins}W) · realized <b class="${cls(RW.realized)}">${RW.realized_usd != null ? (RW.realized_usd < 0 ? "−$" : "$") + Math.abs(RW.realized_usd).toFixed(2) : signed(RW.realized, 4) + " SOL"}</b>${RW.open && RW.open_value != null ? ` · open worth ${$u(RW.open_value)}` : ""}` : "no real trades yet"} · today ${L.real_today_usd != null ? (L.real_today_usd < 0 ? "−$" : "$") + Math.abs(L.real_today_usd).toFixed(2) : "—"}</div></div></div>`
     : `<div class="faint" style="font-size:12px;margin:2px 0 8px">Paper only. Turn on "REAL MONEY: also trade it for real" in Settings → Lookalike to mirror these trades with real SOL.</div>`;
   if (stratOpen[L.name]) {
-    const stage = L.name === "reclaim"
+    const stage = L.name === "lookalike_grad"
+      ? p => p.stages.includes("zone") ? (p.graduated ? "moonbag · graduated" : "moonbag · in grad zone") : p.stages.includes("3x") ? `⅓ sold · trailing (${p.peak.toFixed(1)}x high)` : "stop at −30%"
+      : L.name === "reclaim"
       ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : p => p.stages.includes("10x") ? "past 10x" : p.stages.includes("6x") ? "past 6x · floor at entry" : p.stages.includes("2x") ? "initial out · free ride" : "stop at −30%";
     if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Now</th><th class="r">Peak</th><th>Stage</th><th class="r">Worth</th><th class="r">Held</th></tr></thead><tbody>

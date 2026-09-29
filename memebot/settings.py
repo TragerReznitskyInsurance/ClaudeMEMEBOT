@@ -55,6 +55,19 @@ SCHEMA = [
         {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
         {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
     ]},
+    {"group": "Lookalike · graduation exit (paper test)", "items": [
+        {"path": "lookalike_grad.enabled", "label": "Run the graduation-exit paper test", "type": "bool"},
+        {"path": "lookalike_grad.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
+        {"path": "lookalike_grad.size_usd", "label": "Paper size per coin", "unit": "$", "type": "float"},
+        {"path": "lookalike_grad.stop_pct", "label": "Stop loss (before the first take-profit)", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.tp_mult", "label": "First take-profit at", "unit": "x", "type": "float"},
+        {"path": "lookalike_grad.tp_pct", "label": "First take-profit amount", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.trail_pct", "label": "Then trailing stop below the high", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.zone_mcap_sol", "label": "Graduation zone starts at", "unit": "SOL mcap", "type": "float"},
+        {"path": "lookalike_grad.zone_sell_pct", "label": "Sell in the zone (of what's left)", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.moon_trail_pct", "label": "Moonbag trailing stop", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.max_hold_h", "label": "Time limit", "unit": "h", "type": "float"},
+    ]},
     {"group": "Reclaim (paper test)", "items": [
         {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},
         {"path": "reclaim.run_mcap_sol", "label": "First run: coin reached at least", "unit": "SOL mcap", "type": "float"},
@@ -231,5 +244,5 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
-_ORDER = ["Copy trading", "Real money", "Lookalike", "Reclaim", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
+_ORDER = ["Copy trading", "Real money", "Lookalike (", "Lookalike ·", "Reclaim", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

@@ -71,6 +71,24 @@ lookalike:
   real_max_open: 20                    # max real lookalike coins open at once
   real_daily_loss_usd: 25              # stop real lookalike buys for the day after losing this much
 
+# ── Lookalike · graduation exit (PAPER ONLY) ────────────────────
+# Same entries as the lookalike; exits built around pump.fun graduation (~410 SOL mcap), like wallet #1.
+lookalike_grad:
+  enabled: true
+  entry_mcap_sol: 44
+  min_age_s: 300
+  size_usd: 2.5
+  max_open: 300
+  stop_pct: 30                         # before 3x: sell everything at -30%
+  tp_mult: 3                           # sell a third at 3x
+  tp_pct: 33.3
+  trail_pct: 35                        # after 3x: trailing stop this far below the high
+  zone_mcap_sol: 350                   # graduation zone (~8x): sell zone_sell_pct of what's left, before migration
+  zone_sell_pct: 66.7
+  moon_trail_pct: 25                   # moonbag: tighter trailing stop, and sold below the graduation price
+  grad_floor_mcap_sol: 410
+  max_hold_h: 48
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
