@@ -29,6 +29,7 @@ from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
+from memebot.narratives import Narratives
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -64,6 +65,7 @@ class Runner:
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"))
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
 
     def name_targets(self):
@@ -170,6 +172,7 @@ class Runner:
             self.reclaim.active = True
             self.reclaim.feed_price = feed_price
             eng.reclaim = self.reclaim
+            eng.narr = self.narr
             for m in list(self.live.positions):
                 feed.subscribe(m)                        # keep pricing positions carried over from before
             self.tasks.append(asyncio.create_task(self.live.recheck()))
@@ -284,7 +287,8 @@ class Runner:
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
-                "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state()}
+                "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
+                "narratives": self.narr.state()}
 
 
 # ---------------------------------------------------------------------- routes
@@ -315,6 +319,7 @@ async def broadcaster(app):
     async def loop():
         while True:
             await asyncio.sleep(1.0)
+            runner.narr.save()                           # throttled internally (every ~2 min)
             if not clients:
                 continue
             payload = json.dumps(runner.snapshot())
@@ -333,6 +338,7 @@ async def broadcaster(app):
     task.cancel()
     price_task.cancel()
     names_task.cancel()
+    runner.narr.save(force=True)
     live_px_task.cancel()
     lk_task.cancel()
     rc_task.cancel()
@@ -558,7 +564,8 @@ async def api_diagnostics(request):
         z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
         for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl",
                      "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
-                     "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json"):
+                     "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
+                     "narratives.json"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

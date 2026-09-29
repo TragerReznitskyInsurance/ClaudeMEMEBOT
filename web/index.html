@@ -376,6 +376,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="realmoney"></section>
   <section id="lookalike"></section>
   <section id="reclaim"></section>
+  <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
     <section class="grid kpis" id="kpis"></section>
@@ -440,7 +441,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let LIVE = null, LK = null, RC = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+let LIVE = null, LK = null, RC = null, NR = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
 
 /* theme */
 try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -502,13 +503,13 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; RC = j.reclaim; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; RC = j.reclaim; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderReclaim(); }
+function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderReclaim(); renderNarratives(); }
 
 function renderHeader(lost) {
   const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
@@ -987,6 +988,33 @@ function renderStrat(el, L, title) {
     if (L.events.length) h += `<div class="rm-events">${L.events.slice(0, 10).map(e => `<div class="${e.kind}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span>${esc(e.text)}</span></div>`).join("")}</div>`;
   }
   el.innerHTML = h + `</div></div>`;
+}
+
+/* ── narratives ───────────────────────────── */
+let nrOpen = true, nrTab = "hot";
+function renderNarratives() {
+  const el = $("#narratives"), N = NR;
+  if (!N || !N.launches_24h) { el.innerHTML = ""; return; }
+  const tabs = [["hot", "🔥 Taking off"], ["rising", "📈 Heating up"], ["groups", "🗂 Themes"], ["busiest", "🏭 Most launched"], ["new", "✨ New today"]];
+  const rows = (N[nrTab] || []);
+  const x = v => v == null ? "—" : v.toFixed(v >= 10 ? 0 : 1) + "×";
+  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔥 Narratives</h2>
+    <span class="faint" style="font-size:12px">${N.launches_24h.toLocaleString()} launches · ${N.grads_24h} graduated (${N.base_grad_rate_pct ?? "—"}%) in the last ${N.hours}h · ${N.launches_1h} launches this hour</span>
+    <div class="rm-actions"><button class="btn" onclick="nrOpen=!nrOpen;renderNarratives()">${nrOpen ? "Hide" : "Show"}</button></div></div>`;
+  if (nrOpen) {
+    h += `<div class="card-b"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${tabs.map(([k, t]) => `<button class="btn" style="padding:4px 10px;font-size:12px;${k === nrTab ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="nrTab='${k}';renderNarratives()">${t}</button>`).join("")}</div>`;
+    h += `<div class="faint" style="font-size:12px;margin-bottom:6px">${{hot: "Themes whose coins graduate far more often than the average coin (min. 15 launches, 2 graduations in 24h).", rising: "Themes launched much more in the last 6h than their 24h pace.", groups: "Big theme groups by launches.", busiest: "Words creators used most in the last 24h.", new: "Words that barely existed yesterday and have 5+ launches in the last 6h."}[nrTab]}</div>`;
+    h += rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Theme</th><th class="r">Launches 24h</th><th class="r">Last 6h</th><th class="r" title="Last 6h pace vs 24h pace">Heat</th><th class="r">Graduated</th><th class="r" title="Graduation rate vs the average coin">vs avg</th><th class="r" title="Of the coins the bot watched, how many reached 80 SOL">Hit 80 SOL</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>${esc(r.theme)}</b>${r.kind === "group" ? ` <span class="badge gray">group</span>` : ""}${r.new ? ` <span class="badge brand">new</span>` : ""}</td>
+        <td class="r num">${r.launches_24h}</td><td class="r num">${r.launches_6h}</td>
+        <td class="r num ${r.heat >= 1.5 ? "up" : r.heat != null && r.heat < 0.7 ? "down" : ""}">${x(r.heat)}</td>
+        <td class="r num">${r.grads_24h} <span class="faint">(${r.grad_rate_pct}%)</span></td>
+        <td class="r num ${r.grad_vs_avg >= 2 ? "up" : r.grad_vs_avg != null && r.grad_vs_avg < 0.5 ? "down" : ""}">${x(r.grad_vs_avg)}</td>
+        <td class="r num">${r.hit80_rate_pct == null ? "—" : r.hit80_rate_pct + "%"} <span class="faint">${r.watched_24h ? "of " + r.watched_24h : ""}</span></td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="faint" style="font-size:12.5px">Not enough data yet. This fills in over the first few hours of running.</div>`;
+    h += `</div>`;
+  }
+  el.innerHTML = h + `</div>`;
 }
 
 /* ── real money panel ─────────────────────── */

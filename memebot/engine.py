@@ -216,6 +216,7 @@ class Engine:
         self.live = None                           # LiveTrader (real-money copies), live mode only
         self.snaps = None                          # SnapshotRecorder (lookalike research), live mode only
         self.last_feed_trade_ts = 0.0              # last trade message from the live feed (wall clock)
+        self.narr = None                           # Narratives tracker, live mode only
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.copy_log = None                       # file handle: every followed-wallet trade we see
@@ -258,6 +259,11 @@ class Engine:
                 self._seen_set.discard(self._seen_sigs.popleft())
         if tx in ("buy", "sell") and ev.get("traderPublicKey") in self.copy_wallets():
             self._on_copy(ev, ts)
+        if self.narr is not None:
+            if tx == "create":
+                self.narr.on_launch(mint, ev.get("name"), ev.get("symbol"), ts)
+            elif tx == "migrate":
+                self.narr.on_graduate(mint, ts)
         if tx == "create":
             self._on_create(ev, ts)
         elif tx == "migrate":
@@ -332,6 +338,8 @@ class Engine:
         if self.day_trade_msgs >= self.cfg["max_trade_messages_per_day"]:
             return self._reject(t, "skipped: daily data budget reached", ts, subscribed=False)
         t.status = "watching"
+        if self.narr is not None:
+            self.narr.on_watched(t.mint, ts)
         self.feed.subscribe(t.mint)
         if self.cfg["security"].get("rugcheck") and self.screener is not None:
             t.sec_state = "pending"
@@ -422,6 +430,8 @@ class Engine:
         trader = ev.get("traderPublicKey", "")
         prev_mcap = t.mcap
         t.update_market(ev, ts)
+        if self.narr is not None and t.creator:
+            self.narr.on_mcap(t.mint, prev_mcap, t.mcap, ts)
         if self.snaps is not None and not t.snapped and prev_mcap and t.mcap and t.creator:
             sc = self.cfg.get("snapshots") or {}
             line = _f(sc.get("cross_mcap_sol"), 42.0)
