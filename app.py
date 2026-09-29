@@ -66,6 +66,15 @@ class Runner:
         self.lookalike_grad = LookalikeGrad(os.path.join(HERE, "data"),
                                             lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                             lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        # a SEPARATE real-money wallet just for the lookalike (graduation exit): own key, balance, positions, history
+        cur = lambda: self.engine.cfg if (self.engine and self.running) else self.cfg
+        self.live2 = LiveTrader(os.path.join(HERE, "data", "lookalike_wallet"),
+                                lambda: {"live": dict(cur().get("live") or {},
+                                                      enabled=bool((cur().get("lookalike_grad") or {}).get("real_enabled"))),
+                                         "copy_trade": {}},
+                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.lookalike_grad.live = self.live2
+        self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -74,7 +83,7 @@ class Runner:
 
     def name_targets(self):
         from memebot.names import is_placeholder
-        out = self.live.name_targets()
+        out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
@@ -84,6 +93,7 @@ class Runner:
 
     def apply_name(self, mint, info):
         self.live.rename(mint, info["symbol"], info.get("name", ""))
+        self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
@@ -188,6 +198,15 @@ class Runner:
             self.tasks.append(asyncio.create_task(self.live.sweep_orphans()))
             self.tasks.append(asyncio.create_task(self.live.sweep_loop()))
             self.tasks.append(asyncio.create_task(self.live.refresh_balance(force=True)))
+            self.live2.price_of = self.live.price_of
+            self.live2.active = True
+            for m in list(self.live2.positions):
+                feed.subscribe(m)
+            for job in (self.live2.recheck(), self.live2.sweep_orphans(), self.live2.sweep_loop(),
+                        self.live2.refresh_balance(force=True)):
+                self.tasks.append(asyncio.create_task(job))
+            if self.live2.kp and (self.cfg.get("lookalike_grad") or {}).get("real_enabled"):
+                self.live2._event("info", "Real-money lookalike (graduation exit) is ON for this session")
             if self.live.enabled():
                 self.live._event("info", "Real-money copy trading is ON for this session")
         else:
@@ -200,6 +219,7 @@ class Runner:
 
     async def stop(self):
         self.live.active = False
+        self.live2.active = False
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
@@ -297,6 +317,7 @@ class Runner:
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
+                "live2": self.live2.state([]),
                 "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "narratives": self.narr.state()}
@@ -343,6 +364,7 @@ async def broadcaster(app):
     price_task = asyncio.create_task(sol_price.run())
     names_task = asyncio.create_task(runner.names.run(runner.name_targets, runner.apply_name))
     live_px_task = asyncio.create_task(runner.live.price_loop())
+    live2_px_task = asyncio.create_task(runner.live2.price_loop())
     lk_task = asyncio.create_task(runner.lookalike.run())
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
     lg_task = asyncio.create_task(runner.lookalike_grad.run())
@@ -353,6 +375,8 @@ async def broadcaster(app):
     names_task.cancel()
     runner.narr.save(force=True)
     live_px_task.cancel()
+    live2_px_task.cancel()
+    await runner.live2.close()
     lk_task.cancel()
     rc_task.cancel()
     lg_task.cancel()
@@ -518,49 +542,65 @@ async def api_wallet_download(request):
 
 
 # ---------------------------------------------------------------------- real money
-async def api_live_create(request):
+def _trader(body):
+    return runner.traders.get(str((body or {}).get("which") or "copy"), runner.live)
+
+
+async def _body(request):
     try:
-        addr = runner.live.create_wallet()
+        return await request.json()
+    except Exception:
+        return {}
+
+
+async def api_live_create(request):
+    tr = _trader(await _body(request))
+    try:
+        addr = tr.create_wallet()
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
     return web.json_response({"address": addr})
 
 
 async def api_live_refresh(request):
-    await runner.live.refresh_balance(force=True)
-    await runner.live.sync_with_wallet()
-    return web.json_response({"balance": runner.live.balance})
+    tr = _trader(await _body(request))
+    await tr.refresh_balance(force=True)
+    await tr.sync_with_wallet()
+    return web.json_response({"balance": tr.balance})
 
 
 async def api_live_pause(request):
-    body = await request.json()
-    runner.live.paused = bool(body.get("paused"))
-    runner.live._save()
-    runner.live._event("info", "Real-money copying PAUSED (no new buys; sells still mirrored)" if runner.live.paused
-                       else "Real-money copying resumed")
-    return web.json_response({"paused": runner.live.paused})
+    body = await _body(request)
+    tr = _trader(body)
+    tr.paused = bool(body.get("paused"))
+    tr._save()
+    what = "Real-money lookalike" if tr is runner.live2 else "Real-money copying"
+    tr._event("info", f"{what} PAUSED (no new buys; sells still happen)" if tr.paused else f"{what} resumed")
+    return web.json_response({"paused": tr.paused})
 
 
 async def api_live_sell(request):
-    body = await request.json()
-    if not runner.live.kp:
+    body = await _body(request)
+    tr = _trader(body)
+    if not tr.kp:
         return web.json_response({"error": "No trading wallet"}, status=400)
     if body.get("all"):
-        asyncio.create_task(runner.live.sell_all())
-    elif body.get("mint") in runner.live.positions:
-        asyncio.create_task(runner.live.sell_now(body["mint"]))
+        asyncio.create_task(tr.sell_all())
+    elif body.get("mint") in tr.positions:
+        asyncio.create_task(tr.sell_now(body["mint"]))
     else:
         return web.json_response({"error": "No such live position"}, status=400)
     return web.json_response({"ok": True})
 
 
 async def api_live_withdraw(request):
-    body = await request.json()
+    body = await _body(request)
+    tr = _trader(body)
     addr = str(body.get("address", "")).strip()
     if not WL.valid_address(addr):
         return web.json_response({"error": "That doesn't look like a Solana address"}, status=400)
     try:
-        sig = await runner.live.withdraw(addr)
+        sig = await tr.withdraw(addr)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=400)
     return web.json_response({"signature": sig})
@@ -595,6 +635,10 @@ async def api_diagnostics(request):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
+        for name in ("live_trades.csv", "live_state.json"):     # the lookalike wallet (never its key file)
+            p = os.path.join(data_dir, "lookalike_wallet", name)
+            if os.path.exists(p):
+                z.write(p, "lookalike_wallet_" + name)
         for pattern in ("copy_log_*.jsonl", "positions_*.csv", "fills_*.csv"):
             for p in sorted(glob.glob(os.path.join(data_dir, pattern)))[-3:]:
                 if os.path.basename(p) not in SAFE_EXCLUDE and os.path.getsize(p) < 40_000_000:

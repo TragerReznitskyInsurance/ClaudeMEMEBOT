@@ -88,6 +88,11 @@ lookalike_grad:
   moon_trail_pct: 25                   # moonbag: tighter trailing stop, and sold below the graduation price
   grad_floor_mcap_sol: 410
   max_hold_h: 48
+  # REAL MONEY for this strategy, from its OWN wallet (data/lookalike_wallet/) - separate from copy trading
+  real_enabled: false
+  real_size_usd: 2.5                   # real buy per coin
+  real_max_open: 20                    # max real coins open at once
+  real_daily_loss_usd: 25              # stop real buys for the day after losing this much
 
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.

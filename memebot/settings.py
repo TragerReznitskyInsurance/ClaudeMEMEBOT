@@ -67,6 +67,10 @@ SCHEMA = [
         {"path": "lookalike_grad.zone_sell_pct", "label": "Sell in the zone (of what's left)", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.moon_trail_pct", "label": "Moonbag trailing stop", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.max_hold_h", "label": "Time limit", "unit": "h", "type": "float"},
+        {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: trade it for real (its own wallet)", "type": "bool"},
+        {"path": "lookalike_grad.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
+        {"path": "lookalike_grad.real_max_open", "label": "Max real coins open", "type": "int"},
+        {"path": "lookalike_grad.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
     ]},
     {"group": "Reclaim (paper test)", "items": [
         {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},

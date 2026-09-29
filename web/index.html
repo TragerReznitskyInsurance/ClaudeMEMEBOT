@@ -376,6 +376,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="realmoney"></section>
   <section id="lookalike"></section>
   <section id="lookalike_grad"></section>
+  <section id="lkwallet"></section>
   <section id="reclaim"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
@@ -442,7 +443,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let LIVE = null, LK = null, LG = null, RC = null, NR = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
+let LIVE = null, LIVE2 = null, LK = null, LG = null, RC = null, NR = null, S = null, META = null, feedFilter = "trades", seenEv = new Set(), firstFeed = true, hover = null;
 
 /* theme */
 try { const t = localStorage.getItem("mm-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -504,7 +505,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -972,11 +973,11 @@ function renderStrat(el, L, title) {
     <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>
     <td class="r num ${cls(L.realized)}">${$u(L.realized) || signed(L.realized, 4)}</td><td class="r num ${cls(L.open_pnl)}">${$u(L.open_pnl) || signed(L.open_pnl, 4)}</td><td class="r num ${cls(tot)}"><b>${$u(tot) || signed(tot, 4)}</b></td></tr></table>`;
   if (L.last_error) h += `<div class="faint" style="font-size:12px;color:var(--warn)">Price check error: ${esc(L.last_error)}</div>`;
-  const RW = (LIVE?.per_wallet || {})["Lookalike"];
-  if (L.name === "lookalike") h += L.real_enabled
+  const RW = L.name === "lookalike_grad" ? (LIVE2?.per_wallet || {})["Lookalike·grad"] : (LIVE?.per_wallet || {})["Lookalike"];
+  if (L.name === "lookalike" || L.name === "lookalike_grad") h += L.real_enabled
     ? `<div class="notice" style="margin:4px 0 10px;background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>💵</span><div style="flex:1"><b style="color:var(--down)">REAL MONEY ON</b> · $${L.real_size_usd} per coin · max ${L.real_max_open} open · stops buying after −$${L.real_daily_loss_usd} in a day
         <div class="num" style="font-size:12.5px;margin-top:3px">Real so far: ${RW ? `${RW.open} open · ${RW.closed} closed (${RW.wins}W) · realized <b class="${cls(RW.realized)}">${RW.realized_usd != null ? (RW.realized_usd < 0 ? "−$" : "$") + Math.abs(RW.realized_usd).toFixed(2) : signed(RW.realized, 4) + " SOL"}</b>${RW.open && RW.open_value != null ? ` · open worth ${$u(RW.open_value)}` : ""}` : "no real trades yet"} · today ${L.real_today_usd != null ? (L.real_today_usd < 0 ? "−$" : "$") + Math.abs(L.real_today_usd).toFixed(2) : "—"}</div></div></div>`
-    : `<div class="faint" style="font-size:12px;margin:2px 0 8px">Paper only. Turn on "REAL MONEY: also trade it for real" in Settings → Lookalike to mirror these trades with real SOL.</div>`;
+    : `<div class="faint" style="font-size:12px;margin:2px 0 8px">Paper only. Turn on "REAL MONEY" in Settings → ${L.name === "lookalike_grad" ? "Lookalike · graduation exit (it uses its own wallet, below)" : "Lookalike"} to mirror these trades with real SOL.</div>`;
   if (stratOpen[L.name]) {
     const stage = L.name === "lookalike_grad"
       ? p => p.stages.includes("zone") ? (p.graduated ? "moonbag · graduated" : "moonbag · in grad zone") : p.stages.includes("3x") ? `⅓ sold · trailing (${p.peak.toFixed(1)}x high)` : "stop at −30%"
@@ -1065,11 +1066,16 @@ function renderNarratives() {
 
 /* ── real money panel ─────────────────────── */
 function renderLive() {
-  const L = LIVE, el = $("#realmoney");
-  const pill = $("#modePill"), realOn = L && L.ready && L.active && !L.paused;
-  pill.textContent = realOn ? "REAL MONEY ON" : L && L.ready && L.active ? "REAL MONEY PAUSED" : "PAPER TRADING";
+  const on = X => X && X.ready && X.active && !X.paused;
+  const pill = $("#modePill"), realOn = on(LIVE) || on(LIVE2);
+  pill.textContent = realOn ? "REAL MONEY ON" : (LIVE && LIVE.ready && LIVE.active) || (LIVE2 && LIVE2.ready && LIVE2.active) ? "REAL MONEY PAUSED" : "PAPER TRADING";
   pill.style.cssText = realOn ? "background:var(--down-soft);color:var(--down)" : "";
-  if (!L || (!L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
+  renderLiveFor(LIVE, $("#realmoney"), "copy");
+  renderLiveFor(LIVE2, $("#lkwallet"), "lookalike");
+}
+function renderLiveFor(L, el, which) {
+  const lk = which === "lookalike";
+  if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length) || (lk && !L.enabled && !L.has_wallet && !L.positions.length && !(LG && LG.enabled))) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
   const running = META?.running && META.mode === "live";
   const status = !L.has_wallet ? `<span class="badge gray">No wallet yet</span>`
@@ -1077,49 +1083,53 @@ function renderLive() {
     : !L.has_helius ? `<span class="badge down">Needs Helius key</span>`
     : !running ? `<span class="badge warn">Not running (Start live)</span>`
     : L.paused ? `<span class="badge warn">PAUSED</span>` : `<span class="badge up">● LIVE</span>`;
-  let h = `<div class="card"><div class="rm-head"><h2>💵 Real money</h2>${status}`;
+  let h = `<div class="card" ${lk ? 'style="margin-top:14px"' : ""}><div class="rm-head"><h2>${lk ? "🎓💵 Lookalike wallet (real money)" : "💵 Real money · copy trading"}</h2>${status}`;
   if (L.has_wallet) h += `<span class="rm-addr" title="Click to copy. Send SOL here to fund it." onclick="navigator.clipboard.writeText('${L.address}');toast('Address copied')">${L.address.slice(0, 6)}…${L.address.slice(-6)} ⧉</span>
       <span class="rm-bal num">${L.balance == null ? "balance —" : `<b>${L.balance.toFixed(4)} SOL</b> <span class="faint">${$u(L.balance)}</span>`}</span>
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
-  if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{})">↻</button>
-      <button class="btn" onclick="livePause(${!L.paused})">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>
-      <button class="btn danger" onclick="liveSellAll()" ${L.positions.length ? "" : "disabled"}>Sell all</button>
-      <button class="btn" onclick="liveWithdraw()">Withdraw</button>`;
+  if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
+      <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>
+      <button class="btn danger" onclick="liveSellAll('${which}')" ${L.positions.length ? "" : "disabled"}>Sell all</button>
+      <button class="btn" onclick="liveWithdraw('${which}')">Withdraw</button>`;
   h += `</div></div><div class="card-b">`;
   if (!L.has_wallet) {
-    h += `<p class="muted" style="margin:0 0 10px;font-size:13px">Copy trades use a <b>separate wallet created just for this bot</b>. Its key is saved only on this computer (data/trading_wallet.json). Never use your main wallet. Fund it only with what you're willing to lose.</p>
-      <button class="btn primary" onclick="liveCreate()">Create trading wallet</button>`;
+    h += lk
+      ? `<p class="muted" style="margin:0 0 10px;font-size:13px">The lookalike (graduation exit) trades from <b>its own wallet</b>, separate from copy trading, so its money and results never mix. Its key is saved only on this computer (data/lookalike_wallet/trading_wallet.json). Fund it only with what you're willing to lose, then turn on "REAL MONEY" in Settings → Lookalike · graduation exit.</p>
+      <button class="btn primary" onclick="liveCreate('lookalike')">Create lookalike wallet</button>`
+      : `<p class="muted" style="margin:0 0 10px;font-size:13px">Copy trades use a <b>separate wallet created just for this bot</b>. Its key is saved only on this computer (data/trading_wallet.json). Never use your main wallet. Fund it only with what you're willing to lose.</p>
+      <button class="btn primary" onclick="liveCreate('copy')">Create trading wallet</button>`;
   } else {
-    if (L.positions.length && !running) h += `<div class="lab-err" style="margin:0 0 10px">⚠ You hold ${L.positions.length} real position(s) but the bot isn't running, so the followed wallets' sells are NOT being copied. Start live, or sell them.</div>`;
+    if (L.positions.length && !running) h += `<div class="lab-err" style="margin:0 0 10px">⚠ You hold ${L.positions.length} real position(s) but the bot isn't running, so ${lk ? "the exit plan is NOT being applied" : "the followed wallets' sells are NOT being copied"}. Start live, or sell them.</div>`;
+    if (lk && LG) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">${LG.real_enabled ? `Buys <b>$${LG.real_size_usd}</b> per coin · max ${LG.real_max_open} open · stops buying after −$${LG.real_daily_loss_usd} in a day · today ${LG.real_today_usd != null ? (LG.real_today_usd < 0 ? "−$" : "$") + Math.abs(LG.real_today_usd).toFixed(2) : "—"}` : `Real trading is <b>OFF</b>. Turn on "REAL MONEY" in Settings → Lookalike · graduation exit.`}</div>`;
     const PW = L.per_wallet || {};
-    if (Object.keys(PW).length) h += `<table class="wtab"><tr class="faint"><td>Copying</td><td class="r">Open</td><td class="r">In use / budget</td><td class="r">Closed</td><td class="r">Realized</td><td class="r">Open value</td></tr>
-      ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed} / $${L.budget_usd}</td>
+    if (Object.keys(PW).length) h += `<table class="wtab"><tr class="faint"><td>${lk ? "Strategy" : "Copying"}</td><td class="r">Open</td><td class="r">In use / budget</td><td class="r">Closed</td><td class="r">Realized</td><td class="r">Open value</td></tr>
+      ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${lk && LG ? LG.real_max_open : L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed}${lk ? "" : ` / $${L.budget_usd}`}</td>
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? ($u(v.open_value) || v.open_value.toFixed(4) + " SOL") : "—"}</td></tr>`).join("")}</table>`;
-    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>Copying</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
+    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Strategy" : "Copying"}</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
       ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a>${p.name && p.name !== p.symbol ? `<div class="faint" style="font-size:11.5px">${esc(p.name)}</div>` : ""}</td>
         <td class="num">${esc(p.wallet)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
         <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}" title="${p.value != null ? p.value.toFixed(4) + " SOL" : "price not available yet"}">${p.value != null ? `${$u(p.value) || p.value.toFixed(4) + " SOL"}${p.sol_in ? ` <span style="font-size:11.5px">(${pct((p.value + p.sol_out) / p.sol_in * 100 - 100, 0)})</span>` : ""}` : "—"}</td>
         <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>
         <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>
-        <td class="r"><button class="btn" style="padding:4px 9px;font-size:12px" onclick="liveSell('${p.mint}')" ${p.status === "open" ? "" : "disabled"}>Sell</button></td></tr>`).join("")}</tbody></table></div>`;
-    else h += `<div class="faint" style="font-size:12.5px">No open real positions. Each copied buy is $${L.trade_usd}, up to ${L.max_open} per wallet and $${L.budget_usd} in use per wallet.</div>`;
+        <td class="r"><button class="btn" style="padding:4px 9px;font-size:12px" onclick="liveSell('${p.mint}','${which}')" ${p.status === "open" ? "" : "disabled"}>Sell</button></td></tr>`).join("")}</tbody></table></div>`;
+    else h += `<div class="faint" style="font-size:12.5px">${lk ? "No open real positions yet." : `No open real positions. Each copied buy is $${L.trade_usd}, up to ${L.max_open} per wallet and $${L.budget_usd} in use per wallet.`}</div>`;
     if (L.events.length) h += `<div class="rm-events">${L.events.slice(0, 12).map(e => `<div class="${e.kind}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span>${esc(e.text)}${e.sig ? ` <a class="faint" href="https://solscan.io/tx/${e.sig}" target="_blank" rel="noopener">↗</a>` : ""}</span></div>`).join("")}</div>`;
   }
   el.innerHTML = h + `</div></div>`;
 }
-async function liveCreate() {
-  if (!confirm("Create a new trading wallet on this computer? You'll fund it with a small amount of SOL.")) return;
-  try { const r = await api("/api/live/create_wallet", {}); navigator.clipboard?.writeText(r.address); toast("Wallet created. Address copied, send SOL to it"); } catch (e) { toast(e.message); }
+async function liveCreate(which = "copy") {
+  if (!confirm(`Create a new ${which === "lookalike" ? "lookalike" : "trading"} wallet on this computer? You'll fund it with a small amount of SOL.`)) return;
+  try { const r = await api("/api/live/create_wallet", { which }); navigator.clipboard?.writeText(r.address); toast("Wallet created. Address copied, send SOL to it"); } catch (e) { toast(e.message); }
 }
-async function livePause(p) { try { await api("/api/live/pause", { paused: p }); } catch (e) { toast(e.message); } }
-async function liveSell(m) { if (!confirm("Sell this whole position now with real money?")) return; try { await api("/api/live/sell", { mint: m }); toast("Selling…"); } catch (e) { toast(e.message); } }
-async function liveSellAll() { if (!confirm("Sell ALL real positions now?")) return; try { await api("/api/live/sell", { all: true }); toast("Selling everything…"); } catch (e) { toast(e.message); } }
-async function liveWithdraw() {
-  const a = prompt("Send the whole trading-wallet balance to which Solana address?\n(All positions must be sold first.)");
+async function livePause(p, which = "copy") { try { await api("/api/live/pause", { paused: p, which }); } catch (e) { toast(e.message); } }
+async function liveSell(m, which = "copy") { if (!confirm("Sell this whole position now with real money?")) return; try { await api("/api/live/sell", { mint: m, which }); toast("Selling…"); } catch (e) { toast(e.message); } }
+async function liveSellAll(which = "copy") { if (!confirm(`Sell ALL real ${which === "lookalike" ? "lookalike" : "copy-trading"} positions now?`)) return; try { await api("/api/live/sell", { all: true, which }); toast("Selling everything…"); } catch (e) { toast(e.message); } }
+async function liveWithdraw(which = "copy") {
+  const a = prompt(`Send the whole ${which === "lookalike" ? "lookalike" : "trading"}-wallet balance to which Solana address?\n(All positions must be sold first.)`);
   if (!a) return;
-  try { const r = await api("/api/live/withdraw", { address: a.trim() }); toast("Withdrawal sent"); } catch (e) { toast(e.message); }
+  try { const r = await api("/api/live/withdraw", { address: a.trim(), which }); toast("Withdrawal sent"); } catch (e) { toast(e.message); }
 }
 
 let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800); }
