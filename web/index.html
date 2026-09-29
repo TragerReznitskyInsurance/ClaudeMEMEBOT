@@ -355,6 +355,9 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   .hide-sm { display: none; }
   .actions .btn .lbl { display: none; }
 }
+.screens { display: flex; gap: 6px; padding: 10px 20px 0; max-width: 1400px; margin: 0 auto; flex-wrap: wrap; }
+.screens button { border: 1px solid var(--line); background: var(--card); color: var(--text-2); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.screens button.on { background: var(--brand-soft); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -370,13 +373,20 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
     <div class="actions" id="actions"></div>
   </div>
 </header>
+<nav class="screens" id="screens">
+  <button data-screen="main" onclick="showScreen('main')">📊 Dashboard</button>
+  <button data-screen="lk" onclick="showScreen('lk')">🎓 Lookalike · real money <span class="badge" id="lkTabBadge" style="display:none"></span></button>
+</nav>
 
 <main>
   <div id="notice"></div>
+  <div id="screenLk" hidden>
+    <section id="lkwallet"></section>
+    <section id="lkrules"></section>
+  </div>
+  <div id="screenMain">
   <section id="realmoney"></section>
   <section id="lookalike"></section>
-  <section id="lookalike_grad"></section>
-  <section id="lkwallet"></section>
   <section id="reclaim"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
@@ -420,6 +430,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
       <div class="card-b"><div class="tbl-wrap"><table id="hist"></table></div></div>
     </section>
     <footer>Paper trading only · no wallet, no private key, no real orders · not financial advice</footer>
+  </div>
   </div>
 </main>
 
@@ -511,7 +522,17 @@ function connect() {
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderLookalikeGrad(); renderReclaim(); renderNarratives(); }
+function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderReclaim(); renderNarratives(); renderLkRules(); renderScreens(); }
+let SCREEN = (() => { try { return localStorage.getItem("screen") || "main"; } catch (e) { return "main"; } })();
+function showScreen(s) { SCREEN = s; try { localStorage.setItem("screen", s); } catch (e) {} renderScreens(); }
+function renderScreens() {
+  $("#screenMain").hidden = SCREEN !== "main"; $("#screenLk").hidden = SCREEN !== "lk";
+  document.querySelectorAll("#screens button").forEach(b => b.classList.toggle("on", b.dataset.screen === SCREEN));
+  const b = $("#lkTabBadge"), L = LIVE2;
+  const live = L && L.ready && L.active && !L.paused && LG && LG.real_enabled;
+  b.style.display = L && L.has_wallet ? "" : "none";
+  b.className = "badge " + (live ? "down" : "gray"); b.textContent = live ? "LIVE" : L && L.paused ? "paused" : "off";
+}
 
 function renderHeader(lost) {
   const dot = $("#dot"), txt = $("#statusTxt"), up = $("#uptime");
@@ -957,7 +978,14 @@ function renderLab() {
 
 /* ── lookalike paper test ─────────────────── */
 const stratOpen = {lookalike: true, reclaim: true, lookalike_grad: true};
-function renderLookalikeGrad() { renderStrat($("#lookalike_grad"), LG, "🎓 Lookalike · graduation exit"); }
+function renderLkRules() {
+  const el = $("#lkrules"), L = LG;
+  if (!L) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades</h2></div><div class="card-b" style="font-size:13px;line-height:1.6">
+    <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of any coin the bot is watching as it rises through <b>${L.entry_mcap_sol} SOL</b> market cap and is at least 5 minutes old (never Mayhem-mode coins).
+    <b>Sells:</b> everything at −30% before 3× · <b>⅓ at 3×</b> · then a trailing stop 35% below the high · <b>⅔ of the rest at 350 SOL</b> (just before graduation) · the moonbag rides with a 25% trail and is sold below the graduation price · 48h limit.
+    <div class="faint" style="margin-top:6px">Limits: max ${L.real_max_open} coins open · stops buying after −$${L.real_daily_loss_usd} in a day · the ⏸ button pauses new buys. Change any of it in Settings → Lookalike · graduation exit.</div></div></div>`;
+}
 function renderLookalike() { renderStrat($("#lookalike"), LK, "🧪 Lookalike test"); }
 function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); }
 function renderStrat(el, L, title) {
@@ -1075,7 +1103,9 @@ function renderLive() {
 }
 function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
-  if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length) || (lk && !L.enabled && !L.has_wallet && !L.positions.length && !(LG && LG.enabled))) { el.innerHTML = ""; return; }
+  if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
+  const lgPos = {}; if (lk && LG) for (const q of LG.positions || []) lgPos[q.mint] = q;
+  const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : `stop at −30% · now ${q.mult.toFixed(2)}x`;
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
   const running = META?.running && META.mode === "live";
   const status = !L.has_wallet ? `<span class="badge gray">No wallet yet</span>`
@@ -1107,9 +1137,9 @@ function renderLiveFor(L, el, which) {
       ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${lk && LG ? LG.real_max_open : L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed}${lk ? "" : ` / $${L.budget_usd}`}</td>
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? ($u(v.open_value) || v.open_value.toFixed(4) + " SOL") : "—"}</td></tr>`).join("")}</table>`;
-    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Strategy" : "Copying"}</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
+    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Stage" : "Copying"}</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
       ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a>${p.name && p.name !== p.symbol ? `<div class="faint" style="font-size:11.5px">${esc(p.name)}</div>` : ""}</td>
-        <td class="num">${esc(p.wallet)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
+        <td class="num">${lk ? `<span class="badge ${lgPos[p.mint] && lgPos[p.mint].stages.length ? "up" : "gray"}">${esc(lgStage(lgPos[p.mint]))}</span>` : esc(p.wallet)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
         <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}" title="${p.value != null ? p.value.toFixed(4) + " SOL" : "price not available yet"}">${p.value != null ? `${$u(p.value) || p.value.toFixed(4) + " SOL"}${p.sol_in ? ` <span style="font-size:11.5px">(${pct((p.value + p.sol_out) / p.sol_in * 100 - 100, 0)})</span>` : ""}` : "—"}</td>
         <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>
         <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>

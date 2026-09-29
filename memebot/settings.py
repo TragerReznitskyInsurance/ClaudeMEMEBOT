@@ -55,10 +55,10 @@ SCHEMA = [
         {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
         {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
     ]},
-    {"group": "Lookalike · graduation exit (paper test)", "items": [
-        {"path": "lookalike_grad.enabled", "label": "Run the graduation-exit paper test", "type": "bool"},
+    {"group": "Lookalike · graduation exit (its own wallet & tab)", "items": [
+        {"path": "lookalike_grad.enabled", "label": "Run the graduation-exit strategy (needed for its wallet)", "type": "bool"},
         {"path": "lookalike_grad.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
-        {"path": "lookalike_grad.size_usd", "label": "Paper size per coin", "unit": "$", "type": "float"},
+        {"path": "lookalike_grad.size_usd", "label": "Behind-the-scenes tracking size", "unit": "$", "type": "float"},
         {"path": "lookalike_grad.stop_pct", "label": "Stop loss (before the first take-profit)", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.tp_mult", "label": "First take-profit at", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.tp_pct", "label": "First take-profit amount", "unit": "%", "type": "float"},
