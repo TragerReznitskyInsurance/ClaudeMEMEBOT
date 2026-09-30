@@ -124,7 +124,8 @@ survivor:
   size_usd: 10                         # paper tracking size
   intake_mcap_sol: 32                  # follow coins that reached this (real buying) and passed the safety checks
   min_age_min: 30
-  max_age_h: 6
+  max_age_h: 72                        # follow coins for 3 days (wallet #1's winners today were 13 h and 38 h old)
+  settle_min: 15                       # its "all-time high" only counts prices after the first 15 minutes
   entry_mcap_sol: 44
   max_entry_mult: 1.35                 # skip if it jumped straight past 44 to more than ~59 SOL
   near_high_pct: 3                     # must be within 3% of (or above) its all-time high
@@ -137,9 +138,12 @@ survivor:
   trail_pct: 30                        # last quarter rides with this trailing stop
   max_hold_h: 24
   hot_from_pct: 80                     # coins above 80% of the line are checked every few seconds
-  cold_every_s: 90                     # the rest about every 1.5 minutes
+  cold_every_s: 90                     # the rest about every 1.5 minutes...
+  old_after_h: 6
+  old_every_s: 240                     # ...coins older than 6 h every 4 minutes
   dead_mcap_sol: 29.5
-  max_candidates: 1500
+  dead_every_s: 600                    # coins back at the launch price every 10 minutes (they can still revive)
+  max_candidates: 8000
 
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.

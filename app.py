@@ -230,6 +230,14 @@ class Runner:
             self.survivor.active = True
             self.survivor.feed_price = feed_price
             eng.survivor = self.survivor
+            try:                                             # also follow coins it saw in the last 3 days that got bought up
+                seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
+                                             for m, v in list(self.narr.mints.items())
+                                             if "hit44" in (v.get("hits") or {}) and not v.get("excluded")])
+                if seeded:
+                    log.info("SURVIVOR following %d older coins from the last 3 days", seeded)
+            except Exception as e:
+                log.warning("survivor seed failed: %s", e)
             eng.reclaim = self.reclaim
             eng.narr = self.narr
             eng.why = self.why

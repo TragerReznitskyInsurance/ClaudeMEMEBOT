@@ -10,9 +10,11 @@ the safety checks. They are then followed ON-CHAIN (batched curve reads, cheap) 
 coins near the line every few seconds, the rest about once a minute.
 
 Buy when ALL of:
-  - at least `min_age_min` (30) old and at most `max_age_h` (6) old, still on the pump.fun curve
+  - at least `min_age_min` (30) old and at most `max_age_h` (72) old, still on the pump.fun curve
+    (wallet #1's winners on 30 Sep were 13 h and 38 h old coins; its 5-10 minute old buys lost)
   - market cap rises through `entry_mcap_sol` (44), and is not already above `max_entry_mult` x that
-  - it is at a NEW HIGH (at or above the highest market cap it ever had, within `near_high_pct`)
+  - it is at a NEW HIGH: at or above the highest market cap it had since its launch settled (`settle_min`,
+    15 min - launch-minute spikes by snipers/bundles don't count), within `near_high_pct`
   - grinding up: +`min_rise_2m_pct` (5%) over the last ~2 minutes with no pullback bigger than
     `max_pullback_pct` (12%) inside that window (no one dumping into it)
 
@@ -51,6 +53,9 @@ class Survivor(Lookalike):
                 self.cands = json.load(fh).get("cands", {})
         except (OSError, ValueError):
             pass
+        for cd in self.cands.values():                          # older saves counted launch spikes as the high
+            if not cd.get("settled_peak"):
+                cd.update(peak=0.0, settled_peak=True)
         since_path = os.path.join(data_dir, "survivor_since.txt")
         try:
             with open(since_path, encoding="utf-8") as fh:
@@ -94,12 +99,26 @@ class Survivor(Lookalike):
         if t.mcap < float(c.get("intake_mcap_sol", 32)):
             return False
         self.cands[t.mint] = dict(mint=t.mint, symbol=t.symbol, name=t.name, created=t.created_ts, added=ts,
-                                  peak=max(t.peak_mcap or 0, t.mcap), last_mc=t.mcap, hist=[], next=0, misses=0)
-        cap = int(c.get("max_candidates", 1500))
+                                  peak=0.0, last_mc=t.mcap, hist=[], next=0, misses=0,   # peak: after the launch settles
+                                  settled_peak=True)
+        cap = int(c.get("max_candidates", 8000))
         if len(self.cands) > cap:
             for m in sorted(self.cands, key=lambda m: self.cands[m]["added"])[:len(self.cands) - cap]:
                 self.cands.pop(m)
         return False
+
+    def seed(self, coins):
+        """Add older coins the bot saw earlier (from the narratives log): [(mint, symbol, name, created_ts)]."""
+        c = self.cfg()
+        now = time.time()
+        n = 0
+        for mint, sym, name, created in coins:
+            if mint in self.cands or mint in self.traded or now - created > float(c.get("max_age_h", 72)) * 3600:
+                continue
+            self.cands[mint] = dict(mint=mint, symbol=sym or mint[:5], name=name or "", created=created, added=now,
+                                    peak=0.0, last_mc=None, hist=[], next=0, misses=0, settled_peak=True, seeded=True)
+            n += 1
+        return n
 
     # ------------------------------------------------------------------ entry
     def _signal(self, cd, mc, now):
@@ -112,7 +131,7 @@ class Survivor(Lookalike):
         if mc > line * float(c.get("max_entry_mult", 1.35)):
             return f"jumped straight to {mc:.0f} SOL"
         if mc < cd["peak"] * (1 - float(c.get("near_high_pct", 3)) / 100):
-            return f"not a new high (was up to {cd['peak']:.0f} SOL before)"
+            return f"not a new high (was up to {cd['peak']:.0f} SOL since its launch settled)"
         h = [x for x in cd["hist"] if now - x[0] <= 150]
         if not h or now - h[0][0] < 60:
             return "not enough price history yet"
@@ -203,7 +222,7 @@ class Survivor(Lookalike):
                 continue
             age = now - cd["created"]
             price, src = px.get(m, (None, None))
-            if age > float(c.get("max_age_h", 6)) * 3600 or src in ("jupiter", "mayhem"):
+            if age > float(c.get("max_age_h", 72)) * 3600 or src in ("jupiter", "mayhem"):
                 self.cands.pop(m, None)
                 continue
             if price is None:
@@ -213,19 +232,27 @@ class Survivor(Lookalike):
                 continue
             cd["misses"] = 0
             mc = price * SUPPLY
+            first = cd.get("last_mc") is None
             last = cd.get("last_mc") or mc
             if not (1 / 3 <= mc / last <= 3):                   # confirm big jumps with a second reading
                 if not (cd.get("suspect") and 0.8 <= mc / cd["suspect"] <= 1.25):
                     cd["suspect"], cd["next"] = mc, now
                     continue
             cd.pop("suspect", None)
-            if mc < float(c.get("dead_mcap_sol", 29.5)) and age > 600:
-                self.cands.pop(m, None)                         # back at the launch price: dead
-                continue
             hot = mc >= hot_from
-            cd["next"] = now + (0 if hot else float(c.get("cold_every_s", 90)))
+            if hot:
+                wait = 0
+            elif mc < float(c.get("dead_mcap_sol", 29.5)) and age > 1800:
+                wait = float(c.get("dead_every_s", 600))        # back at the launch price: check rarely
+            elif age > float(c.get("old_after_h", 6)) * 3600:
+                wait = float(c.get("old_every_s", 240))
+            else:
+                wait = float(c.get("cold_every_s", 90))
+            cd["next"] = now + wait
             cd["hist"] = [x for x in cd["hist"] if now - x[0] <= 180] if hot else []
-            if last < line <= mc and m not in self.traded:
+            if first and cd.get("seeded"):
+                cd["peak"] = mc if age >= float(c.get("settle_min", 15)) * 60 else 0.0
+            if not first and last < line <= mc and m not in self.traded:
                 why = self._signal(cd, mc, now)
                 if why is None:
                     self._enter(cd, price, now)
@@ -236,7 +263,8 @@ class Survivor(Lookalike):
                     w.note(m, cd["symbol"], self.NAME, why, now)
             if hot:
                 cd["hist"].append((now, mc))
-            cd["peak"] = max(cd["peak"], mc)
+            if age >= float(c.get("settle_min", 15)) * 60:       # launch-minute spikes don't count as its "high"
+                cd["peak"] = max(cd["peak"], mc)
             cd["last_mc"] = mc
         for m in list(self.positions):
             p = self.positions.get(m)
@@ -252,7 +280,7 @@ class Survivor(Lookalike):
         c = self.cfg()
         hot = sum(1 for x in self.cands.values() if (x.get("last_mc") or 0) >= float(c.get("entry_mcap_sol", 44)) * 0.8)
         s.update(name=self.NAME, candidates=len(self.cands), hot=hot, since=self.since,
-                 min_age_min=c.get("min_age_min", 30), max_age_h=c.get("max_age_h", 6),
+                 min_age_min=c.get("min_age_min", 30), max_age_h=c.get("max_age_h", 72),
                  desc=(f"Coins {c.get('min_age_min', 30)} min to {c.get('max_age_h', 6)} h old breaking to a new high "
                        f"through {c.get('entry_mcap_sol', 44)} SOL on a quiet tape · wallet #1-style exits"))
         return s
