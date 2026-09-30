@@ -521,7 +521,7 @@ async function whyLookup() {
       if (e.type === "why") rows.push([e.ts, `<b>${esc(e.stage)}</b> · ${esc(e.why)}`]);
       else if (e.type === "after") rows.push([null, `${e.after_min >= 60 ? e.after_min / 60 + " h" : e.after_min + " min"} later: ${e.graduated ? "<b>graduated</b>" : e.mcap_sol != null ? `${e.mcap_sol.toFixed(0)} SOL` : "no data"}${e.mayhem ? " · Mayhem mode" : ""}`]);
     }
-    rows.sort((a, b) => (a[0] ?? 9e12) - (b[0] ?? 9e12));
+    rows.sort((a, b) => Math.floor(a[0] ?? 9e12) - Math.floor(b[0] ?? 9e12));   // same second: keep launch first
     h += rows.length ? `<table class="wtab" style="margin-top:6px">${rows.map(([ts, x]) => `<tr><td class="faint num" style="white-space:nowrap">${ts ? t(ts) : ""}</td><td>${x}</td></tr>`).join("")}</table>`
       : `<div style="margin-top:6px">The bot has no record of this coin. Either it launched before this update, or it isn't a pump.fun launch the bot sees (e.g. LaunchLab).</div>`;
     if (N && N.excluded) h += `<div class="faint">Excluded from narratives: ${esc(N.excluded)}</div>`;
