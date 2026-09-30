@@ -226,6 +226,7 @@ class Engine:
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
         self.hotword = None                        # hot-word paper test (Survivor rules, hot trends only)
         self.breakouts = None                      # BreakoutLog: every 44 SOL crossing + wallet #1 buys (research)
+        self.skimmer = None                        # Skimmer paper test (quick +20% / -5% trades)
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -473,6 +474,8 @@ class Engine:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
+        if self.skimmer is not None and t.creator and prev_mcap:
+            self.skimmer.maybe_enter(t, prev_mcap, ts)
         if self.hotword is not None and t.creator:
             self.hotword.maybe_enter(t, prev_mcap, ts)
         t.last_trade_ts = ts
@@ -802,7 +805,7 @@ class Engine:
         if not self._momentum_on():                       # research-only: never buy, drop once recorded
             sc = self.cfg.get("snapshots") or {}
             snap_done = t.snapped or not (self.snaps is not None and self.snaps.enabled())
-            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, *self.tests))
+            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, *self.tests, *([self.skimmer] if self.skimmer else [])))
             rc_done = not self._rc_on() or not self.reclaim.wants_watch(t.mint)
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot

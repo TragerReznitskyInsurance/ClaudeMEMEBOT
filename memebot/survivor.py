@@ -264,6 +264,9 @@ class Survivor(Lookalike):
                             dict(rise_2m_pct=round((mc / h[0][1] - 1) * 100, 1) if h else None,
                                  pullback_2m_pct=round(pull, 1) if h else None, settled_peak=round(cd["peak"], 1),
                                  seeded=bool(cd.get("seeded"))))
+            sk = getattr(self, "skimmer", None)
+            if sk is not None and not first and last < line <= mc:
+                sk.from_survivor(cd, price, now)
             if not first and last < line <= mc and m not in self.traded:
                 why = self._signal(cd, mc, now)
                 if why is None:
@@ -335,3 +338,67 @@ class HotWord(Survivor):
         p = self.positions.get(cd["mint"])
         if p:
             p["hot"] = cd.get("hot", [])
+
+
+class Skimmer(Lookalike):
+    """PAPER test: lots of quick trades. Buys (almost) every coin rising through 44 SOL - young coins from the
+    live feed (`min_age_s`+ old) and older coins from Survivor's watch list - and sells ALL of it at
+    +`tp_pct` (20%), or right away if it drops `sl_pct` (5%) below the entry, or after `max_hold_min`.
+    Paper fills include the pump.fun fee, slippage, priority fee and price impact, so the result shows what
+    would really be left after costs."""
+    NAME = "skimmer"
+
+    def cfg(self):
+        c = dict(self._cfg().get(self.NAME) or {})
+        c.setdefault("entry_mcap_sol", 44)
+        c.setdefault("min_age_s", 120)
+        c.update(real_enabled=False, max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None, min_buys_2m=0)
+        return c
+
+    def from_survivor(self, cd, px, now):
+        """Survivor saw an older coin rise through the line: take it too (it's a skim, no extra rules)."""
+        if not (self.active and self.enabled()) or cd["mint"] in self.traded or cd["mint"] in self.positions:
+            return
+        c = self.cfg()
+        usd = self._usd()
+        if not usd or len(self.positions) >= int(c.get("max_open", 300)):
+            return
+        self.traded.add(cd["mint"])
+        size = float(c.get("size_usd", 10)) / usd
+        fee, slip, prio = self._x()
+        from memebot.lookalike import curve_buy
+        tokens = curve_buy(size * (1 - fee), px) * (1 - slip)
+        self.positions[cd["mint"]] = dict(
+            mint=cd["mint"], symbol=cd["symbol"], name=cd.get("name", ""), opened=now, entry_px=px,
+            entry_mcap=round(px * SUPPLY, 1), age_at_entry_s=round(now - cd["created"]), sol_in=size + prio, sol_out=0.0,
+            tokens=tokens, tokens_bought=tokens, peak_mult=1.0, floor_mult=0.0, done=[], last_px=px, last_px_ts=now,
+            sells=[], verified=True, size_usd=round(size * usd, 2))
+        self._event("buy", f"Paper buy {cd['symbol']} at {px * SUPPLY:.0f} SOL mcap ({(now - cd['created']) / 60:.0f} min old)",
+                    mint=cd["mint"])
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        p["last_px"], p["last_px_ts"] = px, ts
+        mult = px / p["entry_px"]
+        p["peak_mult"] = max(p["peak_mult"], mult)
+        if mult >= 1 + float(c.get("tp_pct", 20)) / 100:
+            return self._sell(p, 1.0, f"take profit +{c.get('tp_pct', 20):g}%", px, ts)
+        if mult <= 1 - float(c.get("sl_pct", 5)) / 100:
+            return self._sell(p, 1.0, f"down {c.get('sl_pct', 5):g}% - out", px, ts)
+        if ts - p["opened"] > float(c.get("max_hold_min", 15)) * 60:
+            return self._sell(p, 1.0, f"time limit {c.get('max_hold_min', 15):g} min", px, ts)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        cl = self.closed
+        wins = [x for x in cl if x["pnl_sol"] > 0]
+        loss = [x for x in cl if x["pnl_sol"] <= 0]
+        days = max((time.time() - min((x["opened"] for x in cl), default=time.time())) / 86400, 1 / 24)
+        s.update(name=self.NAME, avg_win_pct=round(sum(x["pnl_pct"] for x in wins) / len(wins), 1) if wins else None,
+                 avg_loss_pct=round(sum(x["pnl_pct"] for x in loss) / len(loss), 1) if loss else None,
+                 per_day=round(len(cl) / days), size_usd=c.get("size_usd", 10),
+                 desc=(f"Buys every coin rising through {c.get('entry_mcap_sol', 44)} SOL · sells at +{c.get('tp_pct', 20):g}% "
+                       f"or at −{c.get('sl_pct', 5):g}% or after {c.get('max_hold_min', 15):g} min · ${c.get('size_usd', 10)} each · "
+                       f"fees & slippage included · no real money"))
+        return s

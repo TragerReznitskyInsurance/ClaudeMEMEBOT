@@ -159,6 +159,19 @@ breakouts:
   launch_checks_per_day: 400           # bundle/sniper checks cost one Enhanced call each
   launch_check_share: 0.35             # share of crossings that get one (all wallet #1 buys do)
 
+# ── Skimmer (PAPER ONLY) ───────────────────────────────────────
+# Lots of quick trades: buys every coin rising through 44 SOL (young coins 2+ min old from the live
+# feed, older ones from Survivor's list) and sells ALL at +tp_pct, or at -sl_pct, or after max_hold_min.
+skimmer:
+  enabled: true
+  size_usd: 10
+  entry_mcap_sol: 44
+  min_age_s: 120
+  tp_pct: 20
+  sl_pct: 5
+  max_hold_min: 15
+  max_open: 300
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
