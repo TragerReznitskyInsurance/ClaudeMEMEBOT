@@ -74,6 +74,8 @@ class Survivor(Lookalike):
         for k in ("real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd"):
             if k in real:
                 c[k] = real[k]
+        if type(self) is Survivor:
+            c["real_enabled"] = False      # paper since 30 Sep 18:30 - the real wallet trades Reclaim now
         return c
 
     def _save(self):

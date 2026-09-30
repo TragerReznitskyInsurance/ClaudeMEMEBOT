@@ -28,7 +28,7 @@ from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
-from memebot.reclaim import Reclaim, ReclaimWide
+from memebot.reclaim import Reclaim
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord, Skimmer
 from memebot.breakouts import BreakoutLog
@@ -82,23 +82,22 @@ class Runner:
                                                 lambda: sol_price.usd)    # paper: old entry rules, for comparison
         self.tests = [self.lookalike_fresh]              # (the 3-minute test was removed on 30 Sep: it lost)
         self.survivor = Survivor(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.survivor.live = self.live2                     # the real lookalike wallet now trades this strategy
+        self.survivor.live = self.live2                     # still sells the real coins it bought (paper for new buys)
         self.hotword = HotWord(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.reclaim.live = self.live2                      # Reclaim trades the real (lookalike) wallet since 30 Sep 18:30
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.hotword.narr = self.narr
-        self.reclaim_wide = ReclaimWide(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.reclaim_wide.narr = self.narr
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
         self.survivor.breakouts = self.breakouts
         self.skimmer = Skimmer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.survivor.skimmer = self.skimmer
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_wide):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -109,7 +108,7 @@ class Runner:
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_wide):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -121,7 +120,7 @@ class Runner:
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_wide):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -156,7 +155,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_wide):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer):
             try:
                 strat._save()
             except Exception:
@@ -244,9 +243,6 @@ class Runner:
             self.skimmer.active = True
             self.skimmer.feed_price = feed_price
             eng.skimmer = self.skimmer
-            self.reclaim_wide.active = True
-            self.reclaim_wide.feed_price = feed_price
-            eng.reclaim_wide = self.reclaim_wide
             try:                                             # also follow coins it saw in the last 3 days that got bought up
                 seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
                                              for m, v in list(self.narr.mints.items())
@@ -289,7 +285,7 @@ class Runner:
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_wide):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -435,7 +431,7 @@ class Runner:
                 "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
-                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "skimmer": self.skimmer.state(), "reclaim_wide": self.reclaim_wide.state(),
+                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "skimmer": self.skimmer.state(),
                 "narratives": self.narr.state()}
 
 
@@ -491,7 +487,6 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
     test_tasks.append(asyncio.create_task(runner.skimmer.run(every=2)))
-    test_tasks.append(asyncio.create_task(runner.reclaim_wide.run(every=10)))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -509,7 +504,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.skimmer, runner.reclaim_wide, runner.breakouts):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.skimmer, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -799,7 +794,7 @@ STRAT_HIDE = {"skimmer": ("max_prior_peak_mult", "min_rise_2m_pct", "min_rise_1m
 
 def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
-    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_wide": (runner.reclaim_wide, "reclaim_wide"),
+    return {"reclaim": (runner.reclaim, "reclaim"),
             "skimmer": (runner.skimmer, "skimmer"), "lookalike": (runner.lookalike, "lookalike"),
             "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
             "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
@@ -855,7 +850,6 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim, "skimmer": runner.skimmer, "lookalike": runner.lookalike,
-             "reclaim_wide": runner.reclaim_wide,
              "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
@@ -890,8 +884,7 @@ async def api_diagnostics(request):
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
                      "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "skimmer_state.json",
-                     "skimmer_trades.csv", "skimmer_fills.csv", "reclaim_wide_state.json", "reclaim_wide_trades.csv",
-                     "reclaim_wide_fills.csv",
+                     "skimmer_trades.csv", "skimmer_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

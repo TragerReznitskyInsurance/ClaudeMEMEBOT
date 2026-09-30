@@ -61,6 +61,14 @@ class Reclaim(Lookalike):
         except OSError:
             pass
 
+    def cfg(self):
+        c = dict(self._cfg().get(self.NAME) or {})
+        real = self._cfg().get("lookalike_grad") or {}            # the real wallet's money settings (same wallet)
+        for k in ("real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd"):
+            if k in real:
+                c[k] = real[k]
+        return c
+
     # ------------------------------------------------------------------ candidates (engine hook)
     def maybe_enter(self, t, prev_mcap, ts):
         """Called on every trade of a watched coin: remember coins that made a real first run."""
@@ -112,6 +120,15 @@ class Reclaim(Lookalike):
                            f"{cd['peak']:.0f} SOL peak ({trades_2m} trades in 2 min)", mint=cd["mint"])
         log.info("RECLAIM buy %s at mcap %.0f (peak %.0f, low %.0f, %d trades/2m)",
                  cd["symbol"], mc, cd["peak"], cd["low"], trades_2m)
+        if c.get("real_enabled") and self.live is not None:          # the real wallet trades Reclaim
+            why = self.live.open_strategy(self.NAME, cd["mint"], cd["symbol"], float(c.get("real_size_usd", 10)),
+                                          int(c.get("real_max_open", 20)), float(c.get("real_daily_loss_usd", 25)))
+            if why is None:
+                self.positions[cd["mint"]]["real"] = True
+                self._event("buy", f"{cd['symbol']}: REAL buy placed (${float(c.get('real_size_usd', 10)):.2f})",
+                            mint=cd["mint"])
+            else:
+                self._event("skip", f"{cd['symbol']}: no real buy - {why}", mint=cd["mint"])
 
     # ------------------------------------------------------------------ exits
     def check(self, p, px, ts):
@@ -200,65 +217,3 @@ class Reclaim(Lookalike):
                        f"(30+ min old) · ${c.get('size_usd', 25)} each · no real money"))
         return s
 
-
-class ReclaimWide(Reclaim):
-    """PAPER test: Reclaim with a wider net, to trade more often.
-      - candidates: coins that reached `run_mcap_sol` (60) while watched, PLUS every coin the narratives log saw
-        reach 80 SOL in the last `max_age_h` (24) hours (so coins the bot stopped watching are included)
-      - looser trigger: 15+ min old, pullback 35%+, bounce 20%+, 10+ trades in 2 min
-    Same exits and size as Reclaim. Settings: the `reclaim` section, overridden by `reclaim_wide`."""
-    NAME = "reclaim_wide"
-    narr = None                                                   # Narratives tracker, set by the app
-
-    def __init__(self, *a, **k):
-        super().__init__(*a, **k)
-        self._seeded_at = 0.0
-
-    def cfg(self):
-        c = dict(self._cfg().get("reclaim") or {})
-        c.pop("stats_since", None)
-        for k, v in dict(run_mcap_sol=60, min_age_min=15, pullback_pct=35, bounce_pct=20, min_trades_2m=10,
-                         max_age_h=24, max_candidates=1500).items():
-            c[k] = v
-        c.update(self._cfg().get(self.NAME) or {})
-        return c
-
-    def _seed(self):
-        """Add coins the narratives log saw reach 80 SOL recently (the bot may have stopped watching them)."""
-        if self.narr is None:
-            return 0
-        c = self.cfg()
-        now = time.time()
-        n = 0
-        for m, v in list(self.narr.mints.items()):
-            h = v.get("hits") or {}
-            if "hit80" not in h or v.get("excluded") or m in self.known or m in self.cands:
-                continue
-            if now - v["ts"] > float(c.get("max_age_h", 24)) * 3600:
-                continue
-            self.known.add(m)
-            self.cands[m] = dict(mint=m, symbol=v.get("symbol") or m[:5], name=v.get("name") or "", created=v["ts"],
-                                 added=now, peak=max(float(v.get("peak") or 0), 80.0), low=None, pulled=False,
-                                 last_mc=None, misses=0)
-            n += 1
-        return n
-
-    async def tick(self):
-        if time.time() - self._seeded_at > 600:
-            self._seeded_at = time.time()
-            try:
-                n = self._seed()
-                if n:
-                    log.info("RECLAIM_WIDE following %d more coins that reached 80 SOL", n)
-            except Exception as e:
-                self.last_error = f"seed: {e}"
-        await super().tick()
-
-    def state(self):
-        s = super().state()
-        c = self.cfg()
-        s.update(name=self.NAME,
-                 desc=(f"Wider Reclaim: coins that hit {c.get('run_mcap_sol')}+ SOL (or 80+ in the last {c.get('max_age_h')} h), "
-                       f"pulled back {c.get('pullback_pct')}%+, bounce {c.get('bounce_pct')}% with {c.get('min_trades_2m')}+ "
-                       f"trades/2 min ({c.get('min_age_min')}+ min old) · ${c.get('size_usd', 25)} each · no real money"))
-        return s
