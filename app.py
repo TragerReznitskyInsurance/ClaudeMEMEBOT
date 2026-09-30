@@ -350,7 +350,26 @@ class Runner:
         return dict(since=g3.since, min_age_s=g3.cfg().get("min_age_s", 180),
                     base_min_age_s=(self.lookalike_grad.cfg().get("min_age_s", 300)),
                     five=self.lookalike_grad.stats_since(g3.since), three=g3.stats_since(g3.since),
-                    three_positions=g3.state()["positions"][:30])
+                    coins=self._age_test_coins(g3))
+
+    @staticmethod
+    def _age_test_coins(g3):
+        """The 3-minute test's coins (newest first): open ones with their current multiple, closed ones with P/L."""
+        usd = sol_price.usd or 0
+        out = []
+        for p in g3.positions.values():
+            if p["opened"] >= g3.since and p.get("verified", True):
+                val = g3._sell_value(p["tokens"], p["last_px"])
+                pnl = val + p["sol_out"] - p["sol_in"]
+                out.append(dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], age_s=p.get("age_at_entry_s"),
+                                entry_mcap=p["entry_mcap"], open=True, mult=round(p["last_px"] / p["entry_px"], 2),
+                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"])))
+        for x in g3.closed:
+            if x["opened"] >= g3.since:
+                out.append(dict(mint=x["mint"], symbol=x["symbol"], opened=x["opened"], age_s=x.get("age_at_entry_s"),
+                                entry_mcap=x["entry_mcap"], open=False, pnl_usd=x["pnl_usd"], pct=x["pnl_pct"],
+                                note=x.get("exit", "")))
+        return sorted(out, key=lambda c: -c["opened"])[:40]
 
     def snapshot(self):
         snap = self.engine.snapshot() if self.engine else None
