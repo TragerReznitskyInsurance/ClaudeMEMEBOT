@@ -528,6 +528,31 @@ async function launchCheck() {
     out.innerHTML = h;
   } catch (e) { out.textContent = "Check failed: " + e.message; }
 }
+async function stratSettings(name) {
+  let r;
+  try { r = await (await fetch("/api/strategy/settings?name=" + encodeURIComponent(name))).json(); } catch (e) { toast(e.message); return; }
+  if (r.error) { toast(r.error); return; }
+  document.getElementById("stratBox")?.remove();
+  const box = document.createElement("div");
+  box.id = "stratBox";
+  box.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px";
+  box.innerHTML = `<div class="card" style="max-width:560px;width:100%;max-height:85vh;overflow:auto"><div class="rm-head"><h2>⚙ ${esc(name.replace("_", " "))} settings</h2>
+    <div class="rm-actions"><button class="btn" onclick="document.getElementById('stratBox').remove()">✕</button></div></div><div class="card-b">
+    <div class="faint" style="font-size:12px;margin-bottom:8px">Changes apply right away and are kept. Real-money settings stay in the main Settings drawer.</div>
+    <table class="wtab">${r.fields.map(f => `<tr><td style="font-size:13px">${esc(f.label)}</td><td class="r">${f.type === "bool"
+      ? `<input type="checkbox" data-k="${f.key}" ${f.value ? "checked" : ""}>`
+      : `<input data-k="${f.key}" value="${f.value}" style="width:90px;text-align:right" inputmode="decimal">`}</td></tr>`).join("")}</table>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" onclick="document.getElementById('stratBox').remove()">Cancel</button>
+      <button class="btn primary" onclick="stratSave('${name}')">Save</button></div></div></div>`;
+  box.addEventListener("click", e => { if (e.target === box) box.remove(); });
+  document.body.appendChild(box);
+}
+async function stratSave(name) {
+  const values = {};
+  document.querySelectorAll("#stratBox [data-k]").forEach(i => { values[i.dataset.k] = i.type === "checkbox" ? i.checked : i.value.trim(); });
+  try { const r = await api("/api/strategy/settings", { name, values }); toast(`Saved ${r.saved} settings`); document.getElementById("stratBox")?.remove(); }
+  catch (e) { toast(e.message); }
+}
 async function stratReset(name) {
   if (!confirm("Start this test's results over from now? Its trade history files are kept.")) return;
   try { await api("/api/strategy/reset", { name }); toast("Stats reset"); } catch (e) { toast(e.message); }
@@ -1051,7 +1076,7 @@ function renderAgeTest() {
   if (!AT.fresh) { el.innerHTML = ""; return; }
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="card-b">
     ${AT.fresh ? (() => { const F = AT.fresh, fh = (Date.now() / 1000 - F.since) / 3600, fd = F.fresh.total_usd - F.base.total_usd;
-      return `<h3 style="margin:0 0 4px;font-size:14px">🧪 Did the up-trend filter help? (paper Lookalike)</h3>
+      return `<h3 style="margin:0 0 4px;font-size:14px">🧪 Did the up-trend filter help? (paper Lookalike) <button class="btn" style="padding:3px 9px;font-size:12px;margin-left:6px" onclick="stratSettings('lookalike_grad')">⚙ Settings</button></h3>
       <div class="faint" style="font-size:12.5px;margin-bottom:6px">The paper Lookalike only buys coins that are up ${F.rise}%+ over the last 2 minutes, not falling in the last minute, within ${Math.round((F.cap - 1) * 100)}% of their high${F.buys ? `, and with ${F.buys}+ buys in the last 2 minutes` : ""}. "Old rules" is a paper copy without those filters, over the same period. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
       <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
       ${row("Current filters (paper)", F.base)}${row("Old rules (paper)", F.fresh)}</table>
@@ -1067,7 +1092,7 @@ function renderLkRules() {
   const V = L.vs, $$ = v => v == null ? "—" : `<span class="num ${cls(v)}">${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}</span>`;
   const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
   const hrs = (Date.now() / 1000 - V.since) / 3600;
-  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Survivor breakout (wallet #1 style)</h2></div><div class="card-b" style="font-size:13px;line-height:1.6">
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Survivor breakout (wallet #1 style)</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('survivor')">⚙ Survivor settings</button><button class="btn" onclick="stratSettings('hotword')">⚙ Hot-word test</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
     <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of coins <b>${L.min_age_min} min to ${L.max_age_h} h old</b> that break to a <b>new high through 44 SOL</b> (ignoring launch-minute spikes), grinding up (+5% over ~2 min) with no big pullback (nobody dumping). Never Mayhem-mode coins; only coins that passed the safety checks.
     <b>Sells:</b> stop −30% · <b>¼ at 2×</b> (then the rest never goes below break-even) · <b>¼ at 3×</b> · <b>¼ at 5×</b> · last ¼ rides with a 30% trailing stop · 24h limit.
     <div class="faint" style="margin-top:6px">Following ${L.candidates} coins right now (${L.hot} near 44 SOL). Limits: max ${L.real_max_open} open · stops buying after −$${L.real_daily_loss_usd} in a day · ⏸ pauses new buys. Coins bought under the old lookalike rules are still sold by their old plan.</div>
@@ -1097,7 +1122,7 @@ function renderStrat(el, L, title) {
   const tot = (L.realized || 0) + (L.open_pnl || 0);
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>${title}</h2>${status}
     <span class="faint" style="font-size:12px">${esc(L.desc || "")}${L.name === "reclaim" || L.name === "reclaim_wide" ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
-    <div class="rm-actions">${["reclaim", "reclaim_wide", "skimmer", "lookalike"].includes(L.name) ? `<button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+    <div class="rm-actions">${["reclaim", "reclaim_wide", "skimmer", "lookalike"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
   if (L.stats_since) h += `<div class="faint" style="font-size:12px;padding:6px 16px 0">Results since ${new Date(L.stats_since * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>`;
   h += `<div class="card-b"><table class="wtab"><tr class="faint"><td>Open</td><td class="r">Closed</td><td class="r">Win rate</td><td class="r">Hit 2x</td><td class="r">Hit 6x</td><td class="r">Realized</td><td class="r">Open P&L</td><td class="r">Total</td></tr>
     <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>

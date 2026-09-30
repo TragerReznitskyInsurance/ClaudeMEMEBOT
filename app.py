@@ -770,6 +770,87 @@ async def api_launch(request):
     return web.json_response(r)
 
 
+STRAT_LABELS = {
+    "enabled": "On", "size_usd": "Paper size per coin ($)", "entry_mcap_sol": "Buy when it rises through (SOL mcap)",
+    "min_age_s": "Coin at least (seconds old)", "min_age_min": "Coin at least (minutes old)", "max_age_h": "Follow coins up to (hours old)",
+    "tp_pct": "Take profit at (+%)", "sl_pct": "Sell when down (%)", "max_hold_min": "Sell after (minutes)",
+    "max_hold_h": "Time limit (hours)", "stop_pct": "Stop loss (%)", "trail_pct": "Trailing stop below the high (%)",
+    "trail_arm_mult": "Trailing stop starts at (x)", "tp_mult": "Sell part at (x)", "tp_frac_pct": "…sell this much there (%)",
+    "run_mcap_sol": "Candidate: first run reached (SOL mcap)", "pullback_pct": "Pulled back at least (%)",
+    "bounce_pct": "Then bounced at least (%)", "max_of_peak_pct": "Still at most (% of old peak)",
+    "min_entry_mcap_sol": "Buy only above (SOL mcap)", "min_trades_2m": "Trades in the last 2 min (at least)",
+    "dead_mcap_sol": "Drop coins below (SOL mcap)", "max_open": "Max open positions", "max_candidates": "Max coins followed",
+    "near_high_pct": "Within this % of its high", "min_rise_2m_pct": "Up at least (% over 2 min)",
+    "max_pullback_pct": "No pullback bigger than (% in 2 min)", "max_entry_mult": "Skip if already above (x of the line)",
+    "scratch_min": "Quick exit if not +10% within (min, 0 = off)", "breakeven_floor_mult": "Break-even floor (x)",
+    "breakeven_after_mult": "Stop to break-even after (x)", "max_prior_peak_mult": "Skip if it was above (x of the line) before",
+    "min_buys_2m": "Buys in the last 2 min (at least)", "min_rise_1m_pct": "Not falling over 1 min (min %)",
+    "window_h": "Hot word: graduations within (hours)", "min_grads": "Hot word: at least (graduations)",
+    "stop_pct_before": "Stop before first take-profit (%)", "zone_mcap_sol": "Graduation zone starts at (SOL)",
+    "zone_sell_pct": "Sell in the zone (% of what's left)", "moon_trail_pct": "Moonbag trailing stop (%)",
+    "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "settle_min": "Ignore launch spikes for (min)",
+}
+STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd", "stats_since", "hot_from_pct",
+              "cold_every_s", "old_after_h", "old_every_s", "dead_every_s", "check_every_s", "grad_floor_mcap_sol"}
+
+
+STRAT_HIDE = {"skimmer": ("max_prior_peak_mult", "min_rise_2m_pct", "min_rise_1m_pct", "min_buys_2m")}   # fixed by its design
+
+
+def _strategies():
+    """name -> (strategy object, config section its own settings are saved in)."""
+    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_wide": (runner.reclaim_wide, "reclaim_wide"),
+            "skimmer": (runner.skimmer, "skimmer"), "lookalike": (runner.lookalike, "lookalike"),
+            "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
+            "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
+
+
+async def api_strategy_settings(request):
+    """GET: the editable numbers of one paper strategy. POST {name, values:{key: value}}: save them (live)."""
+    if request.method == "GET":
+        name = request.rel_url.query.get("name", "")
+    else:
+        body = await request.json()
+        name = body.get("name", "")
+    got = _strategies().get(name)
+    if not got:
+        return web.json_response({"error": "unknown strategy"}, status=400)
+    strat, section = got
+    eff = strat.cfg()
+    if request.method == "GET":
+        fields = [dict(key=k, label=STRAT_LABELS.get(k, k.replace("_", " ")), value=v,
+                       type="bool" if isinstance(v, bool) else "float")
+                  for k, v in eff.items() if k not in STRAT_SKIP and k not in STRAT_HIDE.get(name, ())
+                  and (isinstance(v, bool) or isinstance(v, (int, float)))]
+        fields.sort(key=lambda f: (f["key"] != "enabled", list(STRAT_LABELS).index(f["key"]) if f["key"] in STRAT_LABELS else 999))
+        return web.json_response({"name": name, "section": section, "fields": fields})
+    values, errors = {}, []
+    for k, raw in (body.get("values") or {}).items():
+        if k in STRAT_SKIP or k in STRAT_HIDE.get(name, ()) or k not in eff:
+            continue
+        try:
+            if isinstance(eff[k], bool):
+                v = raw if isinstance(raw, bool) else str(raw).lower() in ("1", "true", "on", "yes")
+            else:
+                v = float(raw)
+                if v < 0:
+                    raise ValueError
+                if isinstance(eff[k], int) and v.is_integer():
+                    v = int(v)
+            values[f"{section}.{k}"] = v
+        except (TypeError, ValueError):
+            errors.append(STRAT_LABELS.get(k, k))
+    if errors:
+        return web.json_response({"error": "Check these values: " + ", ".join(errors)}, status=400)
+    S.save_overrides(values, config_path=CONFIG)
+    runner.cfg = S.load_config(CONFIG)
+    for cfgd in ([runner.engine.cfg] if runner.engine and runner.running else []):
+        for path, v in values.items():
+            sec, key = path.split(".", 1)
+            cfgd.setdefault(sec, {})[key] = v
+    return web.json_response({"ok": True, "saved": len(values)})
+
+
 async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
@@ -855,6 +936,8 @@ def make_app():
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/strategy/reset", api_strategy_reset)
+    app.router.add_get("/api/strategy/settings", api_strategy_settings)
+    app.router.add_post("/api/strategy/settings", api_strategy_settings)
     app.router.add_get("/api/launch", api_launch)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
