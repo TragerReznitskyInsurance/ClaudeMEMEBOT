@@ -570,7 +570,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1035,7 +1035,7 @@ function renderLab() {
 
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
-let AT = null;
+let AT = null, BOOT = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 function renderAgeTest() {
   const el = $("#agetest");
   if (!el) return;

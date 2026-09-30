@@ -131,7 +131,7 @@ class Runner:
                     rugcheck_errors=getattr(self.screener, "stats", {}).get("error", 0),
                     rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
                     rugcheck_last_error=getattr(self.screener, "last_error", ""),
-                    trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state())
+                    trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state(), boot=BOOT_ID)
 
     def busy_trades(self):
         """Real buys/sells in flight right now (don't restart for an update in the middle of one)."""
@@ -383,6 +383,7 @@ class Runner:
 
 
 # ---------------------------------------------------------------------- routes
+BOOT_ID = str(time.time())                      # changes on every restart -> open dashboards reload themselves
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
