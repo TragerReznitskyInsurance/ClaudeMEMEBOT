@@ -31,6 +31,7 @@ from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
 from memebot.lookalike_grad import LookalikeGrad
 from memebot.narratives import Narratives
+from memebot.whylog import WhyLog
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -80,6 +81,9 @@ class Runner:
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
+        self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
+        for strat in (self.lookalike, self.lookalike_grad, self.reclaim):
+            strat.why = self.why
 
     def name_targets(self):
         from memebot.names import is_placeholder
@@ -192,6 +196,7 @@ class Runner:
             eng.lookalike_grad = self.lookalike_grad
             eng.reclaim = self.reclaim
             eng.narr = self.narr
+            eng.why = self.why
             for m in list(self.live.positions):
                 feed.subscribe(m)                        # keep pricing positions carried over from before
             self.tasks.append(asyncio.create_task(self.live.recheck()))
@@ -369,6 +374,7 @@ async def broadcaster(app):
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
     lg_task = asyncio.create_task(runner.lookalike_grad.run())
     nr_task = asyncio.create_task(runner.narr.run())
+    why_task = asyncio.create_task(runner.why.run())
     yield
     task.cancel()
     price_task.cancel()
@@ -382,6 +388,8 @@ async def broadcaster(app):
     lg_task.cancel()
     await runner.lookalike_grad.close()
     nr_task.cancel()
+    why_task.cancel()
+    await runner.why.close()
     await runner.narr.close()
     await runner.lookalike.close()
     await runner.reclaim.close()
@@ -618,6 +626,19 @@ async def api_narrative_coins(request):
     return web.json_response({"coins": runner.narr.coins(key, metric, limit=int(q.get("limit", 200)))})
 
 
+async def api_why(request):
+    """Why didn't the bot buy this coin? Accepts a mint or a pump.fun link."""
+    import re
+    q = (request.rel_url.query.get("q") or "").strip()
+    m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}", q)
+    if not m:
+        return web.json_response({"error": "paste a pump.fun link or coin address"}, status=400)
+    mint = m.group(0)
+    nm = (runner.narr.mints.get(mint) or {}) if hasattr(runner.narr, "mints") else {}
+    return web.json_response({"mint": mint, "entries": runner.why.find(mint),
+                              "narr": {k: nm.get(k) for k in ("name", "symbol", "ts", "hits", "peak", "excluded")} if nm else None})
+
+
 async def api_diagnostics(request):
     """One zip with everything needed to review a session - never the trading wallet key or API keys."""
     import glob
@@ -631,7 +652,7 @@ async def api_diagnostics(request):
                      "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
-                     "lookalike_grad_fills.csv"):
+                     "lookalike_grad_fills.csv", "coin_decisions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
@@ -673,6 +694,7 @@ def make_app():
     app.router.add_post("/api/live/sell", api_live_sell)
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_get("/api/diagnostics", api_diagnostics)
+    app.router.add_get("/api/why", api_why)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
     return app

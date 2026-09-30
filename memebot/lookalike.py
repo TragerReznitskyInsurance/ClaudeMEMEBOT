@@ -163,6 +163,17 @@ class Lookalike:
 
     def _event(self, kind, text, **extra):
         self.events.append(dict(ts=time.time(), kind=kind, text=text, **extra))
+        w, m = getattr(self, "why", None), extra.get("mint")
+        if w is not None and m and kind in ("skip", "buy"):
+            sym = text.split(":")[0].replace("Paper buy ", "").split(" at ")[0]
+            if "REAL buy placed" in text:
+                w.note(m, sym, "bought", f"{self.NAME}: real buy placed")
+            elif "no real buy" in text:
+                w.note(m, sym, "real money", f"{self.NAME}: {text.split('no real buy - ', 1)[-1]}")
+            elif kind == "skip":
+                w.note(m, sym, self.NAME, text.split(": ", 1)[-1])
+            else:
+                w.note(m, sym, self.NAME, "paper buy · " + text.split(" at ", 1)[-1])
         self.events = self.events[-150:]
 
     # ------------------------------------------------------------------ costs (same model as the paper engine)
@@ -184,13 +195,20 @@ class Lookalike:
         line = float(c.get("entry_mcap_sol", 44))
         if not (prev_mcap < line <= t.mcap):
             return False
+        w = getattr(self, "why", None)
         if ts - t.created_ts < float(c.get("min_age_s", 300)):
+            if w is not None:
+                w.note(t.mint, t.symbol, self.NAME, f"crossed {line:g} SOL at {ts - t.created_ts:.0f}s old "
+                                                    f"(needs {float(c.get('min_age_s', 300)) / 60:g}+ min)", ts)
             return False
         if t.sec_state == "failed" or t.dev_sold and c.get("skip_if_dev_sold", False):
+            if w is not None:
+                w.note(t.mint, t.symbol, self.NAME, "crossed the line but " +
+                       ("security check failed" if t.sec_state == "failed" else "the dev had sold"), ts)
             return False
         self.traded.add(t.mint)
         if len(self.positions) >= int(c.get("max_open", 300)):
-            self._event("skip", f"{t.symbol}: max {c.get('max_open', 300)} paper positions open")
+            self._event("skip", f"{t.symbol}: max {c.get('max_open', 300)} paper positions open", mint=t.mint)
             return True
         usd = self._usd()
         if not usd:

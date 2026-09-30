@@ -217,6 +217,7 @@ class Engine:
         self.snaps = None                          # SnapshotRecorder (lookalike research), live mode only
         self.last_feed_trade_ts = 0.0              # last trade message from the live feed (wall clock)
         self.narr = None                           # Narratives tracker, live mode only
+        self.why = None                            # WhyLog: why each coin was passed on (live mode)
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
@@ -395,6 +396,11 @@ class Engine:
     def _drop(self, t: TokenState, reason: str):
         """Stop watching quietly (research-only mode): no funnel counts, no feed entries."""
         t.status, t.reason = "rejected", reason
+        if self.why is not None:
+            age = (self.now or time.time()) - t.created_ts
+            self.why.note(t.mint, t.symbol, "stopped watching",
+                          f"{reason.replace('research: done', 'done')} · {age / 60:.0f} min old · now {t.mcap or 0:.0f} SOL"
+                          f" · peak {t.peak_mcap or 0:.0f} SOL" + (" · dev sold" if t.dev_sold else ""))
         self.feed.unsubscribe(t.mint)
         t.mcap_hist.clear(); t.buyers.clear(); t.buy_by_wallet.clear(); t.buyer_first.clear(); t.recent.clear()
 
@@ -819,6 +825,9 @@ class Engine:
 
     def _reject(self, t: TokenState, reason: str, ts: float, subscribed=True):
         t.status, t.reason = "rejected", reason
+        if self.why is not None:
+            self.why.note(t.mint, t.symbol, "dropped" if subscribed else "not watched",
+                          reason + (f" · {ts - t.created_ts:.0f}s old · {t.mcap or 0:.0f} SOL" if subscribed else ""), ts)
         if subscribed:
             self.feed.unsubscribe(t.mint)
         key = reason.split(" (")[0]

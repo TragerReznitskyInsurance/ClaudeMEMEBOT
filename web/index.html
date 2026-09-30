@@ -383,6 +383,11 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <div id="screenLk" hidden>
     <section id="lkwallet"></section>
     <section id="lkrules"></section>
+    <section id="whybox"><div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔎 Why didn't it buy?</h2></div><div class="card-b">
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="whyq" placeholder="Paste a pump.fun link or coin address" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter')whyLookup()">
+      <button class="btn primary" onclick="whyLookup()">Check</button></div>
+      <div id="whyout" class="faint" style="font-size:13px;margin-top:10px">Every coin the bot passes on is logged with the reason, then checked again 30 min and 2 h later to see if it ran. Works for coins launched after this update.</div>
+    </div></div></section>
   </div>
   <div id="screenMain">
   <section id="realmoney"></section>
@@ -497,6 +502,31 @@ function spark(pts, w = 120, h = 34, color, baseline) {
 }
 
 /* ── API ─────────────────────────────────── */
+async function whyLookup() {
+  const q = document.getElementById("whyq").value.trim(), out = document.getElementById("whyout");
+  if (!q) return;
+  out.textContent = "Looking…";
+  try {
+    const r = await (await fetch("/api/why?q=" + encodeURIComponent(q))).json();
+    if (r.error) { out.textContent = r.error; return; }
+    const t = ts => new Date(ts * 1000).toLocaleTimeString();
+    const N = r.narr, created = N && N.ts;
+    let h = `<div><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(r.mint)}" target="_blank" rel="noopener"><b>${esc((N && N.symbol) || r.mint.slice(0, 6) + "…")}</b> ↗</a>${N && N.name ? ` <span class="faint">${esc(N.name)}</span>` : ""}</div>`;
+    const rows = [];
+    if (created) rows.push([created, "launched"]);
+    for (const [k, lab] of [["watched", "bot started watching"], ["hit44", "reached 44 SOL"], ["hit80", "reached 80 SOL"], ["hit3x", "reached 3× (132 SOL)"], ["hit6x", "reached 6× (264 SOL)"], ["grad", "graduated"]])
+      if (N && N.hits && N.hits[k]) rows.push([N.hits[k], lab + (created ? ` <span class="faint">(${Math.max(0, Math.round((N.hits[k] - created) / 60))} min after launch)</span>` : "")]);
+    for (const e of r.entries) {
+      if (e.type === "why") rows.push([e.ts, `<b>${esc(e.stage)}</b> · ${esc(e.why)}`]);
+      else if (e.type === "after") rows.push([null, `${e.after_min >= 60 ? e.after_min / 60 + " h" : e.after_min + " min"} later: ${e.graduated ? "<b>graduated</b>" : e.mcap_sol != null ? `${e.mcap_sol.toFixed(0)} SOL` : "no data"}${e.mayhem ? " · Mayhem mode" : ""}`]);
+    }
+    rows.sort((a, b) => (a[0] ?? 9e12) - (b[0] ?? 9e12));
+    h += rows.length ? `<table class="wtab" style="margin-top:6px">${rows.map(([ts, x]) => `<tr><td class="faint num" style="white-space:nowrap">${ts ? t(ts) : ""}</td><td>${x}</td></tr>`).join("")}</table>`
+      : `<div style="margin-top:6px">The bot has no record of this coin. Either it launched before this update, or it isn't a pump.fun launch the bot sees (e.g. LaunchLab).</div>`;
+    if (N && N.excluded) h += `<div class="faint">Excluded from narratives: ${esc(N.excluded)}</div>`;
+    out.innerHTML = h;
+  } catch (e) { out.textContent = "Lookup failed: " + e.message; }
+}
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
