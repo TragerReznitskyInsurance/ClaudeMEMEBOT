@@ -354,9 +354,11 @@ class Runner:
         g3 = self.lookalike_grad3
         if not g3.enabled():
             return None
-        return dict(since=g3.since, min_age_s=g3.cfg().get("min_age_s", 180),
+        base = self.lookalike_fresh if self.lookalike_fresh.enabled() else self.lookalike_grad
+        since = max(g3.since, base.since) if base is self.lookalike_fresh else g3.since    # same period for both
+        return dict(since=since, min_age_s=g3.cfg().get("min_age_s", 180),
                     base_min_age_s=(self.lookalike_grad.cfg().get("min_age_s", 300)),
-                    five=self.lookalike_grad.stats_since(g3.since), three=g3.stats_since(g3.since),
+                    five=base.stats_since(since), three=g3.stats_since(since),
                     coins=self._age_test_coins(g3), fresh=self._fresh_test())
 
     def _fresh_test(self):

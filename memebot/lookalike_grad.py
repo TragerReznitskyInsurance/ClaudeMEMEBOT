@@ -101,7 +101,8 @@ class LookalikeGrad3(LookalikeGrad):
     def cfg(self):
         c = dict(self._cfg().get("lookalike_grad") or {})
         own = self._cfg().get(self.NAME) or {}
-        c.update(enabled=own.get("enabled", True), min_age_s=own.get("min_age_s", 180), real_enabled=False)
+        c.update(enabled=own.get("enabled", True), min_age_s=own.get("min_age_s", 180), real_enabled=False,
+                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None)   # buys as before: no trend filters
         return c
 
     def state(self):
