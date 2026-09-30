@@ -71,6 +71,7 @@ SCHEMA = [
         {"path": "lookalike_grad.max_prior_peak_mult", "label": "Only buy near its high: skip if it was already this far above the line (0 = off)", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.min_rise_2m_pct", "label": "Only buy on an up trend: must be up this much over 2 min (0 = off)", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.min_buys_2m", "label": "Only buy with a crowd: at least this many buys in the last 2 min (0 = off)", "type": "int"},
+        {"path": "reclaim_wide.enabled", "label": "Reclaim · wide paper test (more trades)", "type": "bool"},
         {"path": "skimmer.enabled", "label": "Skimmer paper test (quick +20% / −5% trades)", "type": "bool"},
         {"path": "skimmer.tp_pct", "label": "Skimmer: sell at profit", "unit": "%", "type": "float"},
         {"path": "skimmer.sl_pct", "label": "Skimmer: sell when down", "unit": "%", "type": "float"},

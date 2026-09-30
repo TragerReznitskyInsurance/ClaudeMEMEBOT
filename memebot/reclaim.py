@@ -39,7 +39,7 @@ class Reclaim(Lookalike):
 
     def __init__(self, data_dir, cfg_getter, key_getter, sol_usd_getter):
         super().__init__(data_dir, cfg_getter, key_getter, sol_usd_getter)
-        self.cands_path = os.path.join(data_dir, "reclaim_candidates.json")
+        self.cands_path = os.path.join(data_dir, f"{self.NAME}_candidates.json")
         self.cands: dict[str, dict] = {}
         self.known: set[str] = set()
         try:
@@ -198,4 +198,67 @@ class Reclaim(Lookalike):
                  desc=(f"Coins that ran to {c.get('run_mcap_sol', 80)}+ SOL, pulled back {c.get('pullback_pct', 40)}%+, "
                        f"then bounce {c.get('bounce_pct', 25)}% with {c.get('min_trades_2m', 15)}+ trades/2 min "
                        f"(30+ min old) · ${c.get('size_usd', 25)} each · no real money"))
+        return s
+
+
+class ReclaimWide(Reclaim):
+    """PAPER test: Reclaim with a wider net, to trade more often.
+      - candidates: coins that reached `run_mcap_sol` (60) while watched, PLUS every coin the narratives log saw
+        reach 80 SOL in the last `max_age_h` (24) hours (so coins the bot stopped watching are included)
+      - looser trigger: 15+ min old, pullback 35%+, bounce 20%+, 10+ trades in 2 min
+    Same exits and size as Reclaim. Settings: the `reclaim` section, overridden by `reclaim_wide`."""
+    NAME = "reclaim_wide"
+    narr = None                                                   # Narratives tracker, set by the app
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._seeded_at = 0.0
+
+    def cfg(self):
+        c = dict(self._cfg().get("reclaim") or {})
+        c.pop("stats_since", None)
+        for k, v in dict(run_mcap_sol=60, min_age_min=15, pullback_pct=35, bounce_pct=20, min_trades_2m=10,
+                         max_age_h=24, max_candidates=1500).items():
+            c[k] = v
+        c.update(self._cfg().get(self.NAME) or {})
+        return c
+
+    def _seed(self):
+        """Add coins the narratives log saw reach 80 SOL recently (the bot may have stopped watching them)."""
+        if self.narr is None:
+            return 0
+        c = self.cfg()
+        now = time.time()
+        n = 0
+        for m, v in list(self.narr.mints.items()):
+            h = v.get("hits") or {}
+            if "hit80" not in h or v.get("excluded") or m in self.known or m in self.cands:
+                continue
+            if now - v["ts"] > float(c.get("max_age_h", 24)) * 3600:
+                continue
+            self.known.add(m)
+            self.cands[m] = dict(mint=m, symbol=v.get("symbol") or m[:5], name=v.get("name") or "", created=v["ts"],
+                                 added=now, peak=max(float(v.get("peak") or 0), 80.0), low=None, pulled=False,
+                                 last_mc=None, misses=0)
+            n += 1
+        return n
+
+    async def tick(self):
+        if time.time() - self._seeded_at > 600:
+            self._seeded_at = time.time()
+            try:
+                n = self._seed()
+                if n:
+                    log.info("RECLAIM_WIDE following %d more coins that reached 80 SOL", n)
+            except Exception as e:
+                self.last_error = f"seed: {e}"
+        await super().tick()
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME,
+                 desc=(f"Wider Reclaim: coins that hit {c.get('run_mcap_sol')}+ SOL (or 80+ in the last {c.get('max_age_h')} h), "
+                       f"pulled back {c.get('pullback_pct')}%+, bounce {c.get('bounce_pct')}% with {c.get('min_trades_2m')}+ "
+                       f"trades/2 min ({c.get('min_age_min')}+ min old) · ${c.get('size_usd', 25)} each · no real money"))
         return s

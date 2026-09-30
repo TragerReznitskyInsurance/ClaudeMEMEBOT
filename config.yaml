@@ -196,6 +196,17 @@ reclaim:
   tp_frac_pct: 33.3
   max_hold_h: 24
 
+# ── Reclaim · wide (PAPER ONLY) ──────────────────────────────────
+# Reclaim with a wider net (more trades): uses every "reclaim" setting, overridden by these.
+reclaim_wide:
+  enabled: true
+  run_mcap_sol: 60
+  min_age_min: 15
+  pullback_pct: 35
+  bounce_pct: 20
+  min_trades_2m: 10
+  max_age_h: 24                        # also follows coins seen reaching 80 SOL in the last 24 h
+
 # ── REAL MONEY copy trading ─────────────────────────────────────
 # Uses a dedicated trading wallet created in the dashboard (key stays in data/trading_wallet.json).
 # Only active while "Start live" is running. Fund the wallet only with what you can afford to lose.
