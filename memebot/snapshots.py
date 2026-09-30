@@ -30,6 +30,7 @@ from solders.pubkey import Pubkey
 
 from memebot.chain import curve_address
 from memebot import wallet_tokens as WT
+from memebot.social import Social
 
 log = logging.getLogger("memebot")
 RPC = "https://mainnet.helius-rpc.com/?api-key={key}"
@@ -144,6 +145,7 @@ class SnapshotRecorder:
         self.control_times: deque = deque()
         self.stats = Counter()
         self.last_error = ""
+        self.social = Social()                 # pump.fun comment counts (free, best effort)
         self.history_delay = 45                # s to wait before reading a token's history (indexer lag)
         self._load()
 
@@ -242,9 +244,16 @@ class SnapshotRecorder:
                     top10_pct=round(sum(others[:10]) / SUPPLY * 100, 2),
                     curve_supply_pct=round(in_curve / SUPPLY * 100, 1) if in_curve else None)
 
+    async def _pf(self, mint):
+        """pump.fun comment count etc., as pf_* fields (empty if pump.fun didn't answer)."""
+        if not self.cfg().get("social", True):
+            return {}
+        return {"pf_" + k: v for k, v in (await self.social.fetch(await self._sess(), mint)).items()}
+
     async def _take(self, base, feats):
         try:
             holders = await self._holders(base["mint"])
+            holders.update(await self._pf(base["mint"]))
             if feats is None:                                 # not watched by the bot: read its history instead
                 await asyncio.sleep(self.history_delay)       # let the indexer catch up with the wallet's buy
                 early = await WT.fetch_early(await self._sess(), self.key, base["mint"])
@@ -315,8 +324,10 @@ class SnapshotRecorder:
                         state[m]["mcap_sol"] = round(usd / px * SUPPLY, 1)
             except Exception:
                 pass
+        pf = dict(zip(mints, await asyncio.gather(*(self._pf(m) for m in mints))))
         for sid, p, m in due:
-            self._write(dict(type="outcome", id=sid, mint=p["mint"], after_min=m, ts=now, **state[p["mint"]]))
+            self._write(dict(type="outcome", id=sid, mint=p["mint"], after_min=m, ts=now, **state[p["mint"]],
+                             **pf.get(p["mint"], {})))
             p["due"].remove(m)
             self.stats["outcomes"] += 1
             if not p["due"]:
@@ -337,7 +348,7 @@ class SnapshotRecorder:
     def summary(self):
         return dict(wallet_buys=self.stats["wallet_buy"], compared=self.stats["crossed"], outcomes=self.stats["outcomes"],
                     waiting=len(self.pending), errors=self.stats["errors"], last_error=self.last_error,
-                    cross_mcap_sol=self.cfg().get("cross_mcap_sol", 42))
+                    cross_mcap_sol=self.cfg().get("cross_mcap_sol", 42), social=self.social.summary())
 
     async def close(self):
         if self.session and not self.session.closed:

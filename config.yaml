@@ -48,6 +48,7 @@ snapshots:
   min_age_s: 120                       # ...but only if at least this old (skips creator/bundle launch jumps)
   watch_s: 1800                        # with momentum off: watch new coins this long for comparison snapshots
   control_per_hour: 60                 # max comparison snapshots per hour (keeps Helius credits low)
+  social: true                         # also record pump.fun comment count / livestream / King of the Hill (free)
 
 # ── Lookalike (PAPER ONLY) ──────────────────────────────────────
 # Wallet #1's entry (buy as a coin rises through ~44 SOL mcap) with our own exit plan.

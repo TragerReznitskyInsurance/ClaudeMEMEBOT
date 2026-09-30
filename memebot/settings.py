@@ -124,6 +124,7 @@ SCHEMA = [
         {"path": "copy_trade.dip_floor_pct", "label": "…cancel if it drops below the wallet's price by", "unit": "%", "type": "float"},
         {"path": "snapshots.enabled", "label": "Record token snapshots (for lookalike research)", "type": "bool"},
         {"path": "snapshots.cross_mcap_sol", "label": "Comparison tokens: snapshot at mcap", "unit": "SOL", "type": "float"},
+        {"path": "snapshots.social", "label": "…also record pump.fun comments / livestream (free)", "type": "bool"},
         {"path": "strategies.momentum", "label": "Also run momentum strategy", "type": "bool"},
     ]},
     {"group": "Exits", "items": [
