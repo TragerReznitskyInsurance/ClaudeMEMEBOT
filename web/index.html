@@ -617,7 +617,11 @@ function renderBody() {
     n += `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>🪞</span><div style="flex:1;min-width:0"><b style="color:var(--brand)">Copying ${esc(ws)}</b> · ${detail}${board}${C["skipped: balance"] ? ` · <span style="color:var(--warn)">${C["skipped: balance"]} skipped (low balance)</span>` : ""}${backup}${snapLine}</div></div>`;
   }
   if (S?.stats?.loss_limit_hit) n += `<div class="notice" style="background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>⛔</span><div><b style="color:var(--down)">Daily loss limit hit.</b> No new positions until tomorrow (UTC).</div></div>`;
-  $("#notice").innerHTML = silentFeed + n;
+  const U = META && META.update;
+  const upd = U && U.available ? `<div class="notice"><span>⬆</span><div>${U.failed ? `<b>An update couldn't install automatically</b> (git pull failed). Close the bot window and run start-windows.bat again.`
+    : U.auto ? `<b>Update found</b> · installing it automatically${U.waiting ? " as soon as no real buy or sell is in progress" : ""}. The bot restarts by itself in a few seconds and picks up where it left off.`
+    : `<b>Update available</b> · close the bot and start it with start-windows.bat to install it (future updates then install automatically).`}</div></div>` : "";
+  $("#notice").innerHTML = upd + silentFeed + n;
 
   if (!hasData) { $("#dash").hidden = true; renderHero(); return; }
   $("#hero").innerHTML = ""; $("#dash").hidden = false;

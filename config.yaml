@@ -216,3 +216,10 @@ risk:
 output:
   dir: "data"
   record_raw_events: true              # saves the feed so backtest.py can replay it with new settings
+
+# ── Auto-update ────────────────────────────────────────────────
+# When started with start-windows.bat / start-mac.command, the bot checks GitHub for a new
+# version and restarts itself to install it (never in the middle of a real buy or sell).
+auto_update:
+  enabled: true
+  check_min: 5                         # how often to check

@@ -9,5 +9,6 @@ if not exist .venv (
   python -m venv .venv || (echo Python 3.10+ is required: https://www.python.org/downloads/ & pause & exit /b 1)
 )
 .venv\Scripts\python -m pip install -q -r requirements.txt
-.venv\Scripts\python app.py
+set MOMENTUM_LAUNCHER=1
+.venv\Scripts\python launcher.py
 pause

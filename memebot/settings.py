@@ -249,5 +249,8 @@ def schema_with_values(cfg):
 
 
 # display order: security → safety → trigger A → trigger B → the rest
+SCHEMA.append({"group": "Auto-update", "items": [
+    {"path": "auto_update.enabled", "label": "Install updates automatically (restarts itself, never mid-trade)", "type": "bool"},
+]})
 _ORDER = ["Copy trading", "Real money", "Lookalike (", "Lookalike ·", "Reclaim", "Security gate", "Safety filters", "Trigger A", "Trigger B"]
 SCHEMA.sort(key=lambda g: next((i for i, k in enumerate(_ORDER) if g["group"].startswith(k)), len(_ORDER)))

@@ -32,6 +32,7 @@ from memebot.reclaim import Reclaim
 from memebot.lookalike_grad import LookalikeGrad
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
+from memebot.updater import Updater
 from memebot.prices import SolPrice
 from memebot.security import DemoScreener, RugCheckScreener
 
@@ -84,6 +85,8 @@ class Runner:
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
         for strat in (self.lookalike, self.lookalike_grad, self.reclaim):
             strat.why = self.why
+        self.updater = Updater(HERE, os.path.join(HERE, "data"),
+                               lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
 
     def name_targets(self):
         from memebot.names import is_placeholder
@@ -124,7 +127,21 @@ class Runner:
                     rugcheck_errors=getattr(self.screener, "stats", {}).get("error", 0),
                     rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
                     rugcheck_last_error=getattr(self.screener, "last_error", ""),
-                    trade_feed_silent_s=self.trade_feed_silent())
+                    trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state())
+
+    def busy_trades(self):
+        """Real buys/sells in flight right now (don't restart for an update in the middle of one)."""
+        return sum(1 for tr in (self.live, self.live2) for p in tr.positions.values()
+                   if p.get("status") in ("buying", "selling", "waiting"))
+
+    async def shutdown_for_update(self):
+        await self.stop()
+        self.narr.save(force=True)
+        for strat in (self.lookalike, self.lookalike_grad, self.reclaim):
+            try:
+                strat._save()
+            except Exception:
+                pass
 
     def trade_feed_silent(self):
         """Seconds the live feed has been connected and watching coins without sending one trade (None = fine)."""
@@ -375,6 +392,7 @@ async def broadcaster(app):
     lg_task = asyncio.create_task(runner.lookalike_grad.run())
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
+    upd_task = asyncio.create_task(runner.updater.run(runner))
     yield
     task.cancel()
     price_task.cancel()
@@ -389,6 +407,7 @@ async def broadcaster(app):
     await runner.lookalike_grad.close()
     nr_task.cancel()
     why_task.cancel()
+    upd_task.cancel()
     await runner.why.close()
     await runner.narr.close()
     await runner.lookalike.close()
@@ -723,7 +742,11 @@ def main():
 
     async def on_start(_app):
         print(f"\n  Momentum dashboard running at {url}\n  Press Ctrl+C to quit.\n")
-        if a.demo:
+        resume = runner.updater.take_resume()
+        if resume in ("live", "demo"):
+            log.info("UPDATE installed - resuming %s mode", resume)
+            await runner.start(resume, 3)
+        elif a.demo:
             await runner.start("demo", 3)
         if not a.no_browser:
             asyncio.get_running_loop().call_later(0.8, webbrowser.open, url)

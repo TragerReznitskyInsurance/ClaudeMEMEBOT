@@ -9,4 +9,5 @@ if [ ! -d .venv ]; then
   python3 -m venv .venv || { echo "Python 3.10+ is required: https://www.python.org/downloads/"; read; exit 1; }
 fi
 .venv/bin/python -m pip install -q -r requirements.txt
-.venv/bin/python app.py
+export MOMENTUM_LAUNCHER=1
+.venv/bin/python launcher.py
