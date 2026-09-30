@@ -56,6 +56,7 @@ def curve_sell(tokens, px):
 
 
 class Lookalike:
+    _curve_cache: dict = {}                        # mint -> (ts, (px, src) or None), shared by all strategies
     NAME = "lookalike"                             # config section, file prefix, real-money tag
 
     def __init__(self, data_dir, cfg_getter, key_getter, sol_usd_getter):
@@ -387,19 +388,46 @@ class Lookalike:
         return self.session
 
     async def _rpc(self, method, params):
+        """Helius RPC with retries: when it's busy it answers HTTP 429 / an empty or non-JSON body."""
         s = await self._sess()
-        async with s.post(RPC.format(key=self._key()), json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-                          timeout=aiohttp.ClientTimeout(total=15)) as r:
-            j = await r.json(content_type=None)
-        if "error" in j:
-            raise RuntimeError(str(j["error"])[:120])
-        return j.get("result")
+        last = None
+        for attempt in range(3):
+            try:
+                async with s.post(RPC.format(key=self._key()), json={"jsonrpc": "2.0", "id": 1, "method": method,
+                                                                    "params": params},
+                                  timeout=aiohttp.ClientTimeout(total=15)) as r:
+                    status = r.status
+                    try:
+                        j = await r.json(content_type=None)
+                    except ValueError:
+                        j = None
+                if not isinstance(j, dict):
+                    last = f"Helius busy (HTTP {status})"
+                    await asyncio.sleep(0.6 * (attempt + 1))
+                    continue
+                if "error" in j:
+                    raise RuntimeError(str(j["error"])[:120])
+                return j.get("result")
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last = f"Helius connection: {type(e).__name__}"
+                await asyncio.sleep(0.6 * (attempt + 1))
+        raise RuntimeError(last or "Helius not answering")
 
     async def prices(self, mints):
         """{mint: (SOL per token, source)}. Sources: 'curve' (pump.fun bonding curve, on-chain), 'feed' (live feed,
         only for coins still on the curve), 'jupiter' (only after the curve says the coin graduated).
         Coins with no pump.fun curve get no price at all."""
         out, curves = {}, {}
+        now = time.time()
+        cache = Lookalike._curve_cache
+        if len(cache) > 20000:
+            for k in [k for k, v in cache.items() if now - v[0] > 10]:
+                cache.pop(k, None)
+        fresh = [m for m in mints if m in cache and now - cache[m][0] < 1.5]
+        for m in fresh:
+            if cache[m][1] is not None:
+                out[m] = cache[m][1]
+        mints = [m for m in mints if m not in fresh]
         for m in mints:
             try:
                 curves[m] = curve_address(m)
@@ -412,18 +440,22 @@ class Lookalike:
                                                         {"encoding": "base64", "commitment": "confirmed"}])
             for m, acc in zip(chunk, (r or {}).get("value") or []):
                 data = base64.b64decode(acc["data"][0]) if acc else b""
+                cache[m] = (now, None)
                 if len(data) < 49:
                     continue                               # no pump.fun curve: never trust another source
                 if len(data) > 81 and data[81] == 1:
                     out[m] = (0.0, "mayhem")               # mayhem-mode coin (different supply): not traded
+                    cache[m] = (now, out[m])
                     continue
                 if data[48]:
+                    cache.pop(m, None)
                     grads.append(m)                        # graduated: priced from its pool via Jupiter
                     continue
                 px = parse_curve(data)
                 if px:
                     fp = self.feed_price(m)
                     out[m] = (fp[0], "feed") if fp and fp[1] < 15 and 0.5 < fp[0] / px < 2 else (px, "curve")
+                    cache[m] = (now, out[m])
         usd = self._usd()
         if grads and usd:
             s = await self._sess()
@@ -436,6 +468,7 @@ class Lookalike:
                         v = float(((j or {}).get(m) or {}).get("usdPrice") or 0)
                         if v > 0:
                             out[m] = (v / usd, "jupiter")
+                            cache[m] = (now, out[m])
                 except Exception:
                     pass
         return out
@@ -478,6 +511,7 @@ class Lookalike:
             try:
                 if self.active:
                     await self.tick()
+                    self.last_error = ""                   # a clean pass clears an old error message
             except asyncio.CancelledError:
                 raise
             except Exception as e:
