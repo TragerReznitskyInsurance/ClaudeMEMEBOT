@@ -527,6 +527,10 @@ async function launchCheck() {
     out.innerHTML = h;
   } catch (e) { out.textContent = "Check failed: " + e.message; }
 }
+async function stratReset(name) {
+  if (!confirm("Start this test's results over from now? Its trade history files are kept.")) return;
+  try { await api("/api/strategy/reset", { name }); toast("Stats reset"); } catch (e) { toast(e.message); }
+}
 async function whyLookup() {
   const q = document.getElementById("whyq").value.trim(), out = document.getElementById("whyout");
   if (!q) return;
@@ -1092,7 +1096,8 @@ function renderStrat(el, L, title) {
   const tot = (L.realized || 0) + (L.open_pnl || 0);
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>${title}</h2>${status}
     <span class="faint" style="font-size:12px">${esc(L.desc || "")}${L.name === "reclaim" ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
-    <div class="rm-actions"><button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+    <div class="rm-actions">${["reclaim", "skimmer", "lookalike"].includes(L.name) ? `<button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+  if (L.stats_since) h += `<div class="faint" style="font-size:12px;padding:6px 16px 0">Results since ${new Date(L.stats_since * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>`;
   h += `<div class="card-b"><table class="wtab"><tr class="faint"><td>Open</td><td class="r">Closed</td><td class="r">Win rate</td><td class="r">Hit 2x</td><td class="r">Hit 6x</td><td class="r">Realized</td><td class="r">Open P&L</td><td class="r">Total</td></tr>
     <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>
     <td class="r num ${cls(L.realized)}">${$u(L.realized) || signed(L.realized, 4)}</td><td class="r num ${cls(L.open_pnl)}">${$u(L.open_pnl) || signed(L.open_pnl, 4)}</td><td class="r num ${cls(tot)}"><b>${$u(tot) || signed(tot, 4)}</b></td></tr></table>`;

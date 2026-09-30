@@ -548,17 +548,41 @@ class Lookalike:
                     size_usd=self.cfg().get("size_usd", 2.5),
                     young=sum(1 for x in [*cl, *op] if (x.get("age_at_entry_s") or 1e9) < 300))
 
+    def stats_from(self):
+        """Results count from this time: the later of a 'Reset stats' click and the config's `stats_since` date."""
+        ts = 0.0
+        try:
+            with open(os.path.join(self.dir, f"{self.NAME}_reset.txt"), encoding="utf-8") as fh:
+                ts = float(fh.read().strip())
+        except (OSError, ValueError):
+            pass
+        d = str(self.cfg().get("stats_since") or "").strip()
+        if d:
+            try:
+                ts = max(ts, time.mktime(time.strptime(d, "%Y-%m-%d")))      # local midnight of that day
+            except ValueError:
+                pass
+        return ts
+
+    def reset_stats(self):
+        ts = time.time()
+        with open(os.path.join(self.dir, f"{self.NAME}_reset.txt"), "w", encoding="utf-8") as fh:
+            fh.write(str(ts))
+        return ts
+
     def state(self):
         usd = self._usd()
         c = self.cfg()
-        cl = self.closed
+        since = self.stats_from()
+        cl = [x for x in self.closed if x["opened"] >= since]
         wins = [x for x in cl if x["pnl_sol"] > 0]
         realized = sum(x["pnl_sol"] for x in cl)
-        live_pos = [p for p in self.positions.values() if p.get("verified", True)]
+        live_pos = [p for p in self.positions.values() if p.get("verified", True) and p["opened"] >= since]
         open_val = sum(self._sell_value(p["tokens"], p["last_px"]) for p in live_pos)
         open_cost_left = sum(p["sol_in"] - p["sol_out"] for p in live_pos)
         ups = sum(1 for x in cl if "2x" in x["stages"])
         return dict(
+            stats_since=since or None,
             name=self.NAME, desc=f"Buys coins rising through {c.get('entry_mcap_sol', 44)} SOL mcap · ${c.get('size_usd', 2.5)} each",
             enabled=self.enabled(), active=self.active, size_usd=c.get("size_usd", 2.5),
             real_enabled=bool(c.get("real_enabled")), real_size_usd=c.get("real_size_usd", 2.5),

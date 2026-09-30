@@ -764,6 +764,16 @@ async def api_launch(request):
     return web.json_response(r)
 
 
+async def api_strategy_reset(request):
+    """Start a strategy's results over from now (its trade history files are kept)."""
+    body = await request.json()
+    strat = {"reclaim": runner.reclaim, "skimmer": runner.skimmer, "lookalike": runner.lookalike,
+             "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
+    if strat is None:
+        return web.json_response({"error": "unknown strategy"}, status=400)
+    return web.json_response({"since": strat.reset_stats()})
+
+
 async def api_why(request):
     """Why didn't the bot buy this coin? Accepts a mint or a pump.fun link."""
     import re
@@ -836,6 +846,7 @@ def make_app():
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
+    app.router.add_post("/api/strategy/reset", api_strategy_reset)
     app.router.add_get("/api/launch", api_launch)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)

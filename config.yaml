@@ -175,6 +175,7 @@ skimmer:
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
+  stats_since: "2026-09-30"             # results on the dashboard count from this day (older trades stay in the files)
   enabled: true
   run_mcap_sol: 80                     # a candidate must have reached this market cap while watched
   min_age_min: 30                      # only buy coins at least this old
