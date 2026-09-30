@@ -1042,24 +1042,14 @@ function renderAgeTest() {
   if (!AT) { el.innerHTML = ""; return; }
   const m = s => (s / 60).toFixed(s % 60 ? 1 : 0) + " min", $$ = v => v == null ? "—" : `<span class="num ${cls(v)}">${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}</span>`;
   const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}${x.young ? ` <span class="faint">(${x.young} under 5 min)</span>` : ""}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r num">${x.hit3x}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
-  const hrs = ((Date.now() / 1000 - AT.since) / 3600);
-  const d = AT.three.total_usd - AT.five.total_usd;
-  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🧪 Test: buy from ${m(AT.min_age_s)} old instead of ${m(AT.base_min_age_s)}</h2><span class="badge gray">paper · no real money</span></div><div class="card-b">
-    <div class="faint" style="font-size:12.5px;margin-bottom:8px">Both use the old entry rules (no up-trend filter) and this wallet's exits; the only difference is the minimum coin age. Both are paper at $${AT.five.size_usd} per coin so they compare fairly. Running ${hrs < 1 ? Math.round(hrs * 60) + " min" : hrs.toFixed(1) + " h"}.</div>
-    <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
-      ${row(m(AT.base_min_age_s) + " (old rules, paper)", AT.five)}${row(m(AT.min_age_s) + " (test, paper)", AT.three)}</table>
-    ${(AT.coins || []).length ? `<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>3-min test coins</th><th class="r">Age at buy</th><th class="r">Entry mcap</th><th class="r" title="Highest market cap before we bought">Earlier high</th><th class="r">Result</th><th>Status</th></tr></thead><tbody>
-      ${AT.coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a>${c.age_s != null && c.age_s < AT.base_min_age_s ? ` <span class="badge warn" title="The 5-minute rule would NOT have bought this one">test only</span>` : ""}</td>
-        <td class="r num">${c.age_s != null ? (c.age_s / 60).toFixed(1) + " min" : "—"}</td><td class="r num">${c.entry_mcap.toFixed(0)} SOL</td><td class="r num">${c.prior_peak != null ? c.prior_peak.toFixed(0) + " SOL" + (c.prior_peak > c.entry_mcap * 1.15 ? ` <span class="badge warn">dipped</span>` : "") : "—"}</td>
-        <td class="r">${$$(c.pnl_usd)}${c.open ? ` <span class="faint">(${c.mult.toFixed(2)}x)</span>` : c.pct != null ? ` <span class="faint">(${c.pct > 0 ? "+" : ""}${c.pct}%)</span>` : ""}</td>
-        <td>${c.open ? `<span class="badge up">open</span>${c.note ? ` <span class="faint">${esc(c.note)}</span>` : ""}` : `<span class="faint">closed · ${esc(c.note)}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  if (!AT.fresh) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="card-b">
     ${AT.fresh ? (() => { const F = AT.fresh, fh = (Date.now() / 1000 - F.since) / 3600, fd = F.fresh.total_usd - F.base.total_usd;
-      return `<h3 style="margin:16px 0 4px;font-size:14px">🧪 Did the up-trend filter help?</h3>
-      <div class="faint" style="font-size:12.5px;margin-bottom:6px">The wallet now only buys coins that are up ${F.rise}%+ over the last 2 minutes, not falling in the last minute, within ${Math.round((F.cap - 1) * 100)}% of their high${F.buys ? `, and with ${F.buys}+ buys in the last 2 minutes` : ""}. "Old rules" is a paper copy without those filters, over the same period. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
+      return `<h3 style="margin:0 0 4px;font-size:14px">🧪 Did the up-trend filter help? (paper Lookalike)</h3>
+      <div class="faint" style="font-size:12.5px;margin-bottom:6px">The paper Lookalike only buys coins that are up ${F.rise}%+ over the last 2 minutes, not falling in the last minute, within ${Math.round((F.cap - 1) * 100)}% of their high${F.buys ? `, and with ${F.buys}+ buys in the last 2 minutes` : ""}. "Old rules" is a paper copy without those filters, over the same period. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
       <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
       ${row("Current filters (paper)", F.base)}${row("Old rules (paper)", F.fresh)}</table>
       <div style="font-size:13px;margin-top:6px">${F.base.buys + F.fresh.buys < 10 ? `<span class="faint">Too early to tell.</span>` : fd < 0 ? `The up-trend filter is ahead by <b>$${(-fd).toFixed(2)}</b>.` : fd > 0 ? `The old rules would have done <b>$${fd.toFixed(2)}</b> better.` : "Even so far."}</div>`; })() : ""}
-    <div style="font-size:13px;margin-top:8px">${AT.three.buys + AT.five.buys < 10 ? `<span class="faint">Too early to tell. Give it a day.</span>` : d > 0 ? `So far the ${m(AT.min_age_s)} rule is ahead by <b>$${d.toFixed(2)}</b>.` : d < 0 ? `So far the ${m(AT.base_min_age_s)} rule is ahead by <b>$${(-d).toFixed(2)}</b>.` : "Even so far."}</div>
   </div></div>`;
 }
 

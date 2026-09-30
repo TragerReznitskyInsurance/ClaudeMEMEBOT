@@ -77,11 +77,9 @@ class Runner:
                                          "copy_trade": {}},
                                 lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.lookalike_grad.live = self.live2
-        self.lookalike_grad3 = LookalikeGrad3(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
-                                              lambda: sol_price.usd)     # paper test: 3-minute age rule
         self.lookalike_fresh = LookalikeGradOld(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
                                                 lambda: sol_price.usd)    # paper: old entry rules, for comparison
-        self.tests = [self.lookalike_grad3, self.lookalike_fresh]
+        self.tests = [self.lookalike_fresh]              # (the 3-minute test was removed on 30 Sep: it lost)
         self.survivor = Survivor(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.survivor.live = self.live2                     # the real lookalike wallet now trades this strategy
         self.hotword = HotWord(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -382,15 +380,8 @@ class Runner:
         return s
 
     def age_test(self):
-        g3 = self.lookalike_grad3
-        if not g3.enabled():
-            return None
-        base = self.lookalike_fresh if self.lookalike_fresh.enabled() else self.lookalike_grad
-        since = max(g3.since, base.since) if base is self.lookalike_fresh else g3.since    # same period for both
-        return dict(since=since, min_age_s=g3.cfg().get("min_age_s", 180),
-                    base_min_age_s=(self.lookalike_grad.cfg().get("min_age_s", 300)),
-                    five=base.stats_since(since), three=g3.stats_since(since),
-                    coins=self._age_test_coins(g3), fresh=self._fresh_test())
+        f = self._fresh_test()
+        return dict(fresh=f) if f else None
 
     def _fresh_test(self):
         f = self.lookalike_fresh
@@ -788,8 +779,7 @@ async def api_diagnostics(request):
                      "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
-                     "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad3_state.json",
-                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
+                     "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
                      "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
