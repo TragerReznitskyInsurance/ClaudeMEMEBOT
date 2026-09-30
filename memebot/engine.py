@@ -225,6 +225,7 @@ class Engine:
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
         self.hotword = None                        # hot-word paper test (Survivor rules, hot trends only)
+        self.breakouts = None                      # BreakoutLog: every 44 SOL crossing + wallet #1 buys (research)
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -446,6 +447,14 @@ class Engine:
         t.update_market(ev, ts)
         if self.narr is not None and t.creator:
             self.narr.on_mcap(t.mint, prev_mcap, t.mcap, ts)
+        if self.breakouts is not None and t.creator and prev_mcap and t.mcap and prev_mcap < 44.0 <= t.mcap:
+            try:
+                from memebot.snapshots import stream_features
+                f = stream_features(t, ts)
+                f["prior_peak"] = round(t.prior_peak or 0, 1)
+                self.breakouts.on_cross(t.mint, t.symbol, ts, ts - t.created_ts, t.mcap, "stream", t.creator, f)
+            except Exception as e:
+                log.debug("breakout record failed: %s", e)
         if self.snaps is not None and not t.snapped and prev_mcap and t.mcap and t.creator:
             sc = self.cfg.get("snapshots") or {}
             line = _f(sc.get("cross_mcap_sol"), 42.0)
@@ -632,6 +641,8 @@ class Engine:
                     self.live.on_copy_buy(w, mint, wsol, t.symbol, wallet_px=wpx)
                 if self.snaps is not None:
                     self.snaps.wallet_buy(w, mint, ts, wsol, wpx, self.copy_wallet_mcap[mint], t, ev.get("signature"))
+                if self.breakouts is not None:
+                    self.breakouts.on_w1_buy(w, mint, ts, wsol, self.copy_wallet_mcap[mint], ev.get("signature"))
             mode = cp.get("size_mode", "fixed")
 
             def sized(wallet_sol, fixed):

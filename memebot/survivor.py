@@ -253,6 +253,17 @@ class Survivor(Lookalike):
             cd["hist"] = [x for x in cd["hist"] if now - x[0] <= 180] if hot else []
             if first and cd.get("seeded"):
                 cd["peak"] = mc if age >= float(c.get("settle_min", 5)) * 60 else 0.0
+            bl = getattr(self, "breakouts", None)
+            if bl is not None and not first and last < line <= mc:
+                h = [x for x in cd["hist"] if now - x[0] <= 150]
+                hi, pull = 0.0, 0.0
+                for _, v in h + [(now, mc)]:
+                    hi = max(hi, v)
+                    pull = max(pull, (1 - v / hi) * 100)
+                bl.on_cross(m, cd["symbol"], now, age, mc, "survivor", None,
+                            dict(rise_2m_pct=round((mc / h[0][1] - 1) * 100, 1) if h else None,
+                                 pullback_2m_pct=round(pull, 1) if h else None, settled_peak=round(cd["peak"], 1),
+                                 seeded=bool(cd.get("seeded"))))
             if not first and last < line <= mc and m not in self.traded:
                 why = self._signal(cd, mc, now)
                 if why is None:

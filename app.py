@@ -31,6 +31,7 @@ from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord
+from memebot.breakouts import BreakoutLog
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
 from memebot.updater import Updater
@@ -89,6 +90,8 @@ class Runner:
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.hotword.narr = self.narr
+        self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
+        self.survivor.breakouts = self.breakouts
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
         for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword):
@@ -233,6 +236,7 @@ class Runner:
             self.hotword.active = True
             self.hotword.feed_price = feed_price
             eng.hotword = self.hotword
+            eng.breakouts = self.breakouts
             try:                                             # also follow coins it saw in the last 3 days that got bought up
                 seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
                                              for m, v in list(self.narr.mints.items())
@@ -421,7 +425,7 @@ class Runner:
                 "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
-                "survivor": self.survivor_state(),
+                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(),
                 "narratives": self.narr.state()}
 
 
@@ -475,6 +479,7 @@ async def broadcaster(app):
     test_tasks = [asyncio.create_task(tst.run(every=lg_every)) for tst in runner.tests]
     test_tasks.append(asyncio.create_task(runner.survivor.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
+    test_tasks.append(asyncio.create_task(runner.breakouts.run()))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -492,7 +497,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -780,7 +785,7 @@ async def api_diagnostics(request):
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
-                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv",
+                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

@@ -149,6 +149,16 @@ hotword:
   window_h: 6
   min_grads: 2
 
+# ── Breakout recorder (research) ──────────────────────────────
+# Records EVERY coin crossing 44 SOL (young and old), holder concentration, a sample of launch
+# bundle/sniper checks, every wallet #1 buy with the wallets that bought just before it, and
+# 30 min / 2 h / 6 h outcomes -> data/breakouts.jsonl (in the diagnostics zip).
+breakouts:
+  enabled: true
+  dedupe_min: 30                       # one record per coin per 30 minutes
+  launch_checks_per_day: 400           # bundle/sniper checks cost one Enhanced call each
+  launch_check_share: 0.35             # share of crossings that get one (all wallet #1 buys do)
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
