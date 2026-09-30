@@ -29,7 +29,7 @@ from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
-from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3
+from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradFresh
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
 from memebot.updater import Updater
@@ -78,6 +78,9 @@ class Runner:
         self.lookalike_grad.live = self.live2
         self.lookalike_grad3 = LookalikeGrad3(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
                                               lambda: sol_price.usd)     # paper test: 3-minute age rule
+        self.lookalike_fresh = LookalikeGradFresh(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
+                                                  lambda: sol_price.usd)  # paper test: only coins at a new high
+        self.tests = [self.lookalike_grad3, self.lookalike_fresh]
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
@@ -85,7 +88,7 @@ class Runner:
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike, self.lookalike_grad, self.lookalike_grad3, self.reclaim):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -96,7 +99,8 @@ class Runner:
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        out += [m for m, p in self.lookalike_grad3.positions.items() if is_placeholder(p["symbol"], m)]
+        for tst in self.tests:
+            out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
         return list(dict.fromkeys(out))
@@ -107,7 +111,8 @@ class Runner:
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        self.lookalike_grad3.rename(mint, info["symbol"])
+        for tst in self.tests:
+            tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
@@ -141,7 +146,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike, self.lookalike_grad, self.lookalike_grad3, self.reclaim):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim):
             try:
                 strat._save()
             except Exception:
@@ -215,9 +220,10 @@ class Runner:
             self.lookalike_grad.active = True
             self.lookalike_grad.feed_price = feed_price
             eng.lookalike_grad = self.lookalike_grad
-            self.lookalike_grad3.active = True
-            self.lookalike_grad3.feed_price = feed_price
-            eng.lookalike_grad3 = self.lookalike_grad3
+            for tst in self.tests:
+                tst.active = True
+                tst.feed_price = feed_price
+            eng.tests = self.tests
             eng.reclaim = self.reclaim
             eng.narr = self.narr
             eng.why = self.why
@@ -252,7 +258,8 @@ class Runner:
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        self.lookalike_grad3.active = False
+        for tst in self.tests:
+            tst.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -350,7 +357,15 @@ class Runner:
         return dict(since=g3.since, min_age_s=g3.cfg().get("min_age_s", 180),
                     base_min_age_s=(self.lookalike_grad.cfg().get("min_age_s", 300)),
                     five=self.lookalike_grad.stats_since(g3.since), three=g3.stats_since(g3.since),
-                    coins=self._age_test_coins(g3))
+                    coins=self._age_test_coins(g3), fresh=self._fresh_test())
+
+    def _fresh_test(self):
+        f = self.lookalike_fresh
+        if not f.enabled():
+            return None
+        return dict(since=f.since, cap=f.cfg().get("max_prior_peak_mult", 1.15),
+                    base=self.lookalike_grad.stats_since(f.since), fresh=f.stats_since(f.since),
+                    coins=self._age_test_coins(f))
 
     @staticmethod
     def _age_test_coins(g3):
@@ -363,12 +378,12 @@ class Runner:
                 pnl = val + p["sol_out"] - p["sol_in"]
                 out.append(dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], age_s=p.get("age_at_entry_s"),
                                 entry_mcap=p["entry_mcap"], open=True, mult=round(p["last_px"] / p["entry_px"], 2),
-                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"])))
+                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"]), prior_peak=p.get("prior_peak")))
         for x in g3.closed:
             if x["opened"] >= g3.since:
                 out.append(dict(mint=x["mint"], symbol=x["symbol"], opened=x["opened"], age_s=x.get("age_at_entry_s"),
                                 entry_mcap=x["entry_mcap"], open=False, pnl_usd=x["pnl_usd"], pct=x["pnl_pct"],
-                                note=x.get("exit", "")))
+                                note=x.get("exit", ""), prior_peak=x.get("prior_peak")))
         return sorted(out, key=lambda c: -c["opened"])[:40]
 
     def snapshot(self):
@@ -429,7 +444,7 @@ async def broadcaster(app):
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
     lg_every = float((runner.cfg.get("lookalike_grad") or {}).get("check_every_s", 3))
     lg_task = asyncio.create_task(runner.lookalike_grad.run(every=lg_every))
-    lg3_task = asyncio.create_task(runner.lookalike_grad3.run(every=lg_every))
+    test_tasks = [asyncio.create_task(tst.run(every=lg_every)) for tst in runner.tests]
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -444,9 +459,11 @@ async def broadcaster(app):
     lk_task.cancel()
     rc_task.cancel()
     lg_task.cancel()
-    lg3_task.cancel()
+    for tt in test_tasks:
+        tt.cancel()
     await runner.lookalike_grad.close()
-    await runner.lookalike_grad3.close()
+    for tst in runner.tests:
+        await tst.close()
     nr_task.cancel()
     why_task.cancel()
     upd_task.cancel()
@@ -733,7 +750,8 @@ async def api_diagnostics(request):
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad3_state.json",
-                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv"):
+                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv", "lookalike_grad_fresh_state.json",
+                     "lookalike_grad_fresh_trades.csv", "lookalike_grad_fresh_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

@@ -201,6 +201,13 @@ class Lookalike:
                 w.note(t.mint, t.symbol, self.NAME, f"crossed {line:g} SOL at {ts - t.created_ts:.0f}s old "
                                                     f"(needs {float(c.get('min_age_s', 300)) / 60:g}+ min)", ts)
             return False
+        prior = getattr(t, "prior_peak", 0) or 0                    # highest mcap BEFORE this trade
+        cap = float(c.get("max_prior_peak_mult", 0) or 0)
+        if cap and prior > line * cap:
+            if w is not None:
+                w.note(t.mint, t.symbol, self.NAME, f"crossed {line:g} SOL but had already been up to {prior:.0f} SOL "
+                                                    f"(dipped - only buys coins at a new high)", ts)
+            return False
         if t.sec_state == "failed" or t.dev_sold and c.get("skip_if_dev_sold", False):
             if w is not None:
                 w.note(t.mint, t.symbol, self.NAME, "crossed the line but " +
@@ -220,7 +227,8 @@ class Lookalike:
             mint=t.mint, symbol=t.symbol, name=t.name, opened=ts, entry_px=t.price, entry_mcap=round(t.mcap, 1),
             age_at_entry_s=round(ts - t.created_ts), sol_in=size + prio, sol_out=0.0, tokens=tokens,
             tokens_bought=tokens, peak_mult=1.0, floor_mult=1.0 - float(c.get("stop_pct", 30)) / 100,
-            done=[], last_px=t.price, last_px_ts=ts, sells=[], verified=False, size_usd=round(size * usd, 2))
+            done=[], last_px=t.price, last_px_ts=ts, sells=[], verified=False, size_usd=round(size * usd, 2),
+            prior_peak=round(prior, 1))
         self._save()
         try:
             asyncio.get_running_loop().create_task(self._quick_verify(t.mint))
@@ -292,7 +300,7 @@ class Lookalike:
         pnl = p["sol_out"] - p["sol_in"]
         usd = self._usd() or 0
         rec = dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], closed=ts, entry_mcap=p["entry_mcap"],
-                   age_at_entry_s=p.get("age_at_entry_s"),
+                   age_at_entry_s=p.get("age_at_entry_s"), prior_peak=p.get("prior_peak"),
                    sol_in=round(p["sol_in"], 6), sol_out=round(p["sol_out"], 6), pnl_sol=round(pnl, 6),
                    pnl_pct=round(pnl / p["sol_in"] * 100, 1), pnl_usd=round(pnl * usd, 2),
                    peak_mult=round(p["peak_mult"], 2), stages=",".join(p["done"]),

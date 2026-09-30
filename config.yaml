@@ -105,6 +105,13 @@ lookalike_grad3:
   enabled: true
   min_age_s: 180
 
+# ── Lookalike "new high only" test (PAPER ONLY) ───────────────
+# Same as lookalike_grad, but skips coins that had already been more than max_prior_peak_mult x
+# above the entry line and dipped back before crossing it.
+lookalike_grad_fresh:
+  enabled: true
+  max_prior_peak_mult: 1.15
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:

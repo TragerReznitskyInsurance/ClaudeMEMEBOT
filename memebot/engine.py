@@ -71,6 +71,7 @@ class TokenState:
     v_tok: float | None = None
     mcap: float | None = None         # in SOL
     peak_mcap: float = 0.0
+    prior_peak: float = 0.0            # peak before the latest trade
     mcap_hist: list = field(default_factory=list)   # [(ts, mcap)]
     last_trade_ts: float = 0.0
     # flow stats
@@ -221,7 +222,7 @@ class Engine:
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
-        self.lookalike_grad3 = None                # same, 3-minute age rule (paper test)
+        self.tests = []                            # paper test variants of the graduation lookalike
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -385,7 +386,7 @@ class Engine:
     def _lk_on(self):
         return (self.lookalike is not None and self.lookalike.enabled()) or \
             (self.lookalike_grad is not None and self.lookalike_grad.enabled()) or \
-            (self.lookalike_grad3 is not None and self.lookalike_grad3.enabled())
+            any(s.enabled() for s in self.tests)
 
     def _rc_on(self):
         return self.reclaim is not None and self.reclaim.enabled()
@@ -439,6 +440,7 @@ class Engine:
         sol = _f(ev.get("solAmount"), 0.0)
         trader = ev.get("traderPublicKey", "")
         prev_mcap = t.mcap
+        t.prior_peak = t.peak_mcap                  # highest mcap before this trade (lookalike: "has it dipped?")
         t.update_market(ev, ts)
         if self.narr is not None and t.creator:
             self.narr.on_mcap(t.mint, prev_mcap, t.mcap, ts)
@@ -453,8 +455,9 @@ class Engine:
             self.lookalike.maybe_enter(t, prev_mcap, ts)
         if self.lookalike_grad is not None and t.creator and prev_mcap:
             self.lookalike_grad.maybe_enter(t, prev_mcap, ts)
-        if self.lookalike_grad3 is not None and t.creator and prev_mcap:
-            self.lookalike_grad3.maybe_enter(t, prev_mcap, ts)
+        if t.creator and prev_mcap:
+            for s in self.tests:
+                s.maybe_enter(t, prev_mcap, ts)
         if self.reclaim is not None and t.creator:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         t.last_trade_ts = ts
@@ -782,7 +785,7 @@ class Engine:
         if not self._momentum_on():                       # research-only: never buy, drop once recorded
             sc = self.cfg.get("snapshots") or {}
             snap_done = t.snapped or not (self.snaps is not None and self.snaps.enabled())
-            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, self.lookalike_grad3))
+            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, *self.tests))
             rc_done = not self._rc_on() or not self.reclaim.wants_watch(t.mint)
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
