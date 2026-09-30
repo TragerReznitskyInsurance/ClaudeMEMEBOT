@@ -686,6 +686,25 @@ async def api_narrative_coins(request):
     return web.json_response({"coins": runner.narr.coins(key, metric, limit=int(q.get("limit", 200)))})
 
 
+async def api_launch(request):
+    """Bundle / sniper check for one coin (read-only, uses the Helius key)."""
+    import re
+    import aiohttp
+    from memebot import launchcheck
+    m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}", request.rel_url.query.get("q") or "")
+    if not m:
+        return web.json_response({"error": "paste a pump.fun link or coin address"}, status=400)
+    key = S.helius_key(CONFIG)
+    if not key:
+        return web.json_response({"error": "needs your Helius key (Settings)"}, status=400)
+    try:
+        async with aiohttp.ClientSession() as s:
+            r = await launchcheck.check(s, key, m.group(0))
+    except Exception as e:
+        r = {"error": f"check failed: {e}"[:150]}
+    return web.json_response(r)
+
+
 async def api_why(request):
     """Why didn't the bot buy this coin? Accepts a mint or a pump.fun link."""
     import re
@@ -756,6 +775,7 @@ def make_app():
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
+    app.router.add_get("/api/launch", api_launch)
     app.router.add_static("/static", os.path.join(HERE, "web"))
     app.cleanup_ctx.append(broadcaster)
     return app

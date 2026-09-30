@@ -386,7 +386,9 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
     <section id="agetest"></section>
     <section id="whybox"><div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔎 Why didn't it buy?</h2></div><div class="card-b">
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="whyq" placeholder="Paste a pump.fun link or coin address" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter')whyLookup()">
-      <button class="btn primary" onclick="whyLookup()">Check</button></div>
+      <button class="btn primary" onclick="whyLookup()">Check</button>
+      <button class="btn" onclick="launchCheck()" title="Who bought in the first seconds: the creator's same-block bundle wallets and sniper bots, how much they got and whether they sold">🔬 Bundle / sniper check</button></div>
+      <div id="launchout" style="font-size:13px;margin-top:10px"></div>
       <div id="whyout" class="faint" style="font-size:13px;margin-top:10px">Every coin the bot passes on is logged with the reason, then checked again 30 min and 2 h later to see if it ran. Works for coins launched after this update.</div>
     </div></div></section>
   </div>
@@ -503,6 +505,27 @@ function spark(pts, w = 120, h = 34, color, baseline) {
 }
 
 /* ── API ─────────────────────────────────── */
+async function launchCheck() {
+  const q = document.getElementById("whyq").value.trim(), out = document.getElementById("launchout");
+  if (!q) return;
+  out.innerHTML = `<span class="faint">Reading its first transactions…</span>`;
+  try {
+    const r = await (await fetch("/api/launch?q=" + encodeURIComponent(q))).json();
+    if (r.error) { out.textContent = r.error; return; }
+    const g = (lab, x, tip) => `<tr title="${tip}"><td><b>${lab}</b></td><td class="r num">${x.wallets}</td><td class="r num">${x.sol} SOL</td><td class="r num"><b>${x.supply_pct}%</b></td><td class="r num">${x.supply_pct ? x.sold_pct + "%" : "—"}</td></tr>`;
+    const bad = /heavy|hard/.test(r.verdict), mid = /moderate/.test(r.verdict);
+    let h = `<div><span class="badge ${bad ? "down" : mid ? "warn" : "up"}">${esc(r.verdict)}</span>
+      ${r.mcap_after_block_sol != null ? ` <span class="faint">· market cap right after the launch block: <b>${r.mcap_after_block_sol} SOL</b></span>` : ""}
+      ${r.mcap_now_sol != null ? ` <span class="faint">· now ${r.mcap_now_sol} SOL</span>` : r.graduated ? ` <span class="faint">· graduated</span>` : ""}${r.mayhem ? ` <span class="badge warn">Mayhem mode</span>` : ""}</div>
+      <table class="wtab" style="margin-top:6px"><tr class="faint"><td>Who</td><td class="r">Wallets</td><td class="r">Spent</td><td class="r">Supply bought</td><td class="r">Sold so far*</td></tr>
+      ${g("Creator", r.creator_buy, "The wallet that launched the coin")}
+      ${g("Bundle (same block as launch)", r.bundle, "Bought in the very block the coin was created - almost always the creator's own helper wallets")}
+      ${g("Snipers (first 3 s)", r.snipers, "Bots that bought within 3 seconds of launch")}</table>`;
+    if (r.top10) h += `<div style="margin-top:6px">Top 10 holders own <b>${r.top10_pct}%</b>; <b>${r.top10_launch_pct}%</b> of that is creator / bundle / sniper wallets still holding.</div>`;
+    h += `<div class="faint" style="font-size:11.5px;margin-top:4px">*from its first ${r.txs_read} transactions (the first ${Math.round(r.span_s)} s); later sales show up in the top-holder line.</div>`;
+    out.innerHTML = h;
+  } catch (e) { out.textContent = "Check failed: " + e.message; }
+}
 async function whyLookup() {
   const q = document.getElementById("whyq").value.trim(), out = document.getElementById("whyout");
   if (!q) return;
