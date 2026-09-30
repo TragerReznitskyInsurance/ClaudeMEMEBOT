@@ -114,6 +114,33 @@ lookalike_grad3:
 lookalike_grad_old:
   enabled: true
 
+# ── Survivor breakout (the REAL lookalike wallet's strategy) ──────────────
+# Trades like wallet #1: old coins (30 min - 6 h) that survived the launch and grind up to a NEW HIGH
+# through 44 SOL on a quiet tape; losers are scratched fast, winners sold in quarters.
+# Real money on/off, $ per coin, max open and daily loss limit are the "Lookalike · graduation exit"
+# real-money settings (same wallet).
+survivor:
+  enabled: true
+  size_usd: 10                         # paper tracking size
+  intake_mcap_sol: 32                  # follow coins that reached this (real buying) and passed the safety checks
+  min_age_min: 30
+  max_age_h: 6
+  entry_mcap_sol: 44
+  max_entry_mult: 1.35                 # skip if it jumped straight past 44 to more than ~59 SOL
+  near_high_pct: 3                     # must be within 3% of (or above) its all-time high
+  min_rise_2m_pct: 5                   # grinding up over the last ~2 min...
+  max_pullback_pct: 12                 # ...without a pullback bigger than this (nobody dumping)
+  scratch_min: 3                       # not up 10% within 3 minutes -> sell (small loss, like wallet #1)
+  scratch_mult: 1.10
+  stop_pct: 20
+  breakeven_floor_mult: 1.08           # after 2x the rest never goes back below break-even
+  trail_pct: 30                        # last quarter rides with this trailing stop
+  max_hold_h: 24
+  hot_from_pct: 80                     # coins above 80% of the line are checked every few seconds
+  cold_every_s: 90                     # the rest about every 1.5 minutes
+  dead_mcap_sol: 29.5
+  max_candidates: 1500
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:

@@ -29,6 +29,12 @@ GRAD_MCAP = 410.0
 class LookalikeGrad(Lookalike):
     NAME = "lookalike_grad"
 
+    def cfg(self):
+        c = dict(super().cfg())
+        if type(self) is LookalikeGrad:
+            c["real_enabled"] = False      # paper now: the real wallet trades the Survivor strategy. Coins it still
+        return c                           # holds for real keep being sold by this plan (see _sell)
+
     def check(self, p, px, ts):
         c = self.cfg()
         p["last_px"], p["last_px_ts"] = px, ts
