@@ -208,6 +208,23 @@ class Lookalike:
                 w.note(t.mint, t.symbol, self.NAME, f"crossed {line:g} SOL but had already been up to {prior:.0f} SOL "
                                                     f"(dipped - only buys coins at a new high)", ts)
             return False
+        r2, r1 = float(c.get("min_rise_2m_pct", 0) or 0), c.get("min_rise_1m_pct")
+        if r2 or r1 is not None:                                     # must be on an up trajectory
+            m2 = t.mcap_at(ts - 120) if hasattr(t, "mcap_at") else None
+            m1 = t.mcap_at(ts - 60) if hasattr(t, "mcap_at") else None
+            up2 = (t.mcap / m2 - 1) * 100 if m2 else None
+            up1 = (t.mcap / m1 - 1) * 100 if m1 else None
+            why = None
+            if up2 is None:
+                why = "no price history for the last 2 min"
+            elif r2 and up2 < r2:
+                why = f"not trending up: {up2:+.0f}% over 2 min (needs +{r2:g}%)"
+            elif r1 is not None and up1 is not None and up1 < float(r1):
+                why = f"falling in the last minute ({up1:+.0f}%)"
+            if why:
+                if w is not None:
+                    w.note(t.mint, t.symbol, self.NAME, f"crossed {line:g} SOL but {why}", ts)
+                return False
         if t.sec_state == "failed" or t.dev_sold and c.get("skip_if_dev_sold", False):
             if w is not None:
                 w.note(t.mint, t.symbol, self.NAME, "crossed the line but " +
@@ -228,7 +245,8 @@ class Lookalike:
             age_at_entry_s=round(ts - t.created_ts), sol_in=size + prio, sol_out=0.0, tokens=tokens,
             tokens_bought=tokens, peak_mult=1.0, floor_mult=1.0 - float(c.get("stop_pct", 30)) / 100,
             done=[], last_px=t.price, last_px_ts=ts, sells=[], verified=False, size_usd=round(size * usd, 2),
-            prior_peak=round(prior, 1))
+            prior_peak=round(prior, 1),
+            rise_2m=round((t.mcap / t.mcap_at(ts - 120) - 1) * 100, 1) if hasattr(t, "mcap_at") and t.mcap_at(ts - 120) else None)
         self._save()
         try:
             asyncio.get_running_loop().create_task(self._quick_verify(t.mint))

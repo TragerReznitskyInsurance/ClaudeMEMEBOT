@@ -1054,11 +1054,11 @@ function renderAgeTest() {
         <td class="r">${$$(c.pnl_usd)}${c.open ? ` <span class="faint">(${c.mult.toFixed(2)}x)</span>` : c.pct != null ? ` <span class="faint">(${c.pct > 0 ? "+" : ""}${c.pct}%)</span>` : ""}</td>
         <td>${c.open ? `<span class="badge up">open</span>${c.note ? ` <span class="faint">${esc(c.note)}</span>` : ""}` : `<span class="faint">closed · ${esc(c.note)}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
     ${AT.fresh ? (() => { const F = AT.fresh, fh = (Date.now() / 1000 - F.since) / 3600, fd = F.fresh.total_usd - F.base.total_usd;
-      return `<h3 style="margin:16px 0 4px;font-size:14px">🧪 Test: only coins at a new high (no earlier dip)</h3>
-      <div class="faint" style="font-size:12.5px;margin-bottom:6px">5-minute rule, same exits, but skips any coin that had already been more than ${Math.round((F.cap - 1) * 100)}% above ${AT.five && LG ? LG.entry_mcap_sol : 44} SOL and dipped back. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
+      return `<h3 style="margin:16px 0 4px;font-size:14px">🧪 Did the up-trend filter help?</h3>
+      <div class="faint" style="font-size:12.5px;margin-bottom:6px">The wallet now only buys coins that are up ${F.rise}%+ over the last 2 minutes, not falling in the last minute, and within ${Math.round((F.cap - 1) * 100)}% of their high. "Old rules" is a paper copy without those filters, over the same period. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
       <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
-      ${row("All coins (current)", F.base)}${row("New-high only (test)", F.fresh)}</table>
-      <div style="font-size:13px;margin-top:6px">${F.base.buys + F.fresh.buys < 10 ? `<span class="faint">Too early to tell.</span>` : fd > 0 ? `New-high only is ahead by <b>$${fd.toFixed(2)}</b>.` : fd < 0 ? `All coins is ahead by <b>$${(-fd).toFixed(2)}</b>.` : "Even so far."}</div>`; })() : ""}
+      ${row("Up-trend filter (current, paper)", F.base)}${row("Old rules (paper)", F.fresh)}</table>
+      <div style="font-size:13px;margin-top:6px">${F.base.buys + F.fresh.buys < 10 ? `<span class="faint">Too early to tell.</span>` : fd < 0 ? `The up-trend filter is ahead by <b>$${(-fd).toFixed(2)}</b>.` : fd > 0 ? `The old rules would have done <b>$${fd.toFixed(2)}</b> better.` : "Even so far."}</div>`; })() : ""}
     <div style="font-size:13px;margin-top:8px">${AT.three.buys + AT.five.buys < 10 ? `<span class="faint">Too early to tell. Give it a day.</span>` : d > 0 ? `So far the ${m(AT.min_age_s)} rule is ahead by <b>$${d.toFixed(2)}</b>.` : d < 0 ? `So far the ${m(AT.base_min_age_s)} rule is ahead by <b>$${(-d).toFixed(2)}</b>.` : "Even so far."}</div>
   </div></div>`;
 }
@@ -1069,7 +1069,7 @@ function renderLkRules() {
   const el = $("#lkrules"), L = LG;
   if (!L) { el.innerHTML = ""; return; }
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades</h2></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of any coin the bot is watching as it rises through <b>${L.entry_mcap_sol} SOL</b> market cap and is at least 5 minutes old (never Mayhem-mode coins).
+    <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} (only coins on an up trend and near their high) of any coin the bot is watching as it rises through <b>${L.entry_mcap_sol} SOL</b> market cap and is at least 5 minutes old (never Mayhem-mode coins).
     <b>Sells:</b> everything at −30% before 3× (once it has <b>doubled</b>, the stop moves up to <b>break-even</b>) · <b>⅓ at 3×</b> · then a trailing stop 35% below the high · <b>⅔ of the rest at 350 SOL</b> (just before graduation) · the moonbag rides with a 25% trail and is sold below the graduation price · 48h limit.
     <div class="faint" style="margin-top:6px">Limits: max ${L.real_max_open} coins open · stops buying after −$${L.real_daily_loss_usd} in a day · the ⏸ button pauses new buys. Change any of it in Settings → Lookalike · graduation exit.</div></div></div>`;
 }

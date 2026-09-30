@@ -111,16 +111,15 @@ class LookalikeGrad3(LookalikeGrad):
         return s
 
 
-class LookalikeGradFresh(LookalikeGrad3):
-    """PAPER test: the graduation lookalike (5-minute rule, same settings) but ONLY coins crossing the line
-    for the first time - skips coins that had already been more than `max_prior_peak_mult` (1.15x) above it
-    and dipped back (e.g. up to 90 SOL, down to 30, back up through 44)."""
-    NAME = "lookalike_grad_fresh"
+class LookalikeGradOld(LookalikeGrad3):
+    """PAPER comparison: the graduation lookalike with the OLD entry rules - no up-trend and no
+    "near its high" filters (it buys any coin rising through 44 SOL at 5+ min old) - so the new
+    filters on the real wallet can be judged against what it would have done without them."""
+    NAME = "lookalike_grad_old"
 
     def cfg(self):
         c = dict(self._cfg().get("lookalike_grad") or {})
         own = self._cfg().get(self.NAME) or {}
-        c.update(enabled=own.get("enabled", True), real_enabled=False,
-                 min_age_s=own.get("min_age_s", c.get("min_age_s", 300)),
-                 max_prior_peak_mult=own.get("max_prior_peak_mult", 1.15))
+        c.update(enabled=own.get("enabled", True), real_enabled=False, min_age_s=c.get("min_age_s", 300),
+                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None)
         return c

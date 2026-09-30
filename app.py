@@ -29,7 +29,7 @@ from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
-from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradFresh
+from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
 from memebot.updater import Updater
@@ -78,8 +78,8 @@ class Runner:
         self.lookalike_grad.live = self.live2
         self.lookalike_grad3 = LookalikeGrad3(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
                                               lambda: sol_price.usd)     # paper test: 3-minute age rule
-        self.lookalike_fresh = LookalikeGradFresh(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
-                                                  lambda: sol_price.usd)  # paper test: only coins at a new high
+        self.lookalike_fresh = LookalikeGradOld(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
+                                                lambda: sol_price.usd)    # paper: old entry rules, for comparison
         self.tests = [self.lookalike_grad3, self.lookalike_fresh]
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
@@ -363,7 +363,8 @@ class Runner:
         f = self.lookalike_fresh
         if not f.enabled():
             return None
-        return dict(since=f.since, cap=f.cfg().get("max_prior_peak_mult", 1.15),
+        c = self.lookalike_grad.cfg()
+        return dict(since=f.since, cap=c.get("max_prior_peak_mult", 0), rise=c.get("min_rise_2m_pct", 0),
                     base=self.lookalike_grad.stats_since(f.since), fresh=f.stats_since(f.since),
                     coins=self._age_test_coins(f))
 
@@ -750,8 +751,8 @@ async def api_diagnostics(request):
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad3_state.json",
-                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv", "lookalike_grad_fresh_state.json",
-                     "lookalike_grad_fresh_trades.csv", "lookalike_grad_fresh_fills.csv"):
+                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv", "lookalike_grad_old_state.json",
+                     "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

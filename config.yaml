@@ -81,6 +81,9 @@ lookalike_grad:
   size_usd: 2.5
   max_open: 300
   stop_pct: 30                         # before 3x: sell everything at -30%
+  max_prior_peak_mult: 1.1             # skip coins that had already been >10% above the line (not at their high)
+  min_rise_2m_pct: 10                  # must be up at least this much over the last 2 minutes (up trajectory)
+  min_rise_1m_pct: 0                   # ...and not falling over the last minute
   breakeven_after_mult: 2              # once a coin has doubled, the stop moves up to break-even (0 = off)
   breakeven_floor_mult: 1.08           # "break-even" incl. fees and price impact
   check_every_s: 3                     # how often prices are checked (faster stops = smaller losses)
@@ -105,12 +108,10 @@ lookalike_grad3:
   enabled: true
   min_age_s: 180
 
-# ── Lookalike "new high only" test (PAPER ONLY) ───────────────
-# Same as lookalike_grad, but skips coins that had already been more than max_prior_peak_mult x
-# above the entry line and dipped back before crossing it.
-lookalike_grad_fresh:
+# ── Lookalike "old rules" comparison (PAPER ONLY) ──────────────
+# Same as lookalike_grad but WITHOUT the up-trend / near-its-high entry filters, to judge them.
+lookalike_grad_old:
   enabled: true
-  max_prior_peak_mult: 1.15
 
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
