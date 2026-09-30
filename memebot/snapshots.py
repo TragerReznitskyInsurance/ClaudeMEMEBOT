@@ -246,7 +246,7 @@ class SnapshotRecorder:
 
     async def _pf(self, mint):
         """pump.fun comment count etc., as pf_* fields (empty if pump.fun didn't answer)."""
-        if not self.cfg().get("social", True):
+        if not self.cfg().get("social", False):
             return {}
         return {"pf_" + k: v for k, v in (await self.social.fetch(await self._sess(), mint)).items()}
 
