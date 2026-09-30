@@ -1101,6 +1101,11 @@ function renderLive() {
   renderLiveFor(LIVE, $("#realmoney"), "copy");
   renderLiveFor(LIVE2, $("#lkwallet"), "lookalike");
 }
+function entryMcapCell(e, n, px) {
+  if (e == null) return `<span class="faint">—</span>`;
+  const k = v => px ? (v * px >= 1e6 ? "$" + (v * px / 1e6).toFixed(2) + "M" : "$" + (v * px / 1e3).toFixed(1) + "k") : v.toFixed(0) + " SOL";
+  return `<span title="${e.toFixed(1)} SOL">${k(e)}</span><div class="faint" style="font-size:11px">${e.toFixed(0)} SOL${n != null ? ` · now ${k(n)}` : ""}</div>`;
+}
 function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
   if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
@@ -1137,9 +1142,9 @@ function renderLiveFor(L, el, which) {
       ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${lk && LG ? LG.real_max_open : L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed}${lk ? "" : ` / $${L.budget_usd}`}</td>
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? ($u(v.open_value) || v.open_value.toFixed(4) + " SOL") : "—"}</td></tr>`).join("")}</table>`;
-    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Stage" : "Copying"}</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
+    if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Stage" : "Copying"}</th><th class="r" title="Market cap we actually bought in at (all-in, fees included), and where it is now">Entry mcap</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
       ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a>${p.name && p.name !== p.symbol ? `<div class="faint" style="font-size:11.5px">${esc(p.name)}</div>` : ""}</td>
-        <td class="num">${lk ? `<span class="badge ${lgPos[p.mint] && lgPos[p.mint].stages.length ? "up" : "gray"}">${esc(lgStage(lgPos[p.mint]))}</span>` : esc(p.wallet)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
+        <td class="num">${lk ? `<span class="badge ${lgPos[p.mint] && lgPos[p.mint].stages.length ? "up" : "gray"}">${esc(lgStage(lgPos[p.mint]))}</span>` : esc(p.wallet)}</td><td class="r num">${entryMcapCell(p.entry_mcap, p.now_mcap, px)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
         <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}" title="${p.value != null ? p.value.toFixed(4) + " SOL" : "price not available yet"}">${p.value != null ? `${$u(p.value) || p.value.toFixed(4) + " SOL"}${p.sol_in ? ` <span style="font-size:11.5px">(${pct((p.value + p.sol_out) / p.sol_in * 100 - 100, 0)})</span>` : ""}` : "—"}</td>
         <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>
         <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>

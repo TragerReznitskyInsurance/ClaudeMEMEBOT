@@ -1004,6 +1004,10 @@ class LiveTrader:
                             left_pct=round(p["tokens"] / p["tokens_bought"] * 100) if p.get("tokens_bought") else None,
                             value=round(p["tokens"] * self.px(p["mint"]), 5)
                             if p["status"] not in ("buying", "waiting") and self.px(p["mint"]) else None,
+                            # market cap we actually got in at (SOL spent incl. fees / tokens received), and now
+                            entry_mcap=round(p["sol_in"] / p["tokens_bought"] * 1e9, 1)
+                            if p.get("sol_in") and (p.get("tokens_bought") or 0) > 1 else None,
+                            now_mcap=round(self.px(p["mint"]) * 1e9, 1) if self.px(p["mint"]) else None,
                             age_s=round(time.time() - p["opened"]), last_sig=(p["sigs"] or [None])[-1])
                        for p in self.positions.values()],
             closed=self.closed[-30:][::-1],
