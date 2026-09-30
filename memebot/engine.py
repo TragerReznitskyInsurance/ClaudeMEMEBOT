@@ -221,6 +221,7 @@ class Engine:
         self.why = None                            # WhyLog: why each coin was passed on (live mode)
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
+        self.reclaim_clean = None                  # Reclaim, low-bundle launches only (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
@@ -472,6 +473,8 @@ class Engine:
                 s.maybe_enter(t, prev_mcap, ts)
         if self.reclaim is not None and t.creator:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
+        if self.reclaim_clean is not None and t.creator:
+            self.reclaim_clean.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
         if self.skimmer is not None and t.creator and prev_mcap:

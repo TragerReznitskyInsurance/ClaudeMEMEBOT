@@ -130,6 +130,9 @@ class Reclaim(Lookalike):
             else:
                 self._event("skip", f"{cd['symbol']}: no real buy - {why}", mint=cd["mint"])
 
+    async def _enter_checked(self, cd, px, ts, trades_2m):
+        self._enter(cd, px, ts, trades_2m)
+
     # ------------------------------------------------------------------ exits
     def check(self, p, px, ts):
         c = self.cfg()
@@ -198,7 +201,7 @@ class Reclaim(Lookalike):
                     continue
                 cd["last_trades_2m"] = n
                 if n >= int(c.get("min_trades_2m", 15)):
-                    self._enter(cd, price, now, n)
+                    await self._enter_checked(cd, price, now, n)
                     self.cands.pop(m, None)
         for m in list(self.positions):
             p = self.positions.get(m)
@@ -217,3 +220,62 @@ class Reclaim(Lookalike):
                        f"(30+ min old) · ${c.get('size_usd', 25)} each · no real money"))
         return s
 
+
+
+class ReclaimClean(Reclaim):
+    """PAPER test: Reclaim, but it skips coins whose launch was bundled - where the creator plus the wallets
+    that bought in the same block as the launch took more than `max_bundle_pct` (12%) of the supply.
+    (Wallet #1's buys: median 6% bundled, 82% under 12%; other coins crossing 44 SOL: median 19%.)
+    Uses the `reclaim` settings; never real money."""
+    NAME = "reclaim_clean"
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.bundle_cache: dict[str, float] = {}
+
+    def cfg(self):
+        c = dict(self._cfg().get("reclaim") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    async def _bundled_pct(self, mint):
+        if mint in self.bundle_cache:
+            return self.bundle_cache[mint]
+        from memebot import launchcheck
+        r = await launchcheck.check(await self._sess(), self._key(), mint)
+        if r.get("error"):
+            return None
+        pct = (r.get("bundle") or {}).get("supply_pct", 0) + (r.get("creator_buy") or {}).get("supply_pct", 0)
+        self.bundle_cache[mint] = pct
+        return pct
+
+    async def _enter_checked(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        try:
+            pct = await self._bundled_pct(cd["mint"])
+        except Exception as e:
+            self.last_error = f"bundle check: {e}"[:100]
+            pct = None
+        cap = float(c.get("max_bundle_pct", 12))
+        if pct is None:
+            self.traded.add(cd["mint"])
+            return self._event("skip", f"{cd['symbol']}: couldn't read its launch - skipped", mint=cd["mint"])
+        if pct > cap:
+            self.traded.add(cd["mint"])
+            w = getattr(self, "why", None)
+            if w is not None:
+                w.note(cd["mint"], cd["symbol"], self.NAME, f"launch was {pct:.0f}% bundled (max {cap:g}%)", ts)
+            return self._event("skip", f"{cd['symbol']}: launch {pct:.0f}% bundled (max {cap:g}%) - skipped", mint=cd["mint"])
+        self._enter(cd, px, ts, trades_2m)
+        p = self.positions.get(cd["mint"])
+        if p:
+            p["bundle_pct"] = round(pct, 1)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, desc=(f"Reclaim, but only coins whose launch was at most {c.get('max_bundle_pct', 12):g}% bundled "
+                                       f"(creator + same-block wallets) · ${c.get('size_usd', 25)} each · no real money"))
+        return s
