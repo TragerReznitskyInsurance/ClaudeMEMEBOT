@@ -367,6 +367,7 @@ class Runner:
             return None
         c = self.lookalike_grad.cfg()
         return dict(since=f.since, cap=c.get("max_prior_peak_mult", 0), rise=c.get("min_rise_2m_pct", 0),
+                    buys=c.get("min_buys_2m", 0),
                     base=self.lookalike_grad.stats_since(f.since), fresh=f.stats_since(f.since),
                     coins=self._age_test_coins(f))
 

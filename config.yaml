@@ -84,6 +84,7 @@ lookalike_grad:
   max_prior_peak_mult: 1.1             # skip coins that had already been >10% above the line (not at their high)
   min_rise_2m_pct: 10                  # must be up at least this much over the last 2 minutes (up trajectory)
   min_rise_1m_pct: 0                   # ...and not falling over the last minute
+  min_buys_2m: 40                      # ...and at least this many buys in the last 2 minutes (a real crowd)
   breakeven_after_mult: 2              # once a coin has doubled, the stop moves up to break-even (0 = off)
   breakeven_floor_mult: 1.08           # "break-even" incl. fees and price impact
   check_every_s: 3                     # how often prices are checked (faster stops = smaller losses)

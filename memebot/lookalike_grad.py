@@ -102,7 +102,7 @@ class LookalikeGrad3(LookalikeGrad):
         c = dict(self._cfg().get("lookalike_grad") or {})
         own = self._cfg().get(self.NAME) or {}
         c.update(enabled=own.get("enabled", True), min_age_s=own.get("min_age_s", 180), real_enabled=False,
-                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None)   # buys as before: no trend filters
+                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None, min_buys_2m=0)   # buys as before: no trend filters
         return c
 
     def state(self):
@@ -122,5 +122,5 @@ class LookalikeGradOld(LookalikeGrad3):
         c = dict(self._cfg().get("lookalike_grad") or {})
         own = self._cfg().get(self.NAME) or {}
         c.update(enabled=own.get("enabled", True), real_enabled=False, min_age_s=c.get("min_age_s", 300),
-                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None)
+                 max_prior_peak_mult=0, min_rise_2m_pct=0, min_rise_1m_pct=None, min_buys_2m=0)
         return c

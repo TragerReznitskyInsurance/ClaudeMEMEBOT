@@ -72,6 +72,7 @@ SCHEMA = [
         {"path": "lookalike_grad3.min_age_s", "label": "…3-minute test: minimum coin age", "unit": "s", "type": "float"},
         {"path": "lookalike_grad.max_prior_peak_mult", "label": "Only buy near its high: skip if it was already this far above the line (0 = off)", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.min_rise_2m_pct", "label": "Only buy on an up trend: must be up this much over 2 min (0 = off)", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.min_buys_2m", "label": "Only buy with a crowd: at least this many buys in the last 2 min (0 = off)", "type": "int"},
         {"path": "lookalike_grad_old.enabled", "label": "Paper comparison: old rules without these two filters", "type": "bool"},
         {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: trade it for real (its own wallet)", "type": "bool"},
         {"path": "lookalike_grad.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
