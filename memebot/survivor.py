@@ -46,7 +46,7 @@ class Survivor(Lookalike):
 
     def __init__(self, data_dir, cfg_getter, key_getter, sol_usd_getter):
         super().__init__(data_dir, cfg_getter, key_getter, sol_usd_getter)
-        self.cands_path = os.path.join(data_dir, "survivor_candidates.json")
+        self.cands_path = os.path.join(data_dir, f"{self.NAME}_candidates.json")
         self.cands: dict[str, dict] = {}
         try:
             with open(self.cands_path, encoding="utf-8", errors="replace") as fh:
@@ -56,7 +56,7 @@ class Survivor(Lookalike):
         for cd in self.cands.values():                          # older saves counted launch spikes as the high
             if not cd.get("settled_peak"):
                 cd.update(peak=0.0, settled_peak=True)
-        since_path = os.path.join(data_dir, "survivor_since.txt")
+        since_path = os.path.join(data_dir, f"{self.NAME}_since.txt")
         try:
             with open(since_path, encoding="utf-8") as fh:
                 self.since = float(fh.read().strip())
@@ -284,3 +284,42 @@ class Survivor(Lookalike):
                  desc=(f"Coins {c.get('min_age_min', 30)} min to {c.get('max_age_h', 6)} h old breaking to a new high "
                        f"through {c.get('entry_mcap_sol', 44)} SOL on a quiet tape · wallet #1-style exits"))
         return s
+
+
+class HotWord(Survivor):
+    """PAPER test: Survivor's entry and exit rules, but only for coins whose name uses a HOT WORD right now
+    (a word with 2+ real graduations in the last 6 h, from the narratives tracker), and from `min_age_min`
+    (15) minutes old instead of 30 - these trends only last a few hours."""
+    NAME = "hotword"
+    narr = None                                                   # Narratives tracker, set by the app
+
+    def cfg(self):
+        c = dict(self._cfg().get("survivor") or {})
+        c.update(self._cfg().get(self.NAME) or {})
+        c.setdefault("min_age_min", 15)
+        c["real_enabled"] = False
+        return c
+
+    def _hot(self, mint):
+        c = self.cfg()
+        if self.narr is None:
+            return []
+        return self.narr.hot_for(mint, float(c.get("window_h", 6)), int(c.get("min_grads", 2)))
+
+    def maybe_enter(self, t, prev_mcap, ts):
+        if not (self.active and self.enabled()) or t.mint in self.cands or not self._hot(t.mint):
+            return False
+        return super().maybe_enter(t, prev_mcap, ts)
+
+    def _signal(self, cd, mc, now):
+        words = self._hot(cd["mint"])
+        if not words:
+            return "its word isn't hot any more"
+        cd["hot"] = words
+        return super()._signal(cd, mc, now)
+
+    def _enter(self, cd, px, now):
+        super()._enter(cd, px, now)
+        p = self.positions.get(cd["mint"])
+        if p:
+            p["hot"] = cd.get("hot", [])

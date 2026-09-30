@@ -30,7 +30,7 @@ from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
-from memebot.survivor import Survivor
+from memebot.survivor import Survivor, HotWord
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
 from memebot.updater import Updater
@@ -84,14 +84,16 @@ class Runner:
         self.tests = [self.lookalike_grad3, self.lookalike_fresh]
         self.survivor = Survivor(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.survivor.live = self.live2                     # the real lookalike wallet now trades this strategy
+        self.hotword = HotWord(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
+        self.hotword.narr = self.narr
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -102,7 +104,7 @@ class Runner:
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor):
+        for tst in (*self.tests, self.survivor, self.hotword):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -114,7 +116,7 @@ class Runner:
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor):
+        for tst in (*self.tests, self.survivor, self.hotword):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -149,7 +151,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword):
             try:
                 strat._save()
             except Exception:
@@ -230,6 +232,9 @@ class Runner:
             self.survivor.active = True
             self.survivor.feed_price = feed_price
             eng.survivor = self.survivor
+            self.hotword.active = True
+            self.hotword.feed_price = feed_price
+            eng.hotword = self.hotword
             try:                                             # also follow coins it saw in the last 3 days that got bought up
                 seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
                                              for m, v in list(self.narr.mints.items())
@@ -272,7 +277,7 @@ class Runner:
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor):
+        for tst in (*self.tests, self.survivor, self.hotword):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -367,7 +372,12 @@ class Runner:
     def survivor_state(self):
         sv = self.survivor
         s = sv.state()
-        s["vs"] = dict(since=sv.since, survivor=sv.stats_since(sv.since), lookalike=self.lookalike_grad.stats_since(sv.since))
+        hw = self.hotword
+        since = max(sv.since, hw.since)                       # same period for all three
+        s["vs"] = dict(since=since, survivor=sv.stats_since(since), lookalike=self.lookalike_grad.stats_since(since),
+                       hotword=hw.stats_since(since))
+        s["hotword"] = dict(candidates=len(hw.cands), coins=self._age_test_coins(hw),
+                            min_age_min=hw.cfg().get("min_age_min", 15))
         s["coins"] = self._age_test_coins(sv)
         return s
 
@@ -403,7 +413,8 @@ class Runner:
                 pnl = val + p["sol_out"] - p["sol_in"]
                 out.append(dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], age_s=p.get("age_at_entry_s"),
                                 entry_mcap=p["entry_mcap"], open=True, mult=round(p["last_px"] / p["entry_px"], 2),
-                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"]), prior_peak=p.get("prior_peak")))
+                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"]), prior_peak=p.get("prior_peak"),
+                                hot=p.get("hot")))
         for x in g3.closed:
             if x["opened"] >= g3.since:
                 out.append(dict(mint=x["mint"], symbol=x["symbol"], opened=x["opened"], age_s=x.get("age_at_entry_s"),
@@ -472,6 +483,7 @@ async def broadcaster(app):
     lg_task = asyncio.create_task(runner.lookalike_grad.run(every=lg_every))
     test_tasks = [asyncio.create_task(tst.run(every=lg_every)) for tst in runner.tests]
     test_tasks.append(asyncio.create_task(runner.survivor.run(every=5)))
+    test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -489,7 +501,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor):
+    for tst in (*runner.tests, runner.survivor, runner.hotword):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -778,7 +790,7 @@ async def api_diagnostics(request):
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad3_state.json",
                      "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
-                     "survivor_fills.csv",
+                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

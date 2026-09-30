@@ -145,6 +145,15 @@ survivor:
   dead_every_s: 600                    # coins back at the launch price every 10 minutes (they can still revive)
   max_candidates: 8000
 
+# ── Hot-word test (PAPER ONLY) ─────────────────────────────────
+# Survivor's rules (all "survivor" settings apply) but only for coins whose name uses a word that
+# produced 2+ graduations in the last 6 hours, and from 15 minutes old.
+hotword:
+  enabled: true
+  min_age_min: 15
+  window_h: 6
+  min_grads: 2
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:

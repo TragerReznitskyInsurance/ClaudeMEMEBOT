@@ -333,6 +333,56 @@ class Narratives:
                         out[k][f] += n
         return out
 
+    def hot_words(self, window_h=6, min_grads=2, min_lift=3.0):
+        """Words that produced `min_grads`+ real graduations in the last `window_h` hours - live mini-trends.
+        (On 30 Sep, coins launched with such a word after it got hot graduated 3-12x more often than average.)"""
+        now = time.time()
+        ck = (window_h, min_grads, min_lift)
+        if getattr(self, "_hot_cache", None) and self._hot_cache[0] == ck and now - self._hot_cache[1] < 60:
+            return self._hot_cache[2]
+        cut, cut6 = now - window_h * HOUR, now - 6 * HOUR
+        stat = defaultdict(lambda: dict(grads=0, launches_6h=0, launches_w=0, last=0.0, ex=[]))
+        tot_l = tot_g = 0
+        for m, v in self.mints.items():
+            if v.get("excluded"):
+                continue
+            g = (v.get("hits") or {}).get("grad")
+            if v["ts"] >= cut:
+                tot_l += 1
+            if g and g >= cut:
+                tot_g += 1
+            for k in v.get("keys") or []:
+                if not k.startswith("w:"):
+                    continue
+                s = stat[k[2:]]
+                if v["ts"] >= cut6:
+                    s["launches_6h"] += 1
+                if v["ts"] >= cut:
+                    s["launches_w"] += 1
+                if g and g >= cut:
+                    s["grads"] += 1
+                    s["last"] = max(s["last"], g)
+                    if len(s["ex"]) < 4:
+                        s["ex"].append(dict(mint=m, symbol=v.get("symbol") or m[:5]))
+        base = tot_g / tot_l if tot_l else 0.0          # the average coin's graduation rate in the window
+        # a spam word (e.g. 'inu', hundreds of launches) can have 2-3 graduates just by numbers: needs a real lift
+        out = sorted(([dict(word=w, grads=s["grads"], launches_6h=s["launches_6h"],
+                            lift=round(s["grads"] / max(s["launches_w"], 1) / base, 1) if base else None,
+                            last_grad_min=round((now - s["last"]) / 60), examples=s["ex"])
+                       for w, s in stat.items() if s["grads"] >= min_grads
+                       and (not base or s["grads"] / max(s["launches_w"], s["grads"]) >= min_lift * base)]),
+                     key=lambda r: (-r["grads"], r["last_grad_min"]))
+        self._hot_cache = (ck, now, out)
+        return out
+
+    def hot_for(self, mint, window_h=6, min_grads=2):
+        """The hot words this coin's name/symbol uses (empty if none)."""
+        v = self.mints.get(mint)
+        if not v:
+            return []
+        hot = {r["word"] for r in self.hot_words(window_h, min_grads)}
+        return [k[2:] for k in v.get("keys") or [] if k.startswith("w:") and k[2:] in hot]
+
     def state(self, top=14):
         if self._cache is not None and time.time() - self._cache_ts < 30:
             return self._cache
@@ -389,7 +439,7 @@ class Narratives:
             launches_1h=last1.get("*", {}).get("launch", 0),
             base_grad_rate_pct=round(base_grad * 100, 2) if base_grad is not None else None,
             base_hit80_rate_pct=round(base_80 * 100, 1) if base_80 is not None else None,
-            groups=groups, hot=hot, rising=rising, busiest=busiest,
+            groups=groups, hot=hot, rising=rising, busiest=busiest, hot_words=self.hot_words()[:12],
             new=[r for r in wrows if r["new"]][:top],
         )
 

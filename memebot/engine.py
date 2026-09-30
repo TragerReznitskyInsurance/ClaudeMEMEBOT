@@ -224,6 +224,7 @@ class Engine:
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
+        self.hotword = None                        # hot-word paper test (Survivor rules, hot trends only)
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -463,6 +464,8 @@ class Engine:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
+        if self.hotword is not None and t.creator:
+            self.hotword.maybe_enter(t, prev_mcap, ts)
         t.last_trade_ts = ts
         if ev["txType"] == "buy":
             t.buys += 1
