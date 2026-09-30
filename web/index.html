@@ -383,6 +383,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <div id="screenLk" hidden>
     <section id="lkwallet"></section>
     <section id="lkrules"></section>
+    <section id="agetest"></section>
     <section id="whybox"><div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔎 Why didn't it buy?</h2></div><div class="card-b">
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="whyq" placeholder="Paste a pump.fun link or coin address" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter')whyLookup()">
       <button class="btn primary" onclick="whyLookup()">Check</button></div>
@@ -546,7 +547,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1010,6 +1011,24 @@ function renderLab() {
 }
 
 
+/* ── 3-minute vs 5-minute age test (paper) ── */
+let AT = null;
+function renderAgeTest() {
+  const el = $("#agetest");
+  if (!el) return;
+  if (!AT) { el.innerHTML = ""; return; }
+  const m = s => (s / 60).toFixed(s % 60 ? 1 : 0) + " min", $$ = v => v == null ? "—" : `<span class="num ${cls(v)}">${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}</span>`;
+  const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}${x.young ? ` <span class="faint">(${x.young} under 5 min)</span>` : ""}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r num">${x.hit3x}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
+  const hrs = ((Date.now() / 1000 - AT.since) / 3600);
+  const d = AT.three.total_usd - AT.five.total_usd;
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>🧪 Test: buy from ${m(AT.min_age_s)} old instead of ${m(AT.base_min_age_s)}</h2><span class="badge gray">paper · no real money</span></div><div class="card-b">
+    <div class="faint" style="font-size:12.5px;margin-bottom:8px">Same entries and exit plan as this wallet; the only difference is the minimum coin age. Both are paper at $${AT.five.size_usd} per coin so they compare fairly. Running ${hrs < 1 ? Math.round(hrs * 60) + " min" : hrs.toFixed(1) + " h"}.</div>
+    <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
+      ${row(m(AT.base_min_age_s) + " (current)", AT.five)}${row(m(AT.min_age_s) + " (test)", AT.three)}</table>
+    <div style="font-size:13px;margin-top:8px">${AT.three.buys + AT.five.buys < 10 ? `<span class="faint">Too early to tell. Give it a day.</span>` : d > 0 ? `So far the ${m(AT.min_age_s)} rule is ahead by <b>$${d.toFixed(2)}</b>.` : d < 0 ? `So far the ${m(AT.base_min_age_s)} rule is ahead by <b>$${(-d).toFixed(2)}</b>.` : "Even so far."}</div>
+  </div></div>`;
+}
+
 /* ── lookalike paper test ─────────────────── */
 const stratOpen = {lookalike: true, reclaim: true, lookalike_grad: true};
 function renderLkRules() {
@@ -1134,6 +1153,7 @@ function renderLive() {
   pill.style.cssText = realOn ? "background:var(--down-soft);color:var(--down)" : "";
   renderLiveFor(LIVE, $("#realmoney"), "copy");
   renderLiveFor(LIVE2, $("#lkwallet"), "lookalike");
+  renderAgeTest();
 }
 function entryMcapCell(e, n, px) {
   if (e == null) return `<span class="faint">—</span>`;

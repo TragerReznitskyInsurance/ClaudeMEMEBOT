@@ -221,6 +221,7 @@ class Engine:
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
+        self.lookalike_grad3 = None                # same, 3-minute age rule (paper test)
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
         self.tokens: dict[str, TokenState] = {}
@@ -383,7 +384,8 @@ class Engine:
 
     def _lk_on(self):
         return (self.lookalike is not None and self.lookalike.enabled()) or \
-            (self.lookalike_grad is not None and self.lookalike_grad.enabled())
+            (self.lookalike_grad is not None and self.lookalike_grad.enabled()) or \
+            (self.lookalike_grad3 is not None and self.lookalike_grad3.enabled())
 
     def _rc_on(self):
         return self.reclaim is not None and self.reclaim.enabled()
@@ -451,6 +453,8 @@ class Engine:
             self.lookalike.maybe_enter(t, prev_mcap, ts)
         if self.lookalike_grad is not None and t.creator and prev_mcap:
             self.lookalike_grad.maybe_enter(t, prev_mcap, ts)
+        if self.lookalike_grad3 is not None and t.creator and prev_mcap:
+            self.lookalike_grad3.maybe_enter(t, prev_mcap, ts)
         if self.reclaim is not None and t.creator:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         t.last_trade_ts = ts
@@ -778,7 +782,7 @@ class Engine:
         if not self._momentum_on():                       # research-only: never buy, drop once recorded
             sc = self.cfg.get("snapshots") or {}
             snap_done = t.snapped or not (self.snaps is not None and self.snaps.enabled())
-            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad))
+            lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, self.lookalike_grad3))
             rc_done = not self._rc_on() or not self.reclaim.wants_watch(t.mint)
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot

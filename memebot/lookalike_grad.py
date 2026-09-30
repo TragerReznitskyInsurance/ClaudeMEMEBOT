@@ -16,6 +16,9 @@ Exit (multiples of the entry price; market caps in SOL):
 """
 from __future__ import annotations
 
+import os
+import time
+
 from memebot.lookalike import Lookalike
 
 SUPPLY = 1_000_000_000
@@ -67,4 +70,37 @@ class LookalikeGrad(Lookalike):
         for pos, p in zip(s["positions"], [self.positions.get(x["mint"]) for x in s["positions"]]):
             if p:
                 pos["graduated"] = p.get("src") == "jupiter"
+        return s
+
+
+class LookalikeGrad3(LookalikeGrad):
+    """PAPER test: exactly the graduation-exit lookalike (same settings, read live from `lookalike_grad`),
+    except it may buy coins from `lookalike_grad3.min_age_s` (3 min) instead of 5 min. Never real money.
+    Compared side by side with the 5-minute version over the same period."""
+    NAME = "lookalike_grad3"
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.since_path = os.path.join(self.dir, f"{self.NAME}_since.txt")
+        try:
+            with open(self.since_path, encoding="utf-8") as fh:
+                self.since = float(fh.read().strip())
+        except (OSError, ValueError):
+            self.since = time.time()
+            try:
+                with open(self.since_path, "w", encoding="utf-8") as fh:
+                    fh.write(str(self.since))
+            except OSError:
+                pass
+
+    def cfg(self):
+        c = dict(self._cfg().get("lookalike_grad") or {})
+        own = self._cfg().get(self.NAME) or {}
+        c.update(enabled=own.get("enabled", True), min_age_s=own.get("min_age_s", 180), real_enabled=False)
+        return c
+
+    def state(self):
+        s = super().state()
+        s.update(name=self.NAME, real_enabled=False, since=self.since,
+                 min_age_s=self.cfg().get("min_age_s", 180))
         return s

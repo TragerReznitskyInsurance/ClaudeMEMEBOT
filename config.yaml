@@ -95,6 +95,13 @@ lookalike_grad:
   real_max_open: 20                    # max real coins open at once
   real_daily_loss_usd: 25              # stop real buys for the day after losing this much
 
+# ── Lookalike 3-minute test (PAPER ONLY) ───────────────────────
+# Same as lookalike_grad (all its settings are used) but buys coins from 3 min old instead of 5.
+# Shown side by side with the 5-minute version on the Lookalike screen.
+lookalike_grad3:
+  enabled: true
+  min_age_s: 180
+
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:

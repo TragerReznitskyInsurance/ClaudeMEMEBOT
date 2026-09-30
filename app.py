@@ -29,7 +29,7 @@ from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim
-from memebot.lookalike_grad import LookalikeGrad
+from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
 from memebot.updater import Updater
@@ -76,6 +76,8 @@ class Runner:
                                          "copy_trade": {}},
                                 lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.lookalike_grad.live = self.live2
+        self.lookalike_grad3 = LookalikeGrad3(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
+                                              lambda: sol_price.usd)     # paper test: 3-minute age rule
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
@@ -83,7 +85,7 @@ class Runner:
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike, self.lookalike_grad, self.reclaim):
+        for strat in (self.lookalike, self.lookalike_grad, self.lookalike_grad3, self.reclaim):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -94,6 +96,7 @@ class Runner:
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
+        out += [m for m, p in self.lookalike_grad3.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
         return list(dict.fromkeys(out))
@@ -104,6 +107,7 @@ class Runner:
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
+        self.lookalike_grad3.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
 
@@ -137,7 +141,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike, self.lookalike_grad, self.reclaim):
+        for strat in (self.lookalike, self.lookalike_grad, self.lookalike_grad3, self.reclaim):
             try:
                 strat._save()
             except Exception:
@@ -211,6 +215,9 @@ class Runner:
             self.lookalike_grad.active = True
             self.lookalike_grad.feed_price = feed_price
             eng.lookalike_grad = self.lookalike_grad
+            self.lookalike_grad3.active = True
+            self.lookalike_grad3.feed_price = feed_price
+            eng.lookalike_grad3 = self.lookalike_grad3
             eng.reclaim = self.reclaim
             eng.narr = self.narr
             eng.why = self.why
@@ -245,6 +252,7 @@ class Runner:
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
+        self.lookalike_grad3.active = False
         for t in self.tasks:
             t.cancel()
         for t in self.tasks:
@@ -335,6 +343,15 @@ class Runner:
                 last_tick += 1.0
                 eng.on_tick(last_tick)
 
+    def age_test(self):
+        g3 = self.lookalike_grad3
+        if not g3.enabled():
+            return None
+        return dict(since=g3.since, min_age_s=g3.cfg().get("min_age_s", 180),
+                    base_min_age_s=(self.lookalike_grad.cfg().get("min_age_s", 300)),
+                    five=self.lookalike_grad.stats_since(g3.since), three=g3.stats_since(g3.since),
+                    three_positions=g3.state()["positions"][:30])
+
     def snapshot(self):
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
@@ -342,6 +359,7 @@ class Runner:
                 "live2": self.live2.state([]),
                 "lookalike": self.lookalike.state(), "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
+                "age_test": self.age_test(),
                 "narratives": self.narr.state()}
 
 
@@ -390,6 +408,7 @@ async def broadcaster(app):
     lk_task = asyncio.create_task(runner.lookalike.run())
     rc_task = asyncio.create_task(runner.reclaim.run(every=10))
     lg_task = asyncio.create_task(runner.lookalike_grad.run())
+    lg3_task = asyncio.create_task(runner.lookalike_grad3.run())
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -404,7 +423,9 @@ async def broadcaster(app):
     lk_task.cancel()
     rc_task.cancel()
     lg_task.cancel()
+    lg3_task.cancel()
     await runner.lookalike_grad.close()
+    await runner.lookalike_grad3.close()
     nr_task.cancel()
     why_task.cancel()
     upd_task.cancel()
@@ -671,7 +692,8 @@ async def api_diagnostics(request):
                      "lookalike_state.json", "lookalike_trades.csv", "lookalike_fills.csv",
                      "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
-                     "lookalike_grad_fills.csv", "coin_decisions.jsonl"):
+                     "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad3_state.json",
+                     "lookalike_grad3_trades.csv", "lookalike_grad3_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

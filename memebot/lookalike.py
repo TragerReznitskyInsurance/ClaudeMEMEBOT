@@ -292,6 +292,7 @@ class Lookalike:
         pnl = p["sol_out"] - p["sol_in"]
         usd = self._usd() or 0
         rec = dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], closed=ts, entry_mcap=p["entry_mcap"],
+                   age_at_entry_s=p.get("age_at_entry_s"),
                    sol_in=round(p["sol_in"], 6), sol_out=round(p["sol_out"], 6), pnl_sol=round(pnl, 6),
                    pnl_pct=round(pnl / p["sol_in"] * 100, 1), pnl_usd=round(pnl * usd, 2),
                    peak_mult=round(p["peak_mult"], 2), stages=",".join(p["done"]),
@@ -464,6 +465,21 @@ class Lookalike:
         for c in self.closed:
             if c["mint"] == mint and is_placeholder(c["symbol"], mint):
                 c["symbol"] = symbol
+
+    def stats_since(self, since):
+        """Paper results of the buys made since `since` (closed + still open), for side-by-side tests."""
+        usd = self._usd() or 0
+        cl = [x for x in self.closed if x["opened"] >= since]
+        op = [p for p in self.positions.values() if p["opened"] >= since and p.get("verified", True)]
+        real = sum(x["pnl_sol"] for x in cl)
+        open_pnl = sum(self._sell_value(p["tokens"], p["last_px"]) - (p["sol_in"] - p["sol_out"]) for p in op)
+        total = real + open_pnl
+        return dict(buys=len(cl) + len(op), closed=len(cl), open=len(op), wins=sum(1 for x in cl if x["pnl_sol"] > 0),
+                    hit3x=sum(1 for x in cl if "3x" in x["stages"]) + sum(1 for p in op if "3x" in p["done"]),
+                    realized_usd=round(real * usd, 2), open_pnl_usd=round(open_pnl * usd, 2),
+                    total_usd=round(total * usd, 2),
+                    size_usd=self.cfg().get("size_usd", 2.5),
+                    young=sum(1 for x in [*cl, *op] if (x.get("age_at_entry_s") or 1e9) < 300))
 
     def state(self):
         usd = self._usd()
