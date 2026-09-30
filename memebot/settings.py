@@ -74,7 +74,7 @@ SCHEMA = [
         {"path": "lookalike_grad_old.enabled", "label": "Paper comparison: old rules without these two filters", "type": "bool"},
         {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: lookalike wallet trades the Survivor strategy", "type": "bool"},
         {"path": "survivor.min_age_min", "label": "Survivor: coin at least this old", "unit": "min", "type": "float"},
-        {"path": "survivor.scratch_min", "label": "Survivor: sell if not up 10% within", "unit": "min", "type": "float"},
+        {"path": "survivor.scratch_min", "label": "Survivor: sell if not up 10% within (0 = off)", "unit": "min", "type": "float"},
         {"path": "survivor.stop_pct", "label": "Survivor: stop loss", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
         {"path": "lookalike_grad.real_max_open", "label": "Max real coins open", "type": "int"},

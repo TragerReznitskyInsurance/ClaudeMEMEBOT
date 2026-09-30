@@ -10,7 +10,7 @@ the safety checks. They are then followed ON-CHAIN (batched curve reads, cheap) 
 coins near the line every few seconds, the rest about once a minute.
 
 Buy when ALL of:
-  - at least `min_age_min` (30) old and at most `max_age_h` (72) old, still on the pump.fun curve
+  - at least `min_age_min` (10) old and at most `max_age_h` (24) old, still on the pump.fun curve
     (wallet #1's winners on 30 Sep were 13 h and 38 h old coins; its 5-10 minute old buys lost)
   - market cap rises through `entry_mcap_sol` (44), and is not already above `max_entry_mult` x that
   - it is at a NEW HIGH: at or above the highest market cap it had since its launch settled (`settle_min`,
@@ -126,8 +126,8 @@ class Survivor(Lookalike):
         c = self.cfg()
         line = float(c.get("entry_mcap_sol", 44))
         age = now - cd["created"]
-        if age < float(c.get("min_age_min", 30)) * 60:
-            return f"crossed {line:g} SOL at {age / 60:.0f} min old (needs {c.get('min_age_min', 30):g}+ min)"
+        if age < float(c.get("min_age_min", 10)) * 60:
+            return f"crossed {line:g} SOL at {age / 60:.0f} min old (needs {c.get('min_age_min', 10):g}+ min)"
         if mc > line * float(c.get("max_entry_mult", 1.35)):
             return f"jumped straight to {mc:.0f} SOL"
         if mc < cd["peak"] * (1 - float(c.get("near_high_pct", 3)) / 100):
@@ -188,11 +188,12 @@ class Survivor(Lookalike):
         if ts - p["opened"] > float(c.get("max_hold_h", 24)) * 3600:
             return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 24):g}h", px, ts)
         if "2x" not in done:
-            if (ts - p["opened"] >= float(c.get("scratch_min", 3)) * 60
+            sm = float(c.get("scratch_min", 0) or 0)                 # 0 = off
+            if (sm and ts - p["opened"] >= sm * 60
                     and p["peak_mult"] < float(c.get("scratch_mult", 1.10))):
-                return self._sell(p, 1.0, f"scratch - no follow-through in {c.get('scratch_min', 3):g} min", px, ts)
-            if mult <= 1 - float(c.get("stop_pct", 20)) / 100:
-                return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 20):g}%", px, ts)
+                return self._sell(p, 1.0, f"scratch - no follow-through in {sm:g} min", px, ts)
+            if mult <= 1 - float(c.get("stop_pct", 30)) / 100:
+                return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 30):g}%", px, ts)
         else:
             if mult <= float(c.get("breakeven_floor_mult", 1.08)) and "3x" not in done:
                 return self._sell(p, 1.0, f"break-even stop (was up to {p['peak_mult']:.1f}x)", px, ts)
@@ -251,7 +252,7 @@ class Survivor(Lookalike):
             cd["next"] = now + wait
             cd["hist"] = [x for x in cd["hist"] if now - x[0] <= 180] if hot else []
             if first and cd.get("seeded"):
-                cd["peak"] = mc if age >= float(c.get("settle_min", 15)) * 60 else 0.0
+                cd["peak"] = mc if age >= float(c.get("settle_min", 5)) * 60 else 0.0
             if not first and last < line <= mc and m not in self.traded:
                 why = self._signal(cd, mc, now)
                 if why is None:
@@ -263,7 +264,7 @@ class Survivor(Lookalike):
                     w.note(m, cd["symbol"], self.NAME, why, now)
             if hot:
                 cd["hist"].append((now, mc))
-            if age >= float(c.get("settle_min", 15)) * 60:       # launch-minute spikes don't count as its "high"
+            if age >= float(c.get("settle_min", 5)) * 60:       # launch-minute spikes don't count as its "high"
                 cd["peak"] = max(cd["peak"], mc)
             cd["last_mc"] = mc
         for m in list(self.positions):
@@ -280,8 +281,8 @@ class Survivor(Lookalike):
         c = self.cfg()
         hot = sum(1 for x in self.cands.values() if (x.get("last_mc") or 0) >= float(c.get("entry_mcap_sol", 44)) * 0.8)
         s.update(name=self.NAME, candidates=len(self.cands), hot=hot, since=self.since,
-                 min_age_min=c.get("min_age_min", 30), max_age_h=c.get("max_age_h", 72),
-                 desc=(f"Coins {c.get('min_age_min', 30)} min to {c.get('max_age_h', 6)} h old breaking to a new high "
+                 min_age_min=c.get("min_age_min", 10), max_age_h=c.get("max_age_h", 24),
+                 desc=(f"Coins {c.get('min_age_min', 10)} min to {c.get('max_age_h', 24)} h old breaking to a new high "
                        f"through {c.get('entry_mcap_sol', 44)} SOL on a quiet tape · wallet #1-style exits"))
         return s
 

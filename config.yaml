@@ -116,17 +116,19 @@ survivor:
   enabled: true
   size_usd: 10                         # paper tracking size
   intake_mcap_sol: 32                  # follow coins that reached this (real buying) and passed the safety checks
-  min_age_min: 30
-  max_age_h: 72                        # follow coins for 3 days (wallet #1's winners today were 13 h and 38 h old)
-  settle_min: 15                       # its "all-time high" only counts prices after the first 15 minutes
+  # From wallet #1's last 30 days (2,552 trades): its best buys were coins 10-30 min old (+84 SOL), then
+  # 1-24 h; coins over a day old LOST money. It held winners and losers for hours, never cut fast.
+  min_age_min: 10
+  max_age_h: 24
+  settle_min: 5                        # its "all-time high" only counts prices after the first 5 minutes (launch spikes)
   entry_mcap_sol: 44
   max_entry_mult: 1.35                 # skip if it jumped straight past 44 to more than ~59 SOL
   near_high_pct: 3                     # must be within 3% of (or above) its all-time high
   min_rise_2m_pct: 5                   # grinding up over the last ~2 min...
   max_pullback_pct: 12                 # ...without a pullback bigger than this (nobody dumping)
-  scratch_min: 3                       # not up 10% within 3 minutes -> sell (small loss, like wallet #1)
-  scratch_mult: 1.10
-  stop_pct: 20
+  scratch_min: 0                       # 0 = off. (Wallet #1's trades closed within 10 min lost money on average;
+  scratch_mult: 1.10                   #  its profit came from holding 10 min - 24 h, so no quick scratch.)
+  stop_pct: 30                         # its losers closed at about -29% (median)
   breakeven_floor_mult: 1.08           # after 2x the rest never goes back below break-even
   trail_pct: 30                        # last quarter rides with this trailing stop
   max_hold_h: 24

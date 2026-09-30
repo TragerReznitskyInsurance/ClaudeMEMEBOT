@@ -1062,8 +1062,8 @@ function renderLkRules() {
   const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
   const hrs = (Date.now() / 1000 - V.since) / 3600;
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Survivor breakout (wallet #1 style)</h2></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of coins <b>${L.min_age_min} min to ${L.max_age_h} h old</b> that survived the launch and break to a <b>new all-time high through 44 SOL</b>, grinding up (+5% over ~2 min) with no big pullback (nobody dumping). Never Mayhem-mode coins; only coins that passed the safety checks.
-    <b>Sells:</b> if it isn't up 10% within <b>3 minutes</b>, sell (small loss) · stop −20% · <b>¼ at 2×</b> (then the rest never goes below break-even) · <b>¼ at 3×</b> · <b>¼ at 5×</b> · last ¼ rides with a 30% trailing stop · 24h limit.
+    <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of coins <b>${L.min_age_min} min to ${L.max_age_h} h old</b> that break to a <b>new high through 44 SOL</b> (ignoring launch-minute spikes), grinding up (+5% over ~2 min) with no big pullback (nobody dumping). Never Mayhem-mode coins; only coins that passed the safety checks.
+    <b>Sells:</b> stop −30% · <b>¼ at 2×</b> (then the rest never goes below break-even) · <b>¼ at 3×</b> · <b>¼ at 5×</b> · last ¼ rides with a 30% trailing stop · 24h limit.
     <div class="faint" style="margin-top:6px">Following ${L.candidates} coins right now (${L.hot} near 44 SOL). Limits: max ${L.real_max_open} open · stops buying after −$${L.real_daily_loss_usd} in a day · ⏸ pauses new buys. Coins bought under the old lookalike rules are still sold by their old plan.</div>
     <h3 style="margin:14px 0 4px;font-size:14px">Survivor vs the old lookalike rules (both tracked on paper, same period)</h3>
     <table class="wtab"><tr class="faint"><td>Strategy</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
@@ -1209,7 +1209,7 @@ function renderLiveFor(L, el, which) {
   if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
   const lgPos = {}; if (lk && LG) for (const q of LG.positions || []) lgPos[q.mint] = q;
   const svPos = {}; if (lk && SV) for (const q of SV.positions || []) svPos[q.mint] = q;
-  const svStage = q => !q ? "—" : q.stages.includes("5x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("2x") ? `¼ sold at 2× · stop at break-even · now ${q.mult.toFixed(2)}x` : q.age_min < 3 && q.peak < 1.1 ? `needs +10% within 3 min · now ${q.mult.toFixed(2)}x` : `stop at −20% · now ${q.mult.toFixed(2)}x`;
+  const svStage = q => !q ? "—" : q.stages.includes("5x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("2x") ? `¼ sold at 2× · stop at break-even · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`;
   const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : (q.peak >= 2 ? `stop at break-even (was ${q.peak.toFixed(1)}x) · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`);
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
   const running = META?.running && META.mode === "live";
