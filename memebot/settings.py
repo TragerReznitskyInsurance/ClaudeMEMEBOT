@@ -60,6 +60,7 @@ SCHEMA = [
         {"path": "lookalike_grad.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
         {"path": "lookalike_grad.size_usd", "label": "Behind-the-scenes tracking size", "unit": "$", "type": "float"},
         {"path": "lookalike_grad.stop_pct", "label": "Stop loss (before the first take-profit)", "unit": "%", "type": "float"},
+        {"path": "lookalike_grad.breakeven_after_mult", "label": "Once up this much, stop moves to break-even (0 = off)", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.tp_mult", "label": "First take-profit at", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.tp_pct", "label": "First take-profit amount", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.trail_pct", "label": "Then trailing stop below the high", "unit": "%", "type": "float"},

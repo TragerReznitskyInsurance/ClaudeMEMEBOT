@@ -5,7 +5,8 @@ modelled on how wallet #1 cashes out its big winners (mostly on the curve at 343
 graduation on PumpSwap).
 
 Exit (multiples of the entry price; market caps in SOL):
-  - before 3x: stop at -stop_pct (30%) -> sell everything
+  - before 3x: stop at -stop_pct (30%) -> sell everything; once it has reached breakeven_after_mult (2x)
+    the stop moves up to breakeven_floor_mult (1.08x, covers fees) so a coin that doubled never ends a loss
   - 3x: sell tp_pct (1/3)
   - after 3x: trailing stop trail_pct (35%) below the highest price since the buy
   - graduation zone (mcap >= zone_mcap_sol, 350 ~ 8x): sell zone_sell_pct (2/3) of what is left, on the curve,
@@ -46,7 +47,11 @@ class LookalikeGrad(Lookalike):
                 return self._sell(p, 1.0, "moonbag fell below the graduation price", px, ts)
             return
         if "3x" not in done:
-            if mult <= 1 - float(c.get("stop_pct", 30)) / 100:
+            be_arm = float(c.get("breakeven_after_mult", 2))
+            if be_arm and p["peak_mult"] >= be_arm:          # it doubled: never let it become a loss
+                if mult <= float(c.get("breakeven_floor_mult", 1.08)):
+                    return self._sell(p, 1.0, f"break-even stop (was up to {p['peak_mult']:.1f}x)", px, ts)
+            elif mult <= 1 - float(c.get("stop_pct", 30)) / 100:
                 return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 30):g}%", px, ts)
         elif mult <= p["peak_mult"] * (1 - float(c.get("trail_pct", 35)) / 100):
             return self._sell(p, 1.0, f"trailing stop ({p['peak_mult']:.1f}x high)", px, ts)

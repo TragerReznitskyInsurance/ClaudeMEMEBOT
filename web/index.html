@@ -1041,7 +1041,7 @@ function renderLkRules() {
   if (!L) { el.innerHTML = ""; return; }
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades</h2></div><div class="card-b" style="font-size:13px;line-height:1.6">
     <b>Buys</b> ${L.real_enabled ? `<b>$${L.real_size_usd}</b>` : "(real trading is OFF)"} of any coin the bot is watching as it rises through <b>${L.entry_mcap_sol} SOL</b> market cap and is at least 5 minutes old (never Mayhem-mode coins).
-    <b>Sells:</b> everything at −30% before 3× · <b>⅓ at 3×</b> · then a trailing stop 35% below the high · <b>⅔ of the rest at 350 SOL</b> (just before graduation) · the moonbag rides with a 25% trail and is sold below the graduation price · 48h limit.
+    <b>Sells:</b> everything at −30% before 3× (once it has <b>doubled</b>, the stop moves up to <b>break-even</b>) · <b>⅓ at 3×</b> · then a trailing stop 35% below the high · <b>⅔ of the rest at 350 SOL</b> (just before graduation) · the moonbag rides with a 25% trail and is sold below the graduation price · 48h limit.
     <div class="faint" style="margin-top:6px">Limits: max ${L.real_max_open} coins open · stops buying after −$${L.real_daily_loss_usd} in a day · the ⏸ button pauses new buys. Change any of it in Settings → Lookalike · graduation exit.</div></div></div>`;
 }
 function renderLookalike() { renderStrat($("#lookalike"), LK, "🧪 Lookalike test"); }
@@ -1169,7 +1169,7 @@ function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
   if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
   const lgPos = {}; if (lk && LG) for (const q of LG.positions || []) lgPos[q.mint] = q;
-  const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : `stop at −30% · now ${q.mult.toFixed(2)}x`;
+  const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : (q.peak >= 2 ? `stop at break-even (was ${q.peak.toFixed(1)}x) · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`);
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
   const running = META?.running && META.mode === "live";
   const status = !L.has_wallet ? `<span class="badge gray">No wallet yet</span>`
