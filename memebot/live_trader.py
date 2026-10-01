@@ -217,13 +217,33 @@ class LiveTrader:
         return self.session
 
     async def rpc(self, method, params):
+        """Helius RPC with retries. When Helius is busy or out of credits it answers with a non-JSON page
+        (HTTP 429 / 401 / 5xx) - retry a few times, then say plainly which it was."""
         s = await self._session()
-        async with s.post(RPC.format(key=self._hkey()), json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-                          timeout=aiohttp.ClientTimeout(total=20)) as r:
-            j = await r.json(content_type=None)
-        if "error" in j:
-            raise RuntimeError(str(j["error"].get("message") if isinstance(j["error"], dict) else j["error"])[:160])
-        return j.get("result")
+        last = "Helius not answering"
+        for attempt in range(3):
+            try:
+                async with s.post(RPC.format(key=self._hkey()), json={"jsonrpc": "2.0", "id": 1, "method": method,
+                                                                      "params": params},
+                                  timeout=aiohttp.ClientTimeout(total=20)) as r:
+                    status = r.status
+                    body = await r.read()
+                try:
+                    j = json.loads(body)
+                except ValueError:
+                    j = None
+                if isinstance(j, dict):
+                    if "error" in j:
+                        raise RuntimeError(str(j["error"].get("message") if isinstance(j["error"], dict) else j["error"])[:160])
+                    return j.get("result")
+                txt = body[:80].decode(errors="ignore").strip()
+                last = (f"Helius rate limit (HTTP 429) - too many requests" if status == 429 else
+                        f"Helius refused the key (HTTP {status}) - out of credits or key invalid? Check your Helius dashboard"
+                        if status in (401, 402, 403) else f"Helius busy (HTTP {status}{': ' + txt if txt else ''})")
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last = f"Helius connection problem ({type(e).__name__})"
+            await asyncio.sleep(0.7 * (attempt + 1))
+        raise RuntimeError(last)
 
     async def refresh_balance(self, force=False):
         if not self.kp or not self._hkey():
