@@ -282,3 +282,24 @@ class ReclaimClean(Reclaim):
         s.update(name=self.NAME, desc=(f"Reclaim, but only coins whose launch was at most {c.get('max_bundle_pct', 12):g}% bundled "
                                        f"(creator + same-block wallets) · ${c.get('size_usd', 25)} each · no real money"))
         return s
+
+
+class ReclaimBig(Reclaim):
+    """PAPER test: Reclaim, but only coins that are still big when it would buy - at least `min_entry_mcap_sol`
+    (100 SOL). 1 Oct analysis of 78 Reclaim trades: bought at 130+ SOL won 50% and made +$555, under 80 SOL lost;
+    55%+ of the peak AND 100+ SOL: 18 trades, 56% wins, +$547. Uses the `reclaim` settings; never real money."""
+    NAME = "reclaim_big"
+
+    def cfg(self):
+        c = dict(self._cfg().get("reclaim") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, desc=(f"Reclaim, but only coins still worth {c.get('min_entry_mcap_sol', 100):g}+ SOL when it buys "
+                                       f"(back to {c.get('min_of_peak_pct', 55):g}%+ of the old high) · ${c.get('size_usd', 25)} each · no real money"))
+        return s

@@ -167,12 +167,12 @@ reclaim:
   tp_frac_pct: 33.3
   max_hold_h: 24
 
-# ── Reclaim · clean launches (PAPER ONLY) ─────────────────────────
-# Reclaim (all its settings apply) but skips coins whose launch was bundled: creator + same-block
-# wallets took more than max_bundle_pct of the supply. One launch check per signal.
-reclaim_clean:
+# ── Reclaim · big coins (PAPER ONLY) ─────────────────────────────
+# Reclaim (all its settings apply) but only buys coins still worth min_entry_mcap_sol+ when the
+# signal fires (1 Oct: Reclaim buys at 130+ SOL won 50% and made most of the money; under 80 SOL lost).
+reclaim_big:
   enabled: true
-  max_bundle_pct: 12
+  min_entry_mcap_sol: 100
 
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:

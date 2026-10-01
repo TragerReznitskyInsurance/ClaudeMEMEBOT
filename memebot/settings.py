@@ -71,7 +71,7 @@ SCHEMA = [
         {"path": "lookalike_grad.max_prior_peak_mult", "label": "Only buy near its high: skip if it was already this far above the line (0 = off)", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.min_rise_2m_pct", "label": "Only buy on an up trend: must be up this much over 2 min (0 = off)", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.min_buys_2m", "label": "Only buy with a crowd: at least this many buys in the last 2 min (0 = off)", "type": "int"},
-        {"path": "reclaim_clean.enabled", "label": "Reclaim · clean launches paper test (skips bundled coins)", "type": "bool"},
+        {"path": "reclaim_big.enabled", "label": "Reclaim · big coins paper test (only buys at 100+ SOL)", "type": "bool"},
         {"path": "lookalike_grad_old.enabled", "label": "Paper comparison: old rules without these two filters", "type": "bool"},
         {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: the real wallet trades the Reclaim strategy", "type": "bool"},
         {"path": "survivor.min_age_min", "label": "Survivor: coin at least this old", "unit": "min", "type": "float"},
