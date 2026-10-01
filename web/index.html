@@ -1096,7 +1096,7 @@ function renderLkRules() {
   const R = RC || {};
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Reclaim (second wave)</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('reclaim')">⚙ Reclaim settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
     <b>Buys</b> ${R.real_enabled ? `<b>$${R.real_size_usd}</b>` : "(real trading is OFF)"} of coins that already made a first run (80+ SOL), <b>pulled back 40%+</b>, then <b>bounce 25%+ with 15+ trades in 2 minutes</b> while still at most 80% of the old high (30+ min old). It buys the second wave, after the launch crowd has dumped.
-    <b>Sells:</b> stop −25% until it's up 1.5× · then a trailing stop 35% below the high · <b>⅓ at 2×</b> · 24h limit.
+    <b>Sells:</b> stop −25% · <b>once it's been up 20%, the stop moves to our buy price</b> · from 1.5× a trailing stop 35% below the high · <b>⅓ at 2×</b> · 24h limit.
     <div class="faint" style="margin-top:6px">Paper record since Sep 30: see 🔁 Reclaim on the Dashboard. Limits: max ${R.real_max_open ?? "—"} open · stops buying after −$${R.real_daily_loss_usd ?? "—"} in a day · ⏸ pauses new buys. Coins bought under Survivor / the old lookalike rules are still sold by their own plan.</div>
   </div></div>
   <div class="card" style="margin-top:14px"><div class="rm-head"><h2>Paper: Survivor breakout (wallet #1 style)</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('survivor')">⚙ Survivor settings</button><button class="btn" onclick="stratSettings('hotword')">⚙ Hot-word test</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
@@ -1195,7 +1195,7 @@ function renderStrat(el, L, title) {
       ? p => p.stages.includes("zone") ? (p.graduated ? "moonbag · graduated" : "moonbag · in grad zone") : p.stages.includes("3x") ? `⅓ sold · trailing (${p.peak.toFixed(1)}x high)` : "stop at −30%"
       : L.name === "reclaim_be" ? p => (p.peak >= 1.2 ? `stop at our buy price (was ${p.peak.toFixed(2)}x)` : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "reclaim" || L.name === "reclaim_big"
-      ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
+      ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : p.peak >= 1.2 ? "stop at our buy price" : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "skimmer" ? p => `sells at +20% / −5%`
       : L.name === "calls" ? callStage
       : L.name === "rangebreak" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "sells if back inside the range / −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
@@ -1305,7 +1305,7 @@ function renderLiveFor(L, el, which) {
   const svPos = {}; if (lk && SV) for (const q of SV.positions || []) svPos[q.mint] = q;
   const rcPos = {}; if (lk && RC) for (const q of RC.positions || []) rcPos[q.mint] = q;
   const clPos = {}; if (lk && CL) for (const q of CL.positions || []) clPos[q.mint] = q;
-  const rcStage = q => !q ? "—" : (q.peak >= 1.5 ? `trailing 35% below ${q.peak.toFixed(1)}x high` : `stop at −25% · now ${q.mult.toFixed(2)}x`) + (q.stages.includes("2x") ? " · ⅓ sold at 2×" : "");
+  const rcStage = q => !q ? "—" : (q.peak >= 1.5 ? `trailing 35% below ${q.peak.toFixed(1)}x high` : q.peak >= 1.2 ? `stop at our buy price · now ${q.mult.toFixed(2)}x` : `stop at −25% · now ${q.mult.toFixed(2)}x`) + (q.stages.includes("2x") ? " · ⅓ sold at 2×" : "");
   const svStage = q => !q ? "—" : q.stages.includes("5x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("2x") ? `¼ sold at 2× · stop at break-even · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`;
   const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : (q.peak >= 2 ? `stop at break-even (was ${q.peak.toFixed(1)}x) · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`);
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";

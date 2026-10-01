@@ -163,6 +163,9 @@ class Reclaim(Lookalike):
         p["last_px"], p["last_px_ts"] = px, ts
         mult = px / p["entry_px"]
         p["peak_mult"] = max(p["peak_mult"], mult)
+        be = float(c.get("be_after_pct", 0) or 0)            # break-even stop (real wallet since 1 Oct 17:45)
+        if be and p["peak_mult"] >= 1 + be / 100 and mult <= float(c.get("be_floor_mult", 1.0)):
+            return self._sell(p, 1.0, f"back to entry after +{be:g}%", px, ts)
         if ts - p["opened"] > float(c.get("max_hold_h", 24)) * 3600:
             return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 24):g}h", px, ts)
         if p["peak_mult"] < float(c.get("trail_arm_mult", 1.5)):
