@@ -143,6 +143,7 @@ class SnapshotRecorder:
         self.meta_q: set[str] = set()
         self.meta_done: set[str] = set()
         self.control_times: deque = deque()
+        self.wallet_times: deque = deque()          # wallet-buy snapshots in the last hour (Helius budget)
         self.stats = Counter()
         self.last_error = ""
         self.social = Social()                 # pump.fun comment counts (free, best effort)
@@ -208,6 +209,13 @@ class SnapshotRecorder:
     def wallet_buy(self, wallet, mint, ts, wallet_sol, wallet_px, mcap_sol, t, sig=None):
         if not self.enabled():
             return
+        cap = int(self.cfg().get("wallet_per_hour", 150))   # a followed wallet that buys hundreds of coins an hour
+        while self.wallet_times and ts - self.wallet_times[0] > 3600:   # must not use up the Helius allowance
+            self.wallet_times.popleft()
+        if cap and len(self.wallet_times) >= cap:
+            self.stats["wallet_skipped_cap"] = self.stats.get("wallet_skipped_cap", 0) + 1
+            return
+        self.wallet_times.append(ts)
         feats = stream_features(t, ts) if (t is not None and t.creator and t.created_ts and t.buys + t.sells) else None
         base = dict(kind="wallet_buy", wallet=wallet, mint=mint, symbol=getattr(t, "symbol", "") or mint[:5], ts=ts,
                     mcap_sol=round(mcap_sol, 1) if mcap_sol else None, wallet_sol=round(wallet_sol or 0, 4),

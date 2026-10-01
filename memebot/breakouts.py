@@ -114,6 +114,11 @@ class BreakoutLog:
     def on_w1_buy(self, wallet, mint, ts, sol, mcap, sig):
         if not self.enabled():
             return
+        q = self.__dict__.setdefault("_w1_times", [])
+        q[:] = [x for x in q if ts - x < 3600]
+        if len(q) >= int(self.cfg().get("w1_per_hour", 150)):   # very busy followed wallets: keep Helius usage sane
+            return
+        q.append(ts)
         self._write(dict(type="w1", mint=mint, ts=round(ts, 1), wallet=wallet, sol=round(sol or 0, 4),
                          mcap=round(mcap, 1) if mcap else None, sig=sig))
         self.stats["w1"] += 1
