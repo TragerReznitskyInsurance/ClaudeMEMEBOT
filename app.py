@@ -27,7 +27,7 @@ from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
-from memebot.reclaim import Reclaim, ReclaimBig
+from memebot.reclaim import Reclaim, ReclaimBig, ReclaimBE
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord
 from memebot.calls import CallBuyer
@@ -93,13 +93,14 @@ class Runner:
         self.survivor.breakouts = self.breakouts
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
         self.reclaim_big = ReclaimBig(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.reclaim_be = ReclaimBE(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.calls = CallBuyer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.calls.live = self.live2                        # Discord calls buy for real in the real wallet
         self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.calls, self.rangebreak):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -109,7 +110,7 @@ class Runner:
         out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -120,7 +121,7 @@ class Runner:
         self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -155,7 +156,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.calls, self.rangebreak):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
             try:
                 strat._save()
             except Exception:
@@ -239,6 +240,9 @@ class Runner:
             eng.breakouts = self.breakouts
             self.reclaim_big.active = True
             self.reclaim_big.feed_price = feed_price
+            self.reclaim_be.active = True
+            self.reclaim_be.feed_price = feed_price
+            eng.reclaim_be = self.reclaim_be
             self.calls.active = True
             self.rangebreak.active = True
             self.rangebreak.feed_price = feed_price
@@ -286,7 +290,7 @@ class Runner:
         self.live2.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -432,7 +436,7 @@ class Runner:
                 "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
-                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_big": self.reclaim_big.state(),
+                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_big": self.reclaim_big.state(), "reclaim_be": self.reclaim_be.state(),
                 "calls": dict(self.calls.state(), notify=self.notify.state()), "rangebreak": self.rangebreak.state(),
                 "narratives": self.narr.state()}
 
@@ -488,6 +492,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
     test_tasks.append(asyncio.create_task(runner.reclaim_big.run(every=10)))
+    test_tasks.append(asyncio.create_task(runner.reclaim_be.run(every=10)))
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangebreak.run(every=10)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
@@ -507,7 +512,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_big, runner.calls, runner.rangebreak, runner.breakouts):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_big, runner.reclaim_be, runner.calls, runner.rangebreak, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -787,6 +792,8 @@ STRAT_LABELS = {
     "zone_sell_pct": "Sell in the zone (% of what's left)", "moon_trail_pct": "Moonbag trailing stop (%)",
     "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "min_of_peak_pct": "...and back to at least (% of old peak)", "settle_min": "Ignore launch spikes for (min)",
 }
+STRAT_LABELS["be_after_pct"] = "Stop moves to our buy price once up (%)"
+STRAT_LABELS["be_floor_mult"] = "...the new stop (x of our buy price)"
 STRAT_LABELS["max_bundle_pct"] = "Skip if launch was bundled more than (%)"
 STRAT_LABELS.update({
     "real_money": "REAL MONEY (buy for real in the real wallet)", "buy_usd": "Buy per call ($)",
@@ -810,7 +817,7 @@ STRAT_HIDE = {}
 
 def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
-    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_big": (runner.reclaim_big, "reclaim_big"),
+    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_big": (runner.reclaim_big, "reclaim_big"), "reclaim_be": (runner.reclaim_be, "reclaim_be"),
             "calls": (runner.calls, "calls"), "rangebreak": (runner.rangebreak, "rangebreak"),
             "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
             "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
@@ -866,7 +873,7 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim,
-             "reclaim_big": runner.reclaim_big, "calls": runner.calls, "rangebreak": runner.rangebreak,
+             "reclaim_big": runner.reclaim_big, "reclaim_be": runner.reclaim_be, "calls": runner.calls, "rangebreak": runner.rangebreak,
              "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
@@ -921,6 +928,7 @@ async def api_diagnostics(request):
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
                      "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "reclaim_big_state.json", "reclaim_big_trades.csv",
                      "reclaim_big_fills.csv", "calls_state.json", "calls_trades.csv", "calls_fills.csv",
+                     "reclaim_be_state.json", "reclaim_be_trades.csv", "reclaim_be_fills.csv",
                      "rangebreak_state.json", "rangebreak_trades.csv", "rangebreak_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)

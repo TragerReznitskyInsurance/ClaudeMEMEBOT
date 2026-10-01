@@ -222,6 +222,7 @@ class Engine:
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.reclaim_big = None                  # Reclaim, big coins only (paper)
+        self.reclaim_be = None                   # Reclaim, break-even stop after +20% (paper)
         self.rangebreak = None                     # range breakout (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
@@ -476,6 +477,8 @@ class Engine:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         if self.reclaim_big is not None and t.creator:
             self.reclaim_big.maybe_enter(t, prev_mcap, ts)
+        if self.reclaim_be is not None and t.creator:
+            self.reclaim_be.maybe_enter(t, prev_mcap, ts)
         if self.rangebreak is not None and t.creator:
             self.rangebreak.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:

@@ -329,3 +329,33 @@ class ReclaimBig(Reclaim):
         s.update(name=self.NAME, desc=(f"Reclaim, but only coins still worth {c.get('min_entry_mcap_sol', 100):g}+ SOL when it buys "
                                        f"(back to {c.get('min_of_peak_pct', 55):g}%+ of the old high) · ${c.get('size_usd', 25)} each · no real money"))
         return s
+
+
+class ReclaimBE(Reclaim):
+    """PAPER test: Reclaim with the same buys, but once a coin has been up `be_after_pct` (20%), the stop moves to
+    our buy price (`be_floor_mult` 1.0x): no more "was +20%, closed -30%". 1 Oct analysis: 64% of Reclaim buys went
+    +20%, and 27 of those still ended around -27%. Uses the `reclaim` settings; never real money."""
+    NAME = "reclaim_be"
+
+    def cfg(self):
+        c = dict(self._cfg().get("reclaim") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        mult = px / p["entry_px"]
+        peak = max(p["peak_mult"], mult)
+        if peak >= 1 + float(c.get("be_after_pct", 20)) / 100 and mult <= float(c.get("be_floor_mult", 1.0)):
+            p["last_px"], p["last_px_ts"], p["peak_mult"] = px, ts, peak
+            return self._sell(p, 1.0, f"back to entry after +{c.get('be_after_pct', 20):g}%", px, ts)
+        return super().check(p, px, ts)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, desc=(f"Same buys as Reclaim, but once a coin is up {c.get('be_after_pct', 20):g}% the stop "
+                                       f"moves to our buy price · ${c.get('size_usd', 25)} each · no real money"))
+        return s
