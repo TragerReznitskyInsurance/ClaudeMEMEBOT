@@ -9,6 +9,8 @@ Buy (paper) when ALL of:
   - it pulled back >= pullback_pct (40%) from its peak
   - it bounced >= bounce_pct (25%) off the low since then
   - it is still <= max_of_peak_pct (80%) of the old peak (not already fully recovered)
+  - ...but back to >= min_of_peak_pct (55%) of it: coins that crashed far below their spike and only bounce
+    a little lose (1 Oct analysis: entries under 55% of the peak won 31% and lost money; 55%+ won 47-55%)
   - market cap >= min_entry_mcap_sol (35) and still on the pump.fun curve
   - >= min_trades_2m (15) trades in the last 2 minutes (people are buying again)
 
@@ -191,6 +193,7 @@ class Reclaim(Lookalike):
             if (cd["pulled"] and age >= float(c.get("min_age_min", 30)) * 60
                     and mc >= cd["low"] * (1 + float(c.get("bounce_pct", 25)) / 100)
                     and mc <= cd["peak"] * float(c.get("max_of_peak_pct", 80)) / 100
+                    and mc >= cd["peak"] * float(c.get("min_of_peak_pct", 0) or 0) / 100   # held up, not a crash
                     and mc >= float(c.get("min_entry_mcap_sol", 35))
                     and now - cd.get("checked_at", 0) >= 30):
                 cd["checked_at"] = now

@@ -804,7 +804,7 @@ STRAT_LABELS = {
     "window_h": "Hot word: graduations within (hours)", "min_grads": "Hot word: at least (graduations)",
     "stop_pct_before": "Stop before first take-profit (%)", "zone_mcap_sol": "Graduation zone starts at (SOL)",
     "zone_sell_pct": "Sell in the zone (% of what's left)", "moon_trail_pct": "Moonbag trailing stop (%)",
-    "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "settle_min": "Ignore launch spikes for (min)",
+    "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "min_of_peak_pct": "...and back to at least (% of old peak)", "settle_min": "Ignore launch spikes for (min)",
 }
 STRAT_LABELS["max_bundle_pct"] = "Skip if launch was bundled more than (%)"
 STRAT_LABELS.update({

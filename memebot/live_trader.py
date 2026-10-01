@@ -432,7 +432,24 @@ class LiveTrader:
             p["queued_sell"] = 1 - (1 - p["queued_sell"]) * (1 - frac)
             self._save()
             return
-        asyncio.get_running_loop().create_task(self._sell(mint, frac, reason))
+        asyncio.get_running_loop().create_task(self._sell_until_done(mint, frac, reason))
+
+    async def _sell_until_done(self, mint, frac, reason, tries=12):
+        """A strategy's sale must happen: the strategy has already counted it, so a real sale that fails (e.g. the
+        coin graduated that second - error 0x1775, or slippage) would leave the coin with no exit plan at all.
+        Retry with growing pauses for ~15 min until the tokens actually leave the wallet."""
+        for attempt in range(tries):
+            p = self.positions.get(mint)
+            if not p:
+                return
+            before = p["tokens"]
+            await self._sell(mint, frac, reason if attempt == 0 else f"{reason} - retry {attempt}")
+            p = self.positions.get(mint)
+            if not p or p["tokens"] < before * 0.98:
+                return
+            await asyncio.sleep(min(15 * (attempt + 1), 120))
+        self._event("error", f"{(self.positions.get(mint) or {}).get('symbol', mint[:5])}: still couldn't sell after "
+                             f"{tries} tries - sell it by hand (Sell button)", mint=mint)
 
     def on_copy_sell(self, wallet, mint, frac):
         p = self.positions.get(mint)
