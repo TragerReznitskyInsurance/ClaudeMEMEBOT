@@ -191,6 +191,14 @@ class LiveTrader:
         self.events.append(dict(ts=time.time(), kind=kind, text=text, **extra))
         self.events = self.events[-150:]
         (log.warning if kind == "error" else log.info)("LIVE %s", text)
+        n = getattr(self, "notifier", None)
+        if n is not None and (kind in ("buy", "sell", "close") or (kind == "error" and "couldn't sell" in text)):
+            usd = self._usd() or 0
+            import re as _re
+            msg = text if "$" in text else _re.sub(r"(-?\d+\.\d{4}) SOL", lambda m: f"{m.group(1)} SOL (${float(m.group(1)) * usd:,.2f})" if usd else m.group(0), text)
+            tags = {"buy": "shopping_cart", "sell": "moneybag", "error": "warning"}.get(kind) or (
+                "chart_with_upwards_trend" if "+" in text.split("(")[-1][:3] or ": +" in text else "chart_with_downwards_trend")
+            n.send(f"{getattr(self, 'notify_label', 'Real wallet')}: {kind.upper()}", msg, tags, 4 if kind == "error" else 3)
 
     # ------------------------------------------------------------------ config helpers
     def cfg(self):

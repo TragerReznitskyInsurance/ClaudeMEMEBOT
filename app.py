@@ -32,6 +32,7 @@ from memebot.reclaim import Reclaim, ReclaimBig, ReclaimBE
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord
 from memebot.calls import CallBuyer
+from memebot.notify import Notifier
 from memebot.rangebreak import RangeBreak
 from memebot.winnotify import NotificationWatcher
 from memebot.breakouts import BreakoutLog
@@ -96,6 +97,9 @@ class Runner:
         self.reclaim_big = ReclaimBig(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.reclaim_be = ReclaimBE(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.notifier = Notifier(os.path.join(HERE, "data"), cur)
+        self.live2.notifier, self.live2.notify_label = self.notifier, "Real wallet"
+        self.live.notifier, self.live.notify_label = self.notifier, "Copy wallet"
         self.calls = CallBuyer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.calls.live = self.live2                        # Discord calls buy for real in the real wallet
         self.notify = NotificationWatcher(cur, self.calls.add_call)
@@ -147,7 +151,8 @@ class Runner:
                     rugcheck_errors=getattr(self.screener, "stats", {}).get("error", 0),
                     rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
                     rugcheck_last_error=getattr(self.screener, "last_error", ""),
-                    trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state(), boot=BOOT_ID)
+                    trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state(), boot=BOOT_ID,
+                    notify=self.notifier.state())
 
     def busy_trades(self):
         """Real buys/sells in flight right now (don't restart for an update in the middle of one)."""
@@ -943,6 +948,11 @@ async def api_calls_channel(request):
     return web.json_response({"ok": True, "channel": ch})
 
 
+async def api_notify_test(request):
+    ok = await runner.notifier.test()
+    return web.json_response({"ok": ok, "error": runner.notifier.last_error, "topic": runner.notifier.topic})
+
+
 async def api_why(request):
     """Why didn't the bot buy this coin? Accepts a mint or a pump.fun link."""
     import re
@@ -1018,6 +1028,7 @@ def make_app():
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/calls/buy", api_calls_buy)
     app.router.add_post("/api/calls/channel", api_calls_channel)
+    app.router.add_post("/api/notify/test", api_notify_test)
     app.router.add_post("/api/strategy/reset", api_strategy_reset)
     app.router.add_get("/api/strategy/settings", api_strategy_settings)
     app.router.add_post("/api/strategy/settings", api_strategy_settings)

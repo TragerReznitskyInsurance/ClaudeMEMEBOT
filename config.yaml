@@ -340,3 +340,10 @@ output:
 auto_update:
   enabled: true
   check_min: 5                         # how often to check
+
+# ── Phone alerts (ntfy, free) ───────────────────────────────────
+# Every REAL buy / sell / close is pushed to the ntfy app. Topic is created once (data/notify_topic.txt) and shown
+# on the real wallet card.
+notify:
+  enabled: true
+  server: "https://ntfy.sh"

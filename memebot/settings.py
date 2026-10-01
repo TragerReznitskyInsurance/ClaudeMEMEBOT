@@ -98,6 +98,9 @@ SCHEMA = [
         {"path": "reclaim.tp_frac_pct", "label": "Partial profit amount", "unit": "%", "type": "float"},
         {"path": "reclaim.max_hold_h", "label": "Time limit", "unit": "h", "type": "float"},
     ]},
+    {"group": "Phone alerts", "items": [
+        {"path": "notify.enabled", "label": "Push every real buy / sell to the ntfy app on my phone", "type": "bool"},
+    ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
         {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
