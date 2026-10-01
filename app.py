@@ -443,6 +443,25 @@ class Runner:
 
 # ---------------------------------------------------------------------- routes
 BOOT_ID = str(time.time())                      # changes on every restart -> open dashboards reload themselves
+def _settings_fix_1001():
+    """One-time settings update (1 Oct analysis), applied once to the saved settings:
+    Reclaim buys only coins back to 50%+ of their old high and worth 60+ SOL; copy trading follows wallet #1 only
+    (the two extra wallets were buy-everything bots that used up the Helius credits)."""
+    mark = os.path.join(HERE, "data", "settings_fix_1001.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"reclaim.min_of_peak_pct": 50, "reclaim.min_entry_mcap_sol": 60,
+                          "copy_trade.wallet": "jmemehQbZXX7QqNE7Eyi81MdTZw6cEAT6TU4Kinwtru"}, config_path=CONFIG)
+        os.makedirs(os.path.dirname(mark), exist_ok=True)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: Reclaim min 50%% of peak / 60 SOL, copy trading = wallet #1 only (one-time update)")
+    except Exception as e:
+        log.warning("settings fix skipped: %s", e)
+
+
+_settings_fix_1001()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
