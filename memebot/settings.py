@@ -97,24 +97,6 @@ SCHEMA = [
         {"path": "reclaim.tp_frac_pct", "label": "Partial profit amount", "unit": "%", "type": "float"},
         {"path": "reclaim.max_hold_h", "label": "Time limit", "unit": "h", "type": "float"},
     ]},
-    {"group": "Lookalike (paper test)", "items": [
-        {"path": "lookalike.enabled", "label": "Run the lookalike paper test", "type": "bool"},
-        {"path": "lookalike.entry_mcap_sol", "label": "Buy when a coin rises through", "unit": "SOL mcap", "type": "float"},
-        {"path": "lookalike.min_age_s", "label": "Coin at least this old", "unit": "s", "type": "float"},
-        {"path": "lookalike.size_usd", "label": "Paper size per coin", "unit": "$", "type": "float"},
-        {"path": "lookalike.stop_pct", "label": "Stop loss (until 6x)", "unit": "%", "type": "float"},
-        {"path": "lookalike.tp_initial_mult", "label": "Take the initial out at", "unit": "x", "type": "float"},
-        {"path": "lookalike.tp6_mult", "label": "Partial sell #1 at (floor moves to entry)", "unit": "x", "type": "float"},
-        {"path": "lookalike.tp6_sell_pct", "label": "Partial sell #1 amount (of what's left)", "unit": "%", "type": "float"},
-        {"path": "lookalike.tp10_mult", "label": "Partial sell #2 at", "unit": "x", "type": "float"},
-        {"path": "lookalike.tp10_sell_pct", "label": "Partial sell #2 amount (of what's left)", "unit": "%", "type": "float"},
-        {"path": "lookalike.moon_mult", "label": "Sell everything at", "unit": "x", "type": "float"},
-        {"path": "lookalike.max_open", "label": "Max open paper positions", "type": "int"},
-        {"path": "lookalike.real_enabled", "label": "REAL MONEY: also trade it for real", "type": "bool"},
-        {"path": "lookalike.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
-        {"path": "lookalike.real_max_open", "label": "Max real coins open", "type": "int"},
-        {"path": "lookalike.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
-    ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},
         {"path": "copy_trade.wallet", "label": "Wallet to copy", "type": "text", "restart": True},
@@ -252,9 +234,15 @@ def coerce(item, raw):
 def schema_with_values(cfg):
     out = copy.deepcopy(SCHEMA)
     for g in out:
+        keep = []
         for it in g["items"]:
-            it["value"] = get_path(cfg, it["path"])
-    return out
+            try:
+                it["value"] = get_path(cfg, it["path"])
+            except (KeyError, IndexError, TypeError):
+                continue                                   # setting no longer in the config: don't break the page
+            keep.append(it)
+        g["items"] = keep
+    return [g for g in out if g["items"]]
 
 
 # display order: security → safety → trigger A → trigger B → the rest
