@@ -91,6 +91,7 @@ class Runner:
         self.hotword.narr = self.narr
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
         self.survivor.breakouts = self.breakouts
+        self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
         self.reclaim_big = ReclaimBig(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.calls = CallBuyer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)

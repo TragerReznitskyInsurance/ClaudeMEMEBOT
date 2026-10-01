@@ -135,6 +135,28 @@ class Reclaim(Lookalike):
     async def _enter_checked(self, cd, px, ts, trades_2m):
         self._enter(cd, px, ts, trades_2m)
 
+    def _log_signal(self, cd, mc, age, now, c):
+        bl = getattr(self, "breakouts", None)
+        if bl is None or not self._key():
+            return
+        import asyncio
+        from memebot.volume import recent_volume
+        passes = (mc >= cd["peak"] * float(c.get("min_of_peak_pct", 0) or 0) / 100
+                  and mc >= float(c.get("min_entry_mcap_sol", 35)))
+
+        async def go():
+            try:
+                v5 = await recent_volume(await self._sess(), self._key(), cd["mint"], 300)
+            except Exception as e:
+                v5 = {"error": str(e)[:60]}
+            bl.signal(dict(type="reclaim_signal", sym=cd["symbol"], mcap=round(mc, 1), peak=round(cd["peak"], 1),
+                           low=round(cd["low"] or mc, 1), of_peak_pct=round(mc / cd["peak"] * 100, 1),
+                           age_min=round(age / 60, 1), passes_filters=passes, vol_5m=v5), cd["mint"], now)
+        try:
+            asyncio.get_running_loop().create_task(go())
+        except RuntimeError:
+            pass
+
     # ------------------------------------------------------------------ exits
     def check(self, p, px, ts):
         c = self.cfg()
@@ -190,9 +212,13 @@ class Reclaim(Lookalike):
                 cd["pulled"] = True
             if cd["pulled"]:
                 cd["low"] = min(cd["low"] or mc, mc)
-            if (cd["pulled"] and age >= float(c.get("min_age_min", 30)) * 60
-                    and mc >= cd["low"] * (1 + float(c.get("bounce_pct", 25)) / 100)
-                    and mc <= cd["peak"] * float(c.get("max_of_peak_pct", 80)) / 100
+            signal = (cd["pulled"] and age >= float(c.get("min_age_min", 30)) * 60
+                      and mc >= cd["low"] * (1 + float(c.get("bounce_pct", 25)) / 100)
+                      and mc <= cd["peak"] * float(c.get("max_of_peak_pct", 80)) / 100)
+            if signal and self.NAME == "reclaim" and now - cd.get("logged_at", 0) >= 600:
+                cd["logged_at"] = now                       # research: volume & launch speed of every signal
+                self._log_signal(cd, mc, age, now, c)
+            if (signal
                     and mc >= cd["peak"] * float(c.get("min_of_peak_pct", 0) or 0) / 100   # held up, not a crash
                     and mc >= float(c.get("min_entry_mcap_sol", 35))
                     and now - cd.get("checked_at", 0) >= 30):

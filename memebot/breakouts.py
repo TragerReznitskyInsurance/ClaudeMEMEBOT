@@ -47,6 +47,7 @@ class BreakoutLog:
         self._key = key_getter
         self._cfg = cfg_getter
         self.last: dict[str, float] = {}                  # mint -> last crossing recorded (dedupe)
+        self.first: dict[str, float] = {}                 # mint -> age (s) when it FIRST rose through 44 SOL
         self.pending: OrderedDict = OrderedDict()         # crossing id -> {mint, ts, due}
         self.q: asyncio.Queue | None = None
         self.session: aiohttp.ClientSession | None = None
@@ -85,6 +86,11 @@ class BreakoutLog:
         """A coin rose through the line (44 SOL)."""
         if not self.enabled() or not mint:
             return
+        if age_s is not None and mint not in self.first:
+            self.first[mint] = age_s
+            if len(self.first) > 50000:
+                for m in list(self.first)[:10000]:
+                    self.first.pop(m, None)
         if ts - self.last.get(mint, 0) < float(self.cfg().get("dedupe_min", 30)) * 60:
             return
         self.last[mint] = ts
@@ -110,6 +116,15 @@ class BreakoutLog:
                 and random.random() < float(c.get("launch_check_share", 0.35))):
             self.launch_checks += 1
             self._put(("launch", cid, mint, None))
+
+    def signal(self, rec, mint, ts):
+        """A strategy's buy signal (with its features): record it and follow the coin for 30 min / 2 h / 6 h."""
+        cid = f"sig:{mint}:{int(ts)}"
+        rec = dict(rec, id=cid, mint=mint, ts=round(ts, 1))
+        if mint in self.first:
+            rec["first44_age_s"] = round(self.first[mint])
+        self._write(rec)
+        self.pending[cid] = dict(mint=mint, ts=ts, due=list(CHECKS_MIN))
 
     def on_w1_buy(self, wallet, mint, ts, sol, mcap, sig):
         if not self.enabled():
