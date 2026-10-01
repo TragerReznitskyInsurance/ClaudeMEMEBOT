@@ -63,7 +63,7 @@ class NotificationWatcher:
         return self._cfg().get("calls") or {}
 
     def state(self):
-        return dict(status=self.status, ok=self.ok, windows=sys.platform == "win32", read=self.count,
+        return dict(status=self.status, ok=self.ok, channel=str(self.cfg().get("channel") or ""), windows=sys.platform == "win32", read=self.count,
                     recent=self.recent[:8], error=self.last_error)
 
     async def _install(self):
@@ -132,7 +132,7 @@ class NotificationWatcher:
                     continue
                 notes = await listener.get_notifications_async(NK.TOAST)
                 apps = [a.lower() for a in (c.get("apps") or ["discord"])]
-                only = str(c.get("only_titles_with") or "").lower().strip()
+                only = str(c.get("channel") or c.get("only_titles_with") or "").lower().strip().lstrip("#").strip()
                 for n in notes:
                     nid = n.id
                     if nid in self.seen:
@@ -145,11 +145,13 @@ class NotificationWatcher:
                         continue
                     texts = self._texts(n, KB)
                     title, body = (texts[0] if texts else ""), "\n".join(texts[1:])
+                    where = " ".join([title, *texts[2:]]).lower()    # title (+ attribution line), not the message
+                    match = bool(only) and only in where
                     self.count += 1
-                    self.recent.insert(0, dict(ts=time.time(), title=title[:80], text=body[:140]))
+                    self.recent.insert(0, dict(ts=time.time(), title=title[:80], text=body[:140], match=match))
                     self.recent = self.recent[:20]
-                    if only and only not in title.lower() and only not in body.lower():
-                        continue
+                    if not match:
+                        continue                   # not the call channel (or no channel picked yet)
                     try:
                         await self.on_message(f"{title}\n{body}", name or "Discord", title)
                     except Exception as e:
@@ -159,7 +161,8 @@ class NotificationWatcher:
                     self.seen = keep
                 first = False
                 self.ok = True
-                self.status = "listening for Discord notifications"
+                self.status = ("listening for Discord notifications" if only else
+                               "reading Discord pop-ups, but NOT buying until you set the call channel")
                 self.last_error = ""
             except asyncio.CancelledError:
                 raise

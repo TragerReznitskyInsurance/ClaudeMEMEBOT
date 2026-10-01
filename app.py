@@ -892,6 +892,17 @@ async def api_calls_buy(request):
     return web.json_response({"results": res})
 
 
+async def api_calls_channel(request):
+    """Set the one Discord channel whose notifications the bot buys from."""
+    body = await request.json()
+    ch = str(body.get("channel") or "").strip().lstrip("#").strip()[:80]
+    S.save_overrides({"calls.channel": ch}, config_path=CONFIG)
+    runner.cfg = S.load_config(CONFIG)
+    if runner.engine and runner.running:
+        runner.engine.cfg.setdefault("calls", {})["channel"] = ch
+    return web.json_response({"ok": True, "channel": ch})
+
+
 async def api_why(request):
     """Why didn't the bot buy this coin? Accepts a mint or a pump.fun link."""
     import re
@@ -966,6 +977,7 @@ def make_app():
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/calls/buy", api_calls_buy)
+    app.router.add_post("/api/calls/channel", api_calls_channel)
     app.router.add_post("/api/strategy/reset", api_strategy_reset)
     app.router.add_get("/api/strategy/settings", api_strategy_settings)
     app.router.add_post("/api/strategy/settings", api_strategy_settings)

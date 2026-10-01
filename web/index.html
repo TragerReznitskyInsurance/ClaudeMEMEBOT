@@ -1128,21 +1128,35 @@ function renderCalls() {
   const nst = N.ok ? `<span class="badge up">● reading Discord pop-ups</span>` : `<span class="badge warn">not reading notifications</span>`;
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>📣 Discord calls</h2>${L.real_money ? `<span class="badge down">REAL MONEY · $${L.buy_usd} per call</span>` : `<span class="badge gray">paper only</span>`} ${nst}
     <div class="rm-actions"><button class="btn" onclick="stratSettings('calls')">⚙ Settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    Buys every coin address that shows up in a <b>Discord notification on this computer</b>, the moment it pops up. No safety or bundle checks.
+    Buys the coin in each <b>new call from one Discord channel</b> (read from the pop-ups on this computer), the moment it pops up. <b>Each coin only once</b>: the channel's later updates about a coin are ignored. No safety or bundle checks.
     <b>Sells:</b> stop −40% · ¼ at 3× · ¼ at 5× · ¼ at 10× · after the first sale the rest also sells if it falls 50% below its high · 48h limit.
     <div class="faint">Limits: ${L.max_buys_per_day} real buys a day (${L.real_buys_today} today) · max ${L.real_max_open} open · stops after −$${L.real_daily_loss_usd} in a day · ⏸ Pause buys on the wallet above stops it too.</div>
     <div style="margin-top:6px;${N.ok ? "" : "color:var(--warn)"}">${N.ok ? `Read ${N.read} Discord notification${N.read === 1 ? "" : "s"} since the bot started.` : esc(N.status || "")}${N.error ? ` <span style="color:var(--warn)">(${esc(N.error)})</span>` : ""}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><b>Call channel:</b>
+      <input id="callch" placeholder="channel name as it shows in the pop-up title, e.g. calls" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')callSetChannel()">
+      <button class="btn primary" onclick="callSetChannel()">Save</button>
+      ${L.channel ? `<span class="badge up">buying from: ${esc(L.channel)}</span>` : `<span class="badge warn">not set: nothing gets bought</span>`}</div>
+    ${(N.recent || []).length ? `<div class="faint" style="font-size:12px;margin-top:6px">Last Discord pop-ups (click one to use its channel):<div style="display:flex;flex-direction:column;gap:3px;margin-top:3px">${N.recent.slice(0, 6).map(r => `<div><span class="badge ${r.match ? "up" : "gray"}" style="cursor:pointer" onclick="callPickTitle(${JSON.stringify(r.title).replace(/"/g, "&quot;")})">${r.match ? "✓ " : ""}${esc(r.title || "(no title)")}</span> <span>${esc((r.text || "").slice(0, 70))}</span></div>`).join("")}</div></div>` : ""}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input id="callq" placeholder="Or paste a call (coin address / link / whole message) to buy it now" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter')callBuy()">
       <button class="btn primary" onclick="callBuy()">Buy now</button></div>
     <div id="callout" style="font-size:12.5px;margin-top:6px"></div>`;
   if ((L.inbox || []).length) h += `<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Call received</th><th>Coin</th><th>From</th><th>What happened</th></tr></thead><tbody>
     ${L.inbox.map(c => `<tr><td class="num faint">${new Date(c.ts * 1000).toLocaleTimeString()}</td><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener">${esc(c.mint.slice(0, 6))}… <span class="ext">↗</span></a></td>
       <td class="faint" style="font-size:12px">${esc(c.title || c.source)}</td><td>${c.result === "bought" ? `<span class="badge up">bought</span>` : `<span class="faint">${esc(c.result)}</span>`}</td></tr>`).join("")}</tbody></table></div>`;
-  else if ((N.recent || []).length) h += `<div class="faint" style="margin-top:8px">Last Discord pop-ups read (no coin address in them): ${N.recent.slice(0, 3).map(r => esc(r.title)).join(" · ")}</div>`;
-  const keep = [$("#callq")?.value || "", $("#callout")?.innerHTML || ""];
+  const keep = [$("#callq")?.value || "", $("#callout")?.innerHTML || "", $("#callch") ? $("#callch").value : (L.channel || "")];
   el.innerHTML = h + `</div></div><div id="callsstrat"></div>`;
-  $("#callq").value = keep[0]; $("#callout").innerHTML = keep[1];
+  $("#callq").value = keep[0]; $("#callout").innerHTML = keep[1]; $("#callch").value = keep[2];
   renderStrat($("#callsstrat"), L, "📣 Discord calls · results");
+}
+function callPickTitle(t) {
+  const m = /\(#?([^,)]+)/.exec(t || "");                 // "Name (#channel, Server)" -> channel
+  $("#callch").value = (m ? m[1] : t || "").trim(); $("#callch").focus();
+}
+async function callSetChannel() {
+  const ch = $("#callch").value.trim();
+  const r = await fetch("/api/calls/channel", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({channel: ch})});
+  const j = await r.json(); toast(j.ok ? (j.channel ? `Buying only from: ${j.channel}` : "Channel cleared: nothing will be bought") : "Couldn't save");
+  $("#callch").blur();
 }
 async function callBuy() {
   const t = $("#callq").value.trim(); if (!t) return;

@@ -5,6 +5,9 @@ Where the calls come from: memebot/winnotify.py reads the Discord pop-ups Window
 (it never logs into Discord or touches the account) and hands every coin address it finds to `add_call`.
 The dashboard's "Buy call" box does the same by hand.
 
+Only notifications from the call channel (`channel`, matched in the pop-up's title) count. Each coin is bought
+at most ONCE: the channel also posts updates on its coins, and any later message about a coin it has already
+seen (bought or not) is ignored.
 Buy: every new coin address, as soon as it arrives - no safety / bundle checks (the owner's choice).
      Only technical skips: not a pump.fun coin, a Mayhem-mode coin, already bought, limits reached.
      Real buy in the real (lookalike) wallet, `buy_usd` each; the same trade is tracked on paper too, so
@@ -71,7 +74,12 @@ class CallBuyer(Lookalike):
             return []
         res = []
         for mint in addrs[:2]:                     # a call names one coin; don't buy a whole list
-            why = await self._buy_call(mint, source, title)
+            if mint in self.traded or mint in self.positions:
+                why = "already called before - update message, not bought again"
+            else:
+                self.traded.add(mint)              # once per coin, ever: later updates about it never buy
+                self._save()
+                why = await self._buy_call(mint, source, title)
             res.append(dict(mint=mint, result=why or "bought"))
             self.inbox.insert(0, dict(ts=time.time(), mint=mint, source=source, title=(title or "")[:80],
                                       text=(text or "")[:160], result=why or "bought"))
@@ -87,8 +95,6 @@ class CallBuyer(Lookalike):
             return "Discord calls are OFF in Settings"
         if not self.active:
             return "bot isn't running (Start live)"
-        if mint in self.positions or mint in self.traded:
-            return "already bought this coin"
         if not self._key():
             return "needs the Helius key"
         try:
@@ -97,7 +103,6 @@ class CallBuyer(Lookalike):
             return f"couldn't read the price ({e})"
         price, src = px.get(mint, (None, None))
         if src == "mayhem":
-            self.traded.add(mint)
             return "Mayhem-mode coin (the bot can't price these)"
         if not price:
             return "not a pump.fun coin (or not tradable yet)"
@@ -106,7 +111,6 @@ class CallBuyer(Lookalike):
             return "no SOL price yet"
         if len(self.positions) >= int(c.get("max_paper_open", 100)):
             return "too many open call positions"
-        self.traded.add(mint)
         size_usd = float(c.get("buy_usd", 10))
         size = size_usd / usd
         fee, slip, prio = self._x()
@@ -176,7 +180,7 @@ class CallBuyer(Lookalike):
                  real_enabled=bool(c.get("real_money")), real_size_usd=c.get("buy_usd", 10),
                  real_max_open=c.get("max_open", 10), real_daily_loss_usd=c.get("daily_loss_usd", 50),
                  max_buys_per_day=c.get("max_buys_per_day", 10), real_buys_today=self._real_today(),
-                 inbox=self.inbox[:15],
+                 inbox=self.inbox[:15], channel=str(c.get("channel") or ""),
                  desc=(f"Buys every coin posted in the Discord calls · ${c.get('buy_usd', 10):g} each · "
                        f"stop −{c.get('stop_pct', 40):g}% · ¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/"
                        f"{c.get('tp3_mult', 10):g}× · {c.get('max_hold_h', 48):g}h limit"))
