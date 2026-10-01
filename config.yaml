@@ -203,6 +203,31 @@ reclaim_clean:
   enabled: true
   max_bundle_pct: 12
 
+# Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
+rangebreak:
+  enabled: true
+  size_usd: 25
+  run_mcap_sol: 50                     # follow coins that reached this market cap while watched
+  max_age_h: 24                        # follow them for up to this long
+  max_candidates: 600
+  min_age_min: 30                      # only buy coins at least this old
+  consol_min: 20                       # sideways for at least this long...
+  max_range_pct: 35                    # ...in a range no wider than this (low to high)
+  min_entry_mcap_sol: 40               # range bottom at least this
+  break_pct: 5                         # buy when this % above the top of the range
+  max_chase_pct: 40                    # ...but not if it's already more than this % above it
+  min_trades_2m: 20                    # real buying (coins still on the curve)
+  recent_s: 90
+  sample_s: 20
+  dead_mcap_sol: 20
+  stop_pct: 25                         # hard stop
+  tp_mult: 2                           # sell a third at 2x
+  tp_frac_pct: 33.3
+  trail_arm_mult: 1.5                  # from 1.5x: trailing stop...
+  trail_pct: 30                        # ...30% below the high
+  max_hold_h: 24
+  max_open: 100
+
 # ── Discord calls (REAL MONEY) ─────────────────────────────────
 # Reads the Discord pop-ups Windows shows on this computer (never logs into Discord) and buys every coin
 # address in them, in the real (lookalike) wallet. No safety / bundle checks - owner's choice (30 Sep).
