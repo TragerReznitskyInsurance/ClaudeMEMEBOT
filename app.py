@@ -22,6 +22,7 @@ from memebot import settings as S
 from memebot.demo import generate
 from memebot.engine import Engine, Journal
 from memebot.live import LiveFeed, stream, tick_loop
+from memebot.curvepoll import PollingFeed, poll_loop
 from memebot import wallet as WL
 from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
@@ -185,7 +186,9 @@ class Runner:
 
         if mode == "live":
             key = self.api_key()
-            feed = LiveFeed(bool(key))
+            polled = (self.cfg["feed"].get("trade_source") or "helius_poll") == "helius_poll" and S.helius_key(CONFIG)
+            feed = PollingFeed(bool(key)) if polled else LiveFeed(bool(key))
+            self.feed = feed
             self.screener = RugCheckScreener(lambda: self.engine, lambda: self.engine.cfg["security"])
             self.engine = Engine(self.cfg, feed, self.journal, screener=self.screener,
                                  blocklist_path=os.path.join(HERE, out, "creator_blocklist.txt"))
@@ -206,6 +209,11 @@ class Runner:
             self._status(False, "Connecting to PumpPortal…")
             self.tasks = [asyncio.create_task(stream(self.engine, feed, url, self.recorder, self._status)),
                           asyncio.create_task(tick_loop(self.engine))]
+            if polled:                                    # free on-chain prices instead of PumpPortal's paid trade stream
+                self.tasks.append(asyncio.create_task(poll_loop(self.engine, feed, lambda: S.helius_key(CONFIG),
+                                                                float(self.cfg["feed"].get("poll_s", 3)))))
+                log.info("coin prices: polled on-chain via Helius every %ss (no PumpPortal trade fees)",
+                         self.cfg["feed"].get("poll_s", 3))
             if self.chain:
                 self.tasks.append(asyncio.create_task(self.chain.run()))
                 self.tasks.append(asyncio.create_task(self.chain.listen()))

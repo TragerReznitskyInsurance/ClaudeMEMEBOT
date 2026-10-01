@@ -280,8 +280,9 @@ class Engine:
         elif tx == "migrate":
             self._on_migrate(ev, ts)
         elif tx in ("buy", "sell"):
-            self.day_trade_msgs += 1
-            self.total_trade_msgs += 1
+            if not ev.get("_poll"):                       # polled on-chain reads are free: not paid messages
+                self.day_trade_msgs += 1
+                self.total_trade_msgs += 1
             if not ev.get("_chain"):
                 self.last_feed_trade_ts = time.time()     # wall clock: is PumpPortal still sending trades?
             self._on_trade(ev, ts)
