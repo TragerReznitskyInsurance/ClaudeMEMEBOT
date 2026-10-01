@@ -395,11 +395,9 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   </div>
   <div id="screenMain">
   <section id="realmoney"></section>
-  <section id="lookalike"></section>
   <section id="reclaim"></section>
   <section id="reclaimclean"></section>
   <section id="rangebreak"></section>
-  <section id="skimmer"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
@@ -609,7 +607,7 @@ function connect() {
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); renderLookalike(); renderReclaim(); renderCalls(); renderNarratives(); renderLkRules(); renderScreens(); }
+function render() { renderHeader(); renderBody(); renderLive(); renderReclaim(); renderCalls(); renderNarratives(); renderLkRules(); renderScreens(); }
 let SCREEN = (() => { try { return localStorage.getItem("screen") || "main"; } catch (e) { return "main"; } })();
 function showScreen(s) { SCREEN = s; try { localStorage.setItem("screen", s); } catch (e) {} renderScreens(); }
 function renderScreens() {
@@ -1170,7 +1168,7 @@ async function callBuy() {
     if (!j.error) $("#callq").value = "";
   } catch (e) { $("#callout").textContent = "Failed: " + e; }
 }
-function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimclean"), RCC, "🧼 Reclaim · clean launches test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); renderStrat($("#skimmer"), SK, "⚡ Skimmer test"); }
+function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimclean"), RCC, "🧼 Reclaim · clean launches test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";

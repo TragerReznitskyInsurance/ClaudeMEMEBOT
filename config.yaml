@@ -52,26 +52,6 @@ snapshots:
 
 # ── Lookalike (PAPER ONLY) ──────────────────────────────────────
 # Wallet #1's entry (buy as a coin rises through ~44 SOL mcap) with our own exit plan.
-lookalike:
-  enabled: true
-  entry_mcap_sol: 44                   # buy when a watched coin rises through this market cap
-  min_age_s: 300                       # ...and is at least this old (5 min)
-  size_usd: 2.5                        # paper size per coin (same as the real copies)
-  max_open: 300
-  stop_pct: 30                         # sell everything at -30% (until 6x)
-  tp_initial_mult: 2                   # at 2x sell enough to get the initial back
-  tp6_mult: 6                          # at 6x sell tp6_sell_pct of what's left and raise the floor to entry
-  tp6_sell_pct: 25
-  floor_after_6x_mult: 1.0
-  tp10_mult: 10
-  tp10_sell_pct: 25
-  moon_mult: 100                       # full exit
-  # REAL MONEY for this strategy (uses the trading wallet; mirrors every paper buy/sale above)
-  real_enabled: false
-  real_size_usd: 2.5                   # real buy per coin
-  real_max_open: 20                    # max real lookalike coins open at once
-  real_daily_loss_usd: 25              # stop real lookalike buys for the day after losing this much
-
 # ── Lookalike · graduation exit (PAPER ONLY) ────────────────────
 # Same entries as the lookalike; exits built around pump.fun graduation (~410 SOL mcap), like wallet #1.
 lookalike_grad:
@@ -162,16 +142,6 @@ breakouts:
 # ── Skimmer (PAPER ONLY) ───────────────────────────────────────
 # Lots of quick trades: buys every coin rising through 44 SOL (young coins 2+ min old from the live
 # feed, older ones from Survivor's list) and sells ALL at +tp_pct, or at -sl_pct, or after max_hold_min.
-skimmer:
-  enabled: true
-  size_usd: 10
-  entry_mcap_sol: 44
-  min_age_s: 120
-  tp_pct: 20
-  sl_pct: 5
-  max_hold_min: 15
-  max_open: 300
-
 # ── Reclaim (PAPER ONLY) ────────────────────────────────────────
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
