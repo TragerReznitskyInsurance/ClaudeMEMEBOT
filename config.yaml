@@ -203,6 +203,29 @@ reclaim_clean:
   enabled: true
   max_bundle_pct: 12
 
+# ── Discord calls (REAL MONEY) ─────────────────────────────────
+# Reads the Discord pop-ups Windows shows on this computer (never logs into Discord) and buys every coin
+# address in them, in the real (lookalike) wallet. No safety / bundle checks - owner's choice (30 Sep).
+calls:
+  enabled: true
+  real_money: true                     # false = track the calls on paper only
+  read_notifications: true             # read Discord notifications on this computer (Windows)
+  apps: ["discord"]                    # which apps' notifications count (add "chrome" if you use Discord in a browser)
+  only_titles_with: ""                 # only notifications whose title/text contains this (e.g. the server or channel name)
+  buy_usd: 10
+  max_buys_per_day: 10
+  max_open: 10                         # real positions open at once
+  daily_loss_usd: 50                   # stop buying after losing this much in a day
+  stop_pct: 40                         # sell everything at -40%
+  tp1_mult: 3                          # sell a quarter at 3x...
+  tp2_mult: 5                          # ...another at 5x...
+  tp3_mult: 10                         # ...another at 10x
+  sell_pct_each: 25
+  trail_pct: 50                        # after the first sale, the rest also sells if it falls 50% below its high
+  max_hold_h: 48
+  max_paper_open: 100
+  poll_s: 1
+
 # ── REAL MONEY copy trading ─────────────────────────────────────
 # Uses a dedicated trading wallet created in the dashboard (key stays in data/trading_wallet.json).
 # Only active while "Start live" is running. Fund the wallet only with what you can afford to lose.

@@ -31,6 +31,8 @@ from memebot.lookalike import Lookalike
 from memebot.reclaim import Reclaim, ReclaimClean
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord, Skimmer
+from memebot.calls import CallBuyer
+from memebot.winnotify import NotificationWatcher
 from memebot.breakouts import BreakoutLog
 from memebot.narratives import Narratives
 from memebot.whylog import WhyLog
@@ -96,9 +98,12 @@ class Runner:
         self.reclaim_clean = ReclaimClean(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.skimmer = Skimmer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.survivor.skimmer = self.skimmer
+        self.calls = CallBuyer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.calls.live = self.live2                        # Discord calls buy for real in the real wallet
+        self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_clean):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_clean, self.calls):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -109,7 +114,7 @@ class Runner:
         out += [m for m, p in self.lookalike.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean, self.calls):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -121,7 +126,7 @@ class Runner:
         self.lookalike.rename(mint, info["symbol"])
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean, self.calls):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -156,7 +161,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_clean):
+        for strat in (self.lookalike, self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.skimmer, self.reclaim_clean, self.calls):
             try:
                 strat._save()
             except Exception:
@@ -246,6 +251,8 @@ class Runner:
             eng.skimmer = self.skimmer
             self.reclaim_clean.active = True
             self.reclaim_clean.feed_price = feed_price
+            self.calls.active = True
+            self.calls.feed_price = feed_price
             eng.reclaim_clean = self.reclaim_clean
             try:                                             # also follow coins it saw in the last 3 days that got bought up
                 seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
@@ -289,7 +296,7 @@ class Runner:
         self.lookalike.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean):
+        for tst in (*self.tests, self.survivor, self.hotword, self.skimmer, self.reclaim_clean, self.calls):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -436,6 +443,7 @@ class Runner:
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
                 "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "skimmer": self.skimmer.state(), "reclaim_clean": self.reclaim_clean.state(),
+                "calls": dict(self.calls.state(), notify=self.notify.state()),
                 "narratives": self.narr.state()}
 
 
@@ -492,6 +500,8 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
     test_tasks.append(asyncio.create_task(runner.skimmer.run(every=2)))
     test_tasks.append(asyncio.create_task(runner.reclaim_clean.run(every=10)))
+    test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
+    test_tasks.append(asyncio.create_task(runner.notify.run()))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
     upd_task = asyncio.create_task(runner.updater.run(runner))
@@ -509,7 +519,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.skimmer, runner.reclaim_clean, runner.breakouts):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.skimmer, runner.reclaim_clean, runner.calls, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -791,6 +801,15 @@ STRAT_LABELS = {
     "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "settle_min": "Ignore launch spikes for (min)",
 }
 STRAT_LABELS["max_bundle_pct"] = "Skip if launch was bundled more than (%)"
+STRAT_LABELS.update({
+    "real_money": "REAL MONEY (buy for real in the real wallet)", "buy_usd": "Buy per call ($)",
+    "max_buys_per_day": "Max real buys per day", "daily_loss_usd": "Stop buying after losing ($ in a day)",
+    "read_notifications": "Read Discord notifications on this computer", "tp1_mult": "Sell a quarter at (x)",
+    "tp2_mult": "Sell another quarter at (x)", "tp3_mult": "Sell another quarter at (x) ",
+    "sell_pct_each": "Each sale (% of the original)", "trail_pct": "After the first sale: trailing stop (% below high)",
+    "max_hold_h": "Time limit (hours)", "max_paper_open": "Max open call positions (incl. paper)",
+    "poll_s": "Check notifications every (seconds)",
+})
 STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd", "stats_since", "hot_from_pct",
               "cold_every_s", "old_after_h", "old_every_s", "dead_every_s", "check_every_s", "grad_floor_mcap_sol"}
 
@@ -801,6 +820,7 @@ STRAT_HIDE = {"skimmer": ("max_prior_peak_mult", "min_rise_2m_pct", "min_rise_1m
 def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
     return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_clean": (runner.reclaim_clean, "reclaim_clean"),
+            "calls": (runner.calls, "calls"),
             "skimmer": (runner.skimmer, "skimmer"), "lookalike": (runner.lookalike, "lookalike"),
             "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
             "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
@@ -856,11 +876,20 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim, "skimmer": runner.skimmer, "lookalike": runner.lookalike,
-             "reclaim_clean": runner.reclaim_clean,
+             "reclaim_clean": runner.reclaim_clean, "calls": runner.calls,
              "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
     return web.json_response({"since": strat.reset_stats()})
+
+
+async def api_calls_buy(request):
+    """Buy a call by hand: {text} = a coin address, a pump.fun link or a whole pasted message."""
+    body = await request.json()
+    res = await runner.calls.add_call(str(body.get("text") or "")[:2000], "pasted")
+    if not res:
+        return web.json_response({"error": "no coin address found in that text"}, status=400)
+    return web.json_response({"results": res})
 
 
 async def api_why(request):
@@ -892,7 +921,7 @@ async def api_diagnostics(request):
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
                      "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "skimmer_state.json",
                      "skimmer_trades.csv", "skimmer_fills.csv", "reclaim_clean_state.json", "reclaim_clean_trades.csv",
-                     "reclaim_clean_fills.csv",
+                     "reclaim_clean_fills.csv", "calls_state.json", "calls_trades.csv", "calls_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
@@ -936,6 +965,7 @@ def make_app():
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
+    app.router.add_post("/api/calls/buy", api_calls_buy)
     app.router.add_post("/api/strategy/reset", api_strategy_reset)
     app.router.add_get("/api/strategy/settings", api_strategy_settings)
     app.router.add_post("/api/strategy/settings", api_strategy_settings)

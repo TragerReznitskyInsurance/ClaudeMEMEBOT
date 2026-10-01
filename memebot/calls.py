@@ -1,0 +1,186 @@
+"""
+"Discord calls" - buy the coins a call channel posts, for real, the moment the call arrives.
+
+Where the calls come from: memebot/winnotify.py reads the Discord pop-ups Windows shows on this computer
+(it never logs into Discord or touches the account) and hands every coin address it finds to `add_call`.
+The dashboard's "Buy call" box does the same by hand.
+
+Buy: every new coin address, as soon as it arrives - no safety / bundle checks (the owner's choice).
+     Only technical skips: not a pump.fun coin, a Mayhem-mode coin, already bought, limits reached.
+     Real buy in the real (lookalike) wallet, `buy_usd` each; the same trade is tracked on paper too, so
+     the panel always shows how the calls would have done even when real money is off or paused.
+Limits: max `max_buys_per_day` real buys a day, `max_open` open at once, stops buying after
+        -`daily_loss_usd` realized in a day.
+Sell ("hold for runners"): stop -40% · sell 1/4 at 3x, 1/4 at 5x, 1/4 at 10x · after the first sale the rest
+     also has a trailing stop `trail_pct` (50%) below its high · time limit `max_hold_h`.
+"""
+from __future__ import annotations
+
+import logging
+import re
+import time
+
+from memebot.lookalike import Lookalike, curve_buy
+
+log = logging.getLogger("memebot")
+SUPPLY = 1_000_000_000
+ADDR = re.compile(r"(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])")
+NOT_COINS = {"So11111111111111111111111111111111111111112", "11111111111111111111111111111111",
+             "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"}
+
+
+def find_addresses(text):
+    """Coin addresses in a message: pump.fun-style ones (ending in 'pump') first, then any other valid address."""
+    from solders.pubkey import Pubkey
+    out = []
+    for a in ADDR.findall(text or ""):
+        if a in NOT_COINS or a in out:
+            continue
+        try:
+            Pubkey.from_string(a)
+        except Exception:
+            continue
+        out.append(a)
+    return sorted(out, key=lambda a: not a.endswith("pump"))
+
+
+class CallBuyer(Lookalike):
+    NAME = "calls"
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.inbox: list[dict] = []                 # last calls received (shown on the dashboard)
+
+    def cfg(self):
+        c = dict(self._cfg().get(self.NAME) or {})
+        c.setdefault("enabled", True)
+        c.setdefault("real_money", True)
+        return c
+
+    # ------------------------------------------------------------------ incoming calls
+    def _real_today(self):
+        day = time.strftime("%Y-%m-%d")
+        return sum(1 for p in [*self.positions.values(), *self.closed]
+                   if p.get("real") and time.strftime("%Y-%m-%d", time.localtime(p["opened"])) == day)
+
+    async def add_call(self, text, source="Discord", title=""):
+        """A message arrived (a Discord pop-up, or pasted by hand). Buys the coin(s) in it. Returns what happened."""
+        addrs = find_addresses(text)
+        if not addrs:
+            return []
+        res = []
+        for mint in addrs[:2]:                     # a call names one coin; don't buy a whole list
+            why = await self._buy_call(mint, source, title)
+            res.append(dict(mint=mint, result=why or "bought"))
+            self.inbox.insert(0, dict(ts=time.time(), mint=mint, source=source, title=(title or "")[:80],
+                                      text=(text or "")[:160], result=why or "bought"))
+            if why is None:
+                break                              # bought the first real coin in the message
+        self.inbox = self.inbox[:30]
+        return res
+
+    async def _buy_call(self, mint, source, title):
+        c = self.cfg()
+        tag = f"{source}{(' · ' + title[:40]) if title else ''}"
+        if not self.enabled():
+            return "Discord calls are OFF in Settings"
+        if not self.active:
+            return "bot isn't running (Start live)"
+        if mint in self.positions or mint in self.traded:
+            return "already bought this coin"
+        if not self._key():
+            return "needs the Helius key"
+        try:
+            px = await self.prices([mint])
+        except Exception as e:
+            return f"couldn't read the price ({e})"
+        price, src = px.get(mint, (None, None))
+        if src == "mayhem":
+            self.traded.add(mint)
+            return "Mayhem-mode coin (the bot can't price these)"
+        if not price:
+            return "not a pump.fun coin (or not tradable yet)"
+        usd = self._usd()
+        if not usd:
+            return "no SOL price yet"
+        if len(self.positions) >= int(c.get("max_paper_open", 100)):
+            return "too many open call positions"
+        self.traded.add(mint)
+        size_usd = float(c.get("buy_usd", 10))
+        size = size_usd / usd
+        fee, slip, prio = self._x()
+        tokens = curve_buy(size * (1 - fee), price) * (1 - slip)
+        now = time.time()
+        mc = price * SUPPLY
+        p = dict(mint=mint, symbol=mint[:5], name="", opened=now, entry_px=price, entry_mcap=round(mc, 1),
+                 age_at_entry_s=None, sol_in=size + prio, sol_out=0.0, tokens=tokens, tokens_bought=tokens,
+                 peak_mult=1.0, floor_mult=0.0, done=[], last_px=price, last_px_ts=now, sells=[], verified=True,
+                 size_usd=round(size_usd, 2), source=tag, graduated=src == "jupiter")
+        self.positions[mint] = p
+        real_note = "paper only"
+        if c.get("real_money") and self.live is not None:
+            if self._real_today() >= int(c.get("max_buys_per_day", 10)):
+                real_note = f"no real buy - {c.get('max_buys_per_day', 10)} real buys already today"
+            else:
+                why = self.live.open_strategy(self.NAME, mint, p["symbol"], size_usd, int(c.get("max_open", 10)),
+                                              float(c.get("daily_loss_usd", 50)))
+                if why is None:
+                    p["real"] = True
+                    real_note = f"REAL buy placed (${size_usd:g})"
+                else:
+                    real_note = f"no real buy - {why}"
+        self._csv(f"{self.NAME}_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
+                  [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)), mint, p["symbol"], "BUY",
+                   f"call from {tag} at {mc:.0f} SOL ({real_note})", "1.00", round(size + prio, 6), round(tokens, 2)])
+        self._event("buy", f"{mint[:5]}: call from {tag} at {mc:.0f} SOL mcap{' (graduated)' if src == 'jupiter' else ''}"
+                           f" · {real_note}", mint=mint)
+        log.info("CALLS %s from %s at mcap %.0f SOL - %s", mint, tag, mc, real_note)
+        self._save()
+        return None if p.get("real") else real_note
+
+    # ------------------------------------------------------------------ exits
+    def _close(self, p, ts):
+        real = bool(p.get("real"))
+        super()._close(p, ts)
+        if self.closed and self.closed[-1]["mint"] == p["mint"]:
+            self.closed[-1].update(real=real, source=p.get("source"))
+            self._save()
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        p["last_px"], p["last_px_ts"] = px, ts
+        mult = px / p["entry_px"]
+        p["peak_mult"] = max(p["peak_mult"], mult)
+        done = p["done"]
+        if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:
+            return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 48):g}h", px, ts)
+        if mult <= 1 - float(c.get("stop_pct", 40)) / 100:
+            return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 40):g}%", px, ts)
+        if done and mult <= p["peak_mult"] * (1 - float(c.get("trail_pct", 50)) / 100):
+            return self._sell(p, 1.0, f"trailing stop ({p['peak_mult']:.1f}x high)", px, ts)
+        q = float(c.get("sell_pct_each", 25)) / 100
+        for lvl in (float(c.get("tp1_mult", 3)), float(c.get("tp2_mult", 5)), float(c.get("tp3_mult", 10))):
+            key = f"{lvl:g}x"
+            if mult >= lvl and key not in done:
+                done.append(key)
+                left = p["tokens"] / p["tokens_bought"]
+                self._sell(p, min(1.0, q / left) if left > 0 else 1.0, f"{key} - sold a quarter", px, ts)
+                if p["mint"] not in self.positions:
+                    return
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, buy_usd=c.get("buy_usd", 10), real_money=bool(c.get("real_money")),
+                 real_enabled=bool(c.get("real_money")), real_size_usd=c.get("buy_usd", 10),
+                 real_max_open=c.get("max_open", 10), real_daily_loss_usd=c.get("daily_loss_usd", 50),
+                 max_buys_per_day=c.get("max_buys_per_day", 10), real_buys_today=self._real_today(),
+                 inbox=self.inbox[:15],
+                 desc=(f"Buys every coin posted in the Discord calls · ${c.get('buy_usd', 10):g} each · "
+                       f"stop −{c.get('stop_pct', 40):g}% · ¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/"
+                       f"{c.get('tp3_mult', 10):g}× · {c.get('max_hold_h', 48):g}h limit"))
+        for q in s.get("positions", []):
+            src = (self.positions.get(q["mint"]) or {}).get("source")
+            q["source"] = src
+        return s
