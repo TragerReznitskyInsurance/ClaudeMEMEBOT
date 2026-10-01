@@ -278,9 +278,12 @@ class Reclaim(Lookalike):
         c = self.cfg()
         s.update(name=self.NAME, candidates=len(self.cands), tp_mult=c.get("tp_mult", 2),
                  pulled=sum(1 for x in self.cands.values() if x.get("pulled")),
-                 desc=(f"Coins that ran to {c.get('run_mcap_sol', 80)}+ SOL, pulled back {c.get('pullback_pct', 40)}%+, "
-                       f"then bounce {c.get('bounce_pct', 25)}% with {c.get('min_trades_2m', 15)}+ trades/2 min "
-                       f"(30+ min old) · ${c.get('size_usd', 25)} each · no real money"))
+                 desc=(f"Coins that ran to {c.get('run_mcap_sol', 80):g}+ SOL, pulled back {c.get('pullback_pct', 40):g}%+, then bounce "
+                       f"{c.get('bounce_pct', 25):g}%+ with {c.get('min_trades_2m', 15)}+ trades/2 min, back to "
+                       f"{c.get('min_of_peak_pct', 0):g}%+ of the old high, {c.get('min_entry_mcap_sol', 35):g}+ SOL, "
+                       f"{c.get('min_age_min', 30):g}+ min old · sells: stop −{c.get('stop_pct', 25):g}%, "
+                       f"break-even after +{c.get('be_after_pct', 0):g}%, ⅓ at {c.get('tp_mult', 2):g}×, "
+                       f"trail {c.get('trail_pct', 35):g}% from {c.get('trail_arm_mult', 1.5):g}× · ${c.get('size_usd', 25)} paper"))
         return s
 
 

@@ -1195,7 +1195,7 @@ function renderStrat(el, L, title) {
       ? p => p.stages.includes("zone") ? (p.graduated ? "moonbag · graduated" : "moonbag · in grad zone") : p.stages.includes("3x") ? `⅓ sold · trailing (${p.peak.toFixed(1)}x high)` : "stop at −30%"
       : L.name === "reclaim_be" ? p => (p.peak >= 1.2 ? `stop at our buy price (was ${p.peak.toFixed(2)}x)` : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "reclaim" || L.name === "reclaim_big"
-      ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : p.peak >= 1.2 ? "stop at our buy price" : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
+      ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : p.peak >= 1.2 ? "stop at break-even" : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "skimmer" ? p => `sells at +20% / −5%`
       : L.name === "calls" ? callStage
       : L.name === "rangebreak" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "sells if back inside the range / −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
