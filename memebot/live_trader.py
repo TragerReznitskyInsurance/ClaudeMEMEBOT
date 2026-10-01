@@ -845,6 +845,9 @@ class LiveTrader:
 
     def _finish(self, mint, how="bot"):
         p = self.positions.pop(mint)
+        if any(c["mint"] == mint and abs(c["opened"] - p["opened"]) < 1 for c in self.closed[-200:]):
+            self._save()                                  # already recorded (e.g. re-closed after a restart)
+            return
         pnl = p["sol_out"] - p["sol_in"]
         px = self._usd() or 0
         rec = dict(mint=mint, symbol=p["symbol"], wallet=p["wallet"], opened=p["opened"], closed=time.time(),
@@ -863,6 +866,7 @@ class LiveTrader:
                          f"{' '.join(p['sigs'])}\n")
         except OSError:
             pass
+        self._save()                                      # write it now: a restart right after must not undo it
 
     # ------------------------------------------------------------------ pricing open positions
     def px(self, mint):
