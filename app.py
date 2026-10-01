@@ -469,7 +469,23 @@ def _settings_fix_1001():
         log.warning("settings fix skipped: %s", e)
 
 
+def _settings_fix_1001b():
+    """One-time: Reclaim takes its partial profit (1/3) at 3x instead of 2x (1 Oct exit analysis: +25% more profit
+    per trade; also the best rule without the biggest winner)."""
+    mark = os.path.join(HERE, "data", "settings_fix_1001b.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"reclaim.tp_mult": 3}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: Reclaim partial profit moved to 3x (one-time update)")
+    except Exception as e:
+        log.warning("settings fix b skipped: %s", e)
+
+
 _settings_fix_1001()
+_settings_fix_1001b()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()

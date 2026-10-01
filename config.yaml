@@ -168,7 +168,7 @@ reclaim:
   stop_pct: 25                         # stop until the coin has been up trail_arm_mult
   trail_arm_mult: 1.5
   trail_pct: 35                        # then trail this far below the highest point
-  tp_mult: 2                           # sell tp_frac_pct at this multiple
+  tp_mult: 3                           # sell tp_frac_pct (1/3) at this multiple (3x since 1 Oct)
   tp_frac_pct: 33.3
   max_hold_h: 24
 

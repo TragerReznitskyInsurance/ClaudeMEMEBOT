@@ -44,10 +44,12 @@ class Reclaim(Lookalike):
         self.cands_path = os.path.join(data_dir, f"{self.NAME}_candidates.json")
         self.cands: dict[str, dict] = {}
         self.known: set[str] = set()
+        self.track: dict[str, dict] = {}                   # research: price path from buy until 6 h after the sale
         try:
             with open(self.cands_path, encoding="utf-8", errors="replace") as fh:
                 s = json.load(fh)
             self.cands, self.known = s.get("cands", {}), set(s.get("known", []))
+            self.track = s.get("track", {})
         except (OSError, ValueError):
             pass
 
@@ -58,7 +60,7 @@ class Reclaim(Lookalike):
         try:
             tmp = self.cands_path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump({"cands": self.cands, "known": sorted(self.known)[-20000:]}, fh)
+                json.dump({"cands": self.cands, "known": sorted(self.known)[-20000:], "track": self.track}, fh)
             os.replace(tmp, self.cands_path)
         except OSError:
             pass
@@ -120,6 +122,9 @@ class Reclaim(Lookalike):
                    "1.00", round(size + prio, 6), round(tokens, 2)])
         self._event("buy", f"Paper buy {cd['symbol']} at {mc:.0f} SOL mcap - bounced from {cd['low']:.0f} after a "
                            f"{cd['peak']:.0f} SOL peak ({trades_2m} trades in 2 min)", mint=cd["mint"])
+        if self.NAME == "reclaim":
+            self.track[cd["mint"]] = dict(entry_px=px, opened=ts, until=ts + 30 * 3600, last=0.0, sym=cd["symbol"],
+                                          cid=f"path:{cd['mint']}:{int(ts)}")
         log.info("RECLAIM buy %s at mcap %.0f (peak %.0f, low %.0f, %d trades/2m)",
                  cd["symbol"], mc, cd["peak"], cd["low"], trades_2m)
         if c.get("real_enabled") and self.live is not None:          # the real wallet trades Reclaim
@@ -158,6 +163,30 @@ class Reclaim(Lookalike):
             pass
 
     # ------------------------------------------------------------------ exits
+    def _close(self, p, ts):
+        super()._close(p, ts)
+        tr = self.track.get(p["mint"])
+        if tr:                                             # keep following it for 6 h after we sold
+            tr.update(until=ts + 6 * 3600, exit_ts=ts, exit=p["sells"][-1]["reason"] if p.get("sells") else "")
+
+    def _sample_paths(self, px, now):
+        bl = getattr(self, "breakouts", None)
+        for m, tr in list(self.track.items()):
+            if now > tr["until"]:
+                self.track.pop(m, None)
+                continue
+            if now - tr.get("last", 0) < 60:
+                continue
+            price, src = px.get(m, (None, None))
+            if not price or not tr.get("entry_px"):
+                continue
+            tr["last"] = now
+            if bl is not None:
+                bl._write(dict(type="path", id=tr["cid"], mint=m, sym=tr.get("sym"), min=round((now - tr["opened"]) / 60, 1),
+                               mult=round(price / tr["entry_px"], 4), held=m in self.positions,
+                               after_exit_min=round((now - tr["exit_ts"]) / 60, 1) if tr.get("exit_ts") else None,
+                               graduated=src == "jupiter"))
+
     def check(self, p, px, ts):
         c = self.cfg()
         p["last_px"], p["last_px_ts"] = px, ts
@@ -179,11 +208,13 @@ class Reclaim(Lookalike):
 
     # ------------------------------------------------------------------ loop
     async def tick(self):
-        if not self._key() or not (self.cands or self.positions):
+        if not self._key() or not (self.cands or self.positions or self.track):
             return
         c = self.cfg()
         now = time.time()
-        px = await self.prices(list(self.cands) + list(self.positions))
+        due = [m for m, tr in self.track.items() if now - tr.get("last", 0) >= 60 and m not in self.positions]
+        px = await self.prices(list(self.cands) + list(self.positions) + due)
+        self._sample_paths(px, now)
         for m, cd in list(self.cands.items()):
             if m in self.positions or m in self.traded:
                 self.cands.pop(m, None)
@@ -245,7 +276,7 @@ class Reclaim(Lookalike):
     def state(self):
         s = super().state()
         c = self.cfg()
-        s.update(name=self.NAME, candidates=len(self.cands),
+        s.update(name=self.NAME, candidates=len(self.cands), tp_mult=c.get("tp_mult", 2),
                  pulled=sum(1 for x in self.cands.values() if x.get("pulled")),
                  desc=(f"Coins that ran to {c.get('run_mcap_sol', 80)}+ SOL, pulled back {c.get('pullback_pct', 40)}%+, "
                        f"then bounce {c.get('bounce_pct', 25)}% with {c.get('min_trades_2m', 15)}+ trades/2 min "
