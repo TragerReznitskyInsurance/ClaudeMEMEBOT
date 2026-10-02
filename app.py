@@ -857,6 +857,7 @@ STRAT_LABELS.update({
     "max_hold_h": "Time limit (hours)", "max_paper_open": "Max open call positions (incl. paper)",
     "poll_s": "Check notifications every (seconds)",
     "auto_take_profit": "Automatic take-profits / trailing stop / time limit (off = you sell)",
+    "tp6_on": "Sell 1/3 at 6x (runner profit while you sleep)", "tp10_on": "Sell half at 10x (runner profit while you sleep)",
     "consol_min": "Sideways for at least (min)", "max_range_pct": "Range no wider than (% low to high)",
     "break_pct": "Buy when this % above the range top", "max_chase_pct": "...but not more than (% above the top)",
     "recent_s": "Range ends this long before now (s)", "sample_s": "Price sample every (s)",

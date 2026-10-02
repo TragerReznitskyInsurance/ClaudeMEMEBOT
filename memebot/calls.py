@@ -217,6 +217,15 @@ class CallBuyer(Lookalike):
         if stop > 0 and mult <= 1 - stop / 100:
             return self._sell(p, 1.0, f"stop -{stop:g}%", px, ts)
         if not c.get("auto_take_profit", False):
+            # optional "while I sleep" take-profits on crazy runners (toggles on the calls panel)
+            if c.get("tp6_on") and mult >= 6 and "s6" not in done:
+                done.append("s6")
+                self._sell(p, 1 / 3, "6x - sold 1/3 (auto take-profit)", px, ts)
+                if p["mint"] not in self.positions:
+                    return
+            if c.get("tp10_on") and mult >= 10 and "s10" not in done:
+                done.append("s10")
+                self._sell(p, 0.5, "10x - sold half (auto take-profit)", px, ts)
             return                                         # everything else is your call: sell with the Sell button
         if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:
             return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 48):g}h", px, ts)
@@ -241,6 +250,7 @@ class CallBuyer(Lookalike):
                  max_buys_per_day=c.get("max_buys_per_day", 10), real_buys_today=self._real_today(),
                  inbox=self.inbox[:15], channel=str(c.get("channel") or ""),
                  auto_take_profit=bool(c.get("auto_take_profit", False)),
+                 tp6_on=bool(c.get("tp6_on")), tp10_on=bool(c.get("tp10_on")),
                  desc=(f"Buys every coin posted in the Discord calls · ${c.get('buy_usd', 10):g} each · "
                        f"stop −{c.get('stop_pct', 40):g}% · " + (
                            f"¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/{c.get('tp3_mult', 10):g}× · "
