@@ -64,8 +64,11 @@ class CallBuyer(Lookalike):
     # ------------------------------------------------------------------ incoming calls
     def _real_today(self):
         day = time.strftime("%Y-%m-%d")
-        return sum(1 for p in [*self.positions.values(), *self.closed]
-                   if p.get("real") and time.strftime("%Y-%m-%d", time.localtime(p["opened"])) == day)
+        n = sum(1 for p in [*self.positions.values(), *self.closed]
+                if p.get("real") and time.strftime("%Y-%m-%d", time.localtime(p["opened"])) == day)
+        n += sum(1 for p in self.positions.values() if p.get("real")
+                 for t in p.get("add_ts", []) if time.strftime("%Y-%m-%d", time.localtime(t)) == day)
+        return n
 
     async def add_call(self, text, source="Discord", title=""):
         """A message arrived (a Discord pop-up, or pasted by hand). Buys the coin(s) in it. Returns what happened."""
@@ -75,8 +78,10 @@ class CallBuyer(Lookalike):
         res = []
         for mint in addrs[:2]:                     # a call names one coin; don't buy a whole list
             manual = source == "pasted"                  # your own Buy-now: allowed again and again
-            if mint in self.positions:
-                why = "already holding this coin - sell it first to buy again"
+            if mint in self.positions and manual:
+                why = await self._add_to(mint)             # already holding: buy more of it
+            elif mint in self.positions:
+                why = "already holding this coin"
             elif mint in self.traded and not manual:
                 why = "already called before - update message, not bought again"
             else:
@@ -145,6 +150,40 @@ class CallBuyer(Lookalike):
         log.info("CALLS %s from %s at mcap %.0f SOL - %s", mint, tag, mc, real_note)
         self._save()
         return None if p.get("real") else real_note
+
+    async def _add_to(self, mint):
+        """Manual re-buy of a coin we still hold: buy `buy_usd` more (paper + real), averaging the entry price."""
+        c = self.cfg()
+        p = self.positions[mint]
+        try:
+            px = await self.prices([mint])
+        except Exception as e:
+            return f"couldn't read the price ({e})"
+        price, src = px.get(mint, (None, None))
+        usd = self._usd()
+        if not price or not usd:
+            return "couldn't read the price"
+        size_usd = float(c.get("buy_usd", 10))
+        if p.get("real") and self.live is not None:
+            if self._real_today() >= int(c.get("max_buys_per_day", 10)):
+                return f"no real buy - {c.get('max_buys_per_day', 10)} real buys already today"
+            why = self.live.add_strategy(self.NAME, mint, size_usd, float(c.get("daily_loss_usd", 50)))
+            if why:
+                return f"no real buy - {why}"
+        size = size_usd / usd
+        fee, slip, prio = self._x()
+        tokens = curve_buy(size * (1 - fee), price) * (1 - slip)
+        old_tok, old_px = p["tokens"], p["entry_px"]
+        new_entry = (old_tok * old_px + tokens * price) / (old_tok + tokens) if old_tok + tokens else price
+        p["peak_mult"] = max(1.0, p["peak_mult"] * old_px / new_entry)
+        p.update(entry_px=new_entry, tokens=old_tok + tokens, tokens_bought=p["tokens_bought"] + tokens,
+                 sol_in=p["sol_in"] + size + prio, adds=p.get("adds", 0) + 1, last_px=price)
+        p.setdefault("add_ts", []).append(time.time())
+        self._event("buy", f"{p['symbol']}: bought ${size_usd:g} more at {price * SUPPLY:.0f} SOL mcap"
+                           f"{' (REAL)' if p.get('real') else ''} - average entry now {new_entry * SUPPLY:.0f} SOL",
+                    mint=mint)
+        self._save()
+        return None
 
     # ------------------------------------------------------------------ exits
     def _close(self, p, ts):

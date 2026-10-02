@@ -451,6 +451,54 @@ class LiveTrader:
         asyncio.get_running_loop().create_task(self._buy(mint))
         return None
 
+    def add_strategy(self, tag, mint, usd, daily_loss_usd):
+        """Buy MORE of a coin a strategy already holds for real (e.g. a manual re-buy of a call). None if placed."""
+        if not (self.active and self.kp is not None and self._hkey()):
+            return "real money not ready (no wallet / Helius key / not running)"
+        if self.paused:
+            return "real buys are paused"
+        p = self.positions.get(mint)
+        if not p or p["wallet"] != tag or p["status"] != "open":
+            return "no open position to add to"
+        size = self._sol(usd)
+        if not size:
+            return "no SOL price yet"
+        lost = self.realized_today_usd(tag)
+        if daily_loss_usd and lost <= -daily_loss_usd:
+            return f"daily loss limit hit (${lost:.2f} today)"
+        if self.balance is not None and self.balance < size + RESERVE_SOL:
+            return f"trading wallet balance too low ({self.balance:.4f} SOL)"
+        asyncio.get_running_loop().create_task(self._add_buy(mint, size))
+        return None
+
+    async def _add_buy(self, mint, size):
+        sig = None
+        async with self._lock(mint):
+            p = self.positions.get(mint)
+            if not p or p["status"] != "open":
+                return
+            try:
+                tx = await self._pumpportal("buy", mint, round(size, 6), True, self.cfg().get("buy_slippage_pct", 20))
+                ok, why, sig = await self._send_and_confirm(tx)
+                p["sigs"].append(sig)
+                if not ok:
+                    raise RuntimeError(why)
+                fill = await self._fill(sig)
+                if fill and fill["txType"] == "buy":
+                    sol, tok = fill["solAmount"], fill["tokenAmount"]
+                else:
+                    before = p["tokens"]
+                    tok = max(0.0, sum(a["ui"] for a in await self._token_accounts(mint)) - before)
+                    sol = size
+                p["sol_in"] += sol
+                p["tokens"] += tok
+                p["tokens_bought"] += tok
+                self._event("buy", f"Bought more {p['symbol']} for {sol:.4f} SOL (added to the position)", sig=sig, mint=mint)
+            except Exception as e:
+                self._event("error", f"Add-buy {p['symbol']} failed: {e}", mint=mint, sig=sig)
+            self._save()
+        await self.refresh_balance(force=True)
+
     def strategy_sell(self, tag, mint, frac, reason):
         """Mirror a strategy's sale (same share of what's left) on the real position."""
         p = self.positions.get(mint)
