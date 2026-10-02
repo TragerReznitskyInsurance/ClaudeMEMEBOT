@@ -931,7 +931,7 @@ async def api_strategy_reset(request):
 async def api_calls_buy(request):
     """Buy a call by hand: {text} = a coin address, a pump.fun link or a whole pasted message."""
     body = await request.json()
-    res = await runner.calls.add_call(str(body.get("text") or "")[:2000], "pasted")
+    res = await runner.calls.add_call(str(body.get("text") or "")[:2000], "pasted")   # manual: re-buys allowed
     if not res:
         return web.json_response({"error": "no coin address found in that text"}, status=400)
     return web.json_response({"results": res})

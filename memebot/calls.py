@@ -74,7 +74,10 @@ class CallBuyer(Lookalike):
             return []
         res = []
         for mint in addrs[:2]:                     # a call names one coin; don't buy a whole list
-            if mint in self.traded or mint in self.positions:
+            manual = source == "pasted"                  # your own Buy-now: allowed again and again
+            if mint in self.positions:
+                why = "already holding this coin - sell it first to buy again"
+            elif mint in self.traded and not manual:
                 why = "already called before - update message, not bought again"
             else:
                 self.traded.add(mint)              # once per coin, ever: later updates about it never buy
