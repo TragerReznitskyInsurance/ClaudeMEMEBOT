@@ -851,6 +851,7 @@ STRAT_LABELS.update({
     "sell_pct_each": "Each sale (% of the original)", "trail_pct": "After the first sale: trailing stop (% below high)",
     "max_hold_h": "Time limit (hours)", "max_paper_open": "Max open call positions (incl. paper)",
     "poll_s": "Check notifications every (seconds)",
+    "auto_take_profit": "Automatic take-profits / trailing stop / time limit (off = you sell)",
     "consol_min": "Sideways for at least (min)", "max_range_pct": "Range no wider than (% low to high)",
     "break_pct": "Buy when this % above the range top", "max_chase_pct": "...but not more than (% above the top)",
     "recent_s": "Range ends this long before now (s)", "sample_s": "Price sample every (s)",

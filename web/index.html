@@ -1129,7 +1129,7 @@ function renderCalls() {
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>📣 Discord calls</h2>${L.real_money ? `<span class="badge down">REAL MONEY · $${L.buy_usd} per call</span>` : `<span class="badge gray">paper only</span>`} ${nst}
     <div class="rm-actions"><button class="btn" onclick="stratSettings('calls')">⚙ Settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
     Buys the coin in each <b>new call from one Discord channel</b> (read from the pop-ups on this computer), the moment it pops up. <b>Each coin only once</b>: the channel's later updates about a coin are ignored. No safety or bundle checks.
-    <b>Sells:</b> stop −40% · ¼ at 3× · ¼ at 5× · ¼ at 10× · after the first sale the rest also sells if it falls 50% below its high · 48h limit.
+    <b>Sells:</b> ${L.auto_take_profit ? "stop −40% · ¼ at 3× · ¼ at 5× · ¼ at 10× · after the first sale the rest also sells if it falls 50% below its high · 48h limit." : "<b>only the −40% stop is automatic</b> - everything else is your call: sell with the <b>Sell</b> button on the 💵 real wallet."}
     <div class="faint">Limits: ${L.max_buys_per_day} real buys a day (${L.real_buys_today} today) · max ${L.real_max_open} open · stops after −$${L.real_daily_loss_usd} in a day · ⏸ Pause buys on the wallet above stops it too.</div>
     <div style="margin-top:6px;${N.ok ? "" : "color:var(--warn)"}">${N.ok ? `Read ${N.read} Discord notification${N.read === 1 ? "" : "s"} since the bot started.` : esc(N.status || "")}${N.error ? ` <span style="color:var(--warn)">(${esc(N.error)})</span>` : ""}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><b>Call channel:</b>
@@ -1297,7 +1297,7 @@ function entryMcapCell(e, n, px) {
   const k = v => px ? (v * px >= 1e6 ? "$" + (v * px / 1e6).toFixed(2) + "M" : "$" + (v * px / 1e3).toFixed(1) + "k") : v.toFixed(0) + " SOL";
   return `<span title="${e.toFixed(1)} SOL">${k(e)}</span><div class="faint" style="font-size:11px">${e.toFixed(0)} SOL${n != null ? ` · now ${k(n)}` : ""}</div>`;
 }
-const callStage = q => !q ? "—" : q.stages.includes("10x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("5x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `¼ sold at 3× · trailing 50% below ${q.peak.toFixed(1)}x` : `stop at −40% · now ${q.mult.toFixed(2)}x`;
+const callStage = q => !q ? "—" : (CL && !CL.auto_take_profit) ? `you sell · auto-stop at −40% · now ${q.mult.toFixed(2)}x` : q.stages.includes("10x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("5x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `¼ sold at 3× · trailing 50% below ${q.peak.toFixed(1)}x` : `stop at −40% · now ${q.mult.toFixed(2)}x`;
 function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
   if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }

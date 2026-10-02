@@ -199,10 +199,16 @@ class CallBuyer(Lookalike):
         mult = px / p["entry_px"]
         p["peak_mult"] = max(p["peak_mult"], mult)
         done = p["done"]
-        if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:
-            return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 48):g}h", px, ts)
+        if p.get("real") and self.live is not None and p["mint"] not in self.live.positions \
+                and ts - p["opened"] > 120:                   # you sold it on the real wallet (Sell button)
+            p["real"] = False
+            return self._sell(p, 1.0, "sold by you", px, ts)
         if mult <= 1 - float(c.get("stop_pct", 40)) / 100:
             return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 40):g}%", px, ts)
+        if not c.get("auto_take_profit", False):
+            return                                         # everything else is your call: sell with the Sell button
+        if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:
+            return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 48):g}h", px, ts)
         if done and mult <= p["peak_mult"] * (1 - float(c.get("trail_pct", 50)) / 100):
             return self._sell(p, 1.0, f"trailing stop ({p['peak_mult']:.1f}x high)", px, ts)
         q = float(c.get("sell_pct_each", 25)) / 100
@@ -223,9 +229,12 @@ class CallBuyer(Lookalike):
                  real_max_open=c.get("max_open", 10), real_daily_loss_usd=c.get("daily_loss_usd", 50),
                  max_buys_per_day=c.get("max_buys_per_day", 10), real_buys_today=self._real_today(),
                  inbox=self.inbox[:15], channel=str(c.get("channel") or ""),
+                 auto_take_profit=bool(c.get("auto_take_profit", False)),
                  desc=(f"Buys every coin posted in the Discord calls · ${c.get('buy_usd', 10):g} each · "
-                       f"stop −{c.get('stop_pct', 40):g}% · ¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/"
-                       f"{c.get('tp3_mult', 10):g}× · {c.get('max_hold_h', 48):g}h limit"))
+                       f"stop −{c.get('stop_pct', 40):g}% · " + (
+                           f"¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/{c.get('tp3_mult', 10):g}× · "
+                           f"{c.get('max_hold_h', 48):g}h limit" if c.get("auto_take_profit", False)
+                           else "no automatic selling otherwise - you sell with the Sell button")))
         for q in s.get("positions", []):
             src = (self.positions.get(q["mint"]) or {}).get("source")
             q["source"] = src

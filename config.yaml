@@ -225,7 +225,8 @@ calls:
   max_buys_per_day: 10
   max_open: 10                         # real positions open at once
   daily_loss_usd: 50                   # stop buying after losing this much in a day
-  stop_pct: 40                         # sell everything at -40%
+  stop_pct: 40                         # sell everything at -40% (always on)
+  auto_take_profit: false              # false = no other automatic sells: you sell calls yourself (Sell button)
   tp1_mult: 3                          # sell a quarter at 3x...
   tp2_mult: 5                          # ...another at 5x...
   tp3_mult: 10                         # ...another at 10x
