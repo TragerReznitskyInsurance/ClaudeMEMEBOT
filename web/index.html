@@ -1347,7 +1347,12 @@ function renderLiveFor(L, el, which) {
     if (lk && RC) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">${RC.real_enabled ? `<b>Reclaim strategy</b> · buys <b>$${RC.real_size_usd}</b> per coin · max ${RC.real_max_open} open · stops buying after −$${RC.real_daily_loss_usd} in a day · today ${RC.real_today_usd != null ? (RC.real_today_usd < 0 ? "−$" : "$") + Math.abs(RC.real_today_usd).toFixed(2) : "—"} · watching ${RC.candidates} coins (${RC.pulled} pulled back)` : `Real trading is <b>OFF</b>. Turn on "REAL MONEY" in Settings → Lookalike · graduation exit.`}</div>`;
     if (lk && META && META.notify) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">🔔 <b>Phone alerts</b> ${META.notify.enabled ? "" : "(OFF in Settings) "}· install the free <b>ntfy</b> app, tap <b>+</b> and subscribe to <b class="num" style="cursor:pointer" title="Click to copy" onclick="navigator.clipboard.writeText('${META.notify.topic}');toast('Topic copied')">${META.notify.topic} ⧉</b> · every real buy and sell pops up on your phone · <a href="#" onclick="notifyTest();return false">Send a test</a>${META.notify.error ? ` <span style="color:var(--warn)">(${esc(META.notify.error)})</span>` : ""}</div>`;
     const PW = L.per_wallet || {};
-    if (Object.keys(PW).length) h += `<table class="wtab"><tr class="faint"><td>${lk ? "Strategy" : "Copying"}</td><td class="r">Open</td><td class="r">In use / budget</td><td class="r">Closed</td><td class="r">Realized</td><td class="r">Open value</td></tr>
+    const P = L.pnl;
+    const $p = v => v == null ? "—" : `<b class="num ${cls(v)}">${v < 0 ? "−$" : "+$"}${Math.abs(v).toFixed(2)}</b>`;
+    if (lk && P) h += `<table class="wtab"><tr class="faint"><td>Profit / loss (closed trades)</td><td class="r">Today</td><td class="r">Last 7 days</td><td class="r">${P.since_ts ? "Since " + new Date(P.since_ts * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "All time"}</td><td class="r">Open coins (unrealized)</td></tr>
+      <tr><td class="faint" style="font-size:12px">${P.since.trades} trades · ${P.since.wins} wins <a href="#" style="margin-left:6px" onclick="pnlReset('${which}');return false" title="Start counting from now (history is kept)">reset</a></td>
+      <td class="r">${$p(P.today.usd)} <span class="faint" style="font-size:11.5px">${P.today.trades} tr</span></td><td class="r">${$p(P.week.usd)}</td><td class="r">${$p(P.since.usd)}</td><td class="r">${P.open_n ? $p(P.open_unreal_usd) + ` <span class="faint" style="font-size:11.5px">${P.open_n} open</span>` : "—"}</td></tr></table>`;
+    else if (Object.keys(PW).length) h += `<table class="wtab"><tr class="faint"><td>${lk ? "Strategy" : "Copying"}</td><td class="r">Open</td><td class="r">In use / budget</td><td class="r">Closed</td><td class="r">Realized</td><td class="r">Open value</td></tr>
       ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${lk && RC ? RC.real_max_open : L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed}${lk ? "" : ` / $${L.budget_usd}`}</td>
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? ($u(v.open_value) || v.open_value.toFixed(4) + " SOL") : "—"}</td></tr>`).join("")}</table>`;
@@ -1369,6 +1374,10 @@ function renderLiveFor(L, el, which) {
 async function notifyTest() {
   try { const r = await fetch("/api/notify/test", {method: "POST"}); const j = await r.json(); toast(j.ok ? "Test alert sent - check your phone" : "Couldn't send: " + (j.error || "unknown")); }
   catch (e) { toast("Couldn't send: " + e); }
+}
+async function pnlReset(which) {
+  if (!confirm("Start counting profit / loss from now? (Trade history is kept.)")) return;
+  try { await api("/api/live/pnl_reset", {which}); toast("P&L counts from now"); } catch (e) { toast(e.message); }
 }
 async function liveFix(mint, opened, which, sym) {
   const v = prompt(`How many dollars did you get back when you sold ${sym} in Phantom? (total received, e.g. 42.80)`);

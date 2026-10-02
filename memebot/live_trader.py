@@ -1185,4 +1185,38 @@ class LiveTrader:
             closed=self.closed[-30:][::-1],
             events=self.events[-40:][::-1],
             total_realized=round(sum(x["pnl_sol"] for x in self.closed), 5),
+            pnl=self.pnl_summary(),
         )
+
+    def pnl_since(self):
+        try:
+            with open(os.path.join(self.dir, "pnl_since.txt"), encoding="utf-8") as fh:
+                return float(fh.read().strip())
+        except (OSError, ValueError):
+            return 0.0
+
+    def reset_pnl(self):
+        ts = time.time()
+        with open(os.path.join(self.dir, "pnl_since.txt"), "w", encoding="utf-8") as fh:
+            fh.write(str(ts))
+        return ts
+
+    def pnl_summary(self):
+        """Actual profit / loss of this wallet (closed trades, in SOL and $), plus what open coins are worth now."""
+        px = self._usd() or 0
+        now = time.time()
+        day0 = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        since = self.pnl_since()
+
+        def tot(cl):
+            sol = sum(x["pnl_sol"] for x in cl)
+            return dict(sol=round(sol, 4), usd=round(sol * px, 2) if px else None, trades=len(cl),
+                        wins=sum(1 for x in cl if x["pnl_sol"] > 0))
+        cost = sum((p["sol_in"] or 0) - (p["sol_out"] or 0) for p in self.positions.values())
+        val = sum(p["tokens"] * (self.px(p["mint"]) or 0) for p in self.positions.values()
+                  if p["status"] not in ("buying", "waiting"))
+        return dict(today=tot([x for x in self.closed if x["closed"] >= day0]),
+                    week=tot([x for x in self.closed if x["closed"] >= now - 7 * 86400]),
+                    since=tot([x for x in self.closed if x["closed"] >= since]), since_ts=since or None,
+                    all=tot(self.closed), open_n=len(self.positions),
+                    open_unreal_usd=round((val - cost) * px, 2) if px and self.positions else 0.0)

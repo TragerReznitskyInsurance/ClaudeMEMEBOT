@@ -781,6 +781,11 @@ async def api_live_sell(request):
     return web.json_response({"ok": True})
 
 
+async def api_live_pnl_reset(request):
+    body = await _body(request)
+    return web.json_response({"since": _trader(body).reset_pnl()})
+
+
 async def api_live_fix(request):
     """Enter what you got back for a coin you sold in Phantom, so the record and the daily loss limit are right."""
     body = await _body(request)
@@ -1043,6 +1048,7 @@ def make_app():
     app.router.add_post("/api/live/sell", api_live_sell)
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_post("/api/live/fix", api_live_fix)
+    app.router.add_post("/api/live/pnl_reset", api_live_pnl_reset)
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/calls/buy", api_calls_buy)
