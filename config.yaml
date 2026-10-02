@@ -218,9 +218,10 @@ calls:
   enabled: true
   real_money: true                     # false = track the calls on paper only
   read_notifications: true             # read Discord notifications on this computer (Windows)
-  apps: ["discord"]                    # which apps' notifications count (add "chrome" if you use Discord in a browser)
+  apps: ["discord", "telegram"]                 # which apps' notifications count (add "chrome" if you use Discord in a browser)
   channel: ""                          # ONLY buy from this channel: text in the pop-up's title, e.g. "calls" or "alpha-calls"
                                        # (empty = read pop-ups but buy nothing). Set it on the dashboard.
+  telegram_channel: ""                 # same for Telegram Desktop pop-ups: the group/channel name in the pop-up title
   buy_usd: 10
   max_buys_per_day: 10
   max_open: 10                         # real positions open at once

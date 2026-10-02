@@ -964,12 +964,13 @@ async def api_calls_buy(request):
 async def api_calls_channel(request):
     """Set the one Discord channel whose notifications the bot buys from."""
     body = await request.json()
-    ch = str(body.get("channel") or "").strip().lstrip("#").strip()[:80]
-    S.save_overrides({"calls.channel": ch}, config_path=CONFIG)
+    key = "telegram_channel" if body.get("app") == "telegram" else "channel"
+    ch = str(body.get("channel") or "").strip().lstrip("#@").strip()[:80]
+    S.save_overrides({f"calls.{key}": ch}, config_path=CONFIG)
     runner.cfg = S.load_config(CONFIG)
     if runner.engine and runner.running:
-        runner.engine.cfg.setdefault("calls", {})["channel"] = ch
-    return web.json_response({"ok": True, "channel": ch})
+        runner.engine.cfg.setdefault("calls", {})[key] = ch
+    return web.json_response({"ok": True, "channel": ch, "app": "telegram" if key != "channel" else "discord"})
 
 
 async def api_notify_test(request):

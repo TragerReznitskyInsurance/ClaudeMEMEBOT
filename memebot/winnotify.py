@@ -133,6 +133,9 @@ class NotificationWatcher:
                 notes = await listener.get_notifications_async(NK.TOAST)
                 apps = [a.lower() for a in (c.get("apps") or ["discord"])]
                 only = str(c.get("channel") or c.get("only_titles_with") or "").lower().strip().lstrip("#").strip()
+                tg_only = str(c.get("telegram_channel") or "").lower().strip().lstrip("@").strip()
+                if tg_only and "telegram" not in apps:
+                    apps.append("telegram")
                 for n in notes:
                     nid = n.id
                     if nid in self.seen:
@@ -141,19 +144,25 @@ class NotificationWatcher:
                     if first:
                         continue                   # already there when the bot started: never buy old calls
                     name, aumid = self._app(n)
-                    if not any(a in name.lower() or a in aumid.lower() for a in apps):
+                    ident = f"{name} {aumid}".lower()
+                    if not any(a in ident for a in apps):
                         continue
+                    tg = "telegram" in ident
                     texts = self._texts(n, KB)
                     title, body = (texts[0] if texts else ""), "\n".join(texts[1:])
-                    where = " ".join([title, *texts[2:]]).lower()    # title (+ attribution line), not the message
-                    match = bool(only) and only in where
+                    if tg:                         # Telegram: the pop-up title is the group/channel name
+                        match = bool(tg_only) and tg_only in title.lower()
+                    else:                          # Discord: title (+ attribution line), not the message
+                        where = " ".join([title, *texts[2:]]).lower()
+                        match = bool(only) and only in where
                     self.count += 1
-                    self.recent.insert(0, dict(ts=time.time(), title=title[:80], text=body[:140], match=match))
+                    self.recent.insert(0, dict(ts=time.time(), app="Telegram" if tg else "Discord",
+                                               title=title[:80], text=body[:140], match=match))
                     self.recent = self.recent[:20]
                     if not match:
-                        continue                   # not the call channel (or no channel picked yet)
+                        continue                   # not a call channel/group (or none picked yet)
                     try:
-                        await self.on_message(f"{title}\n{body}", name or "Discord", title)
+                        await self.on_message(f"{title}\n{body}", "Telegram" if tg else (name or "Discord"), title)
                     except Exception as e:
                         self.last_error = f"buy: {e}"[:120]
                 if len(self.seen) > 5000:
@@ -161,8 +170,9 @@ class NotificationWatcher:
                     self.seen = keep
                 first = False
                 self.ok = True
-                self.status = ("listening for Discord notifications" if only else
-                               "reading Discord pop-ups, but NOT buying until you set the call channel")
+                srcs = [x for x, on in (("Discord", only), ("Telegram", tg_only)) if on]
+                self.status = (f"listening for {' + '.join(srcs)} call notifications" if srcs else
+                               "reading pop-ups, but NOT buying until you set a call channel / group")
                 self.last_error = ""
             except asyncio.CancelledError:
                 raise
