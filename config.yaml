@@ -157,7 +157,9 @@ reclaim:
   max_of_peak_pct: 80                  # ...but are still at most this % of the old peak
   min_of_peak_pct: 55                  # ...and back to at least this % of it (skip crash-then-small-bounce coins)
   be_after_pct: 20                     # once a coin has been up this much, the stop moves to our buy price (0 = off)
-  be_floor_mult: 1.05                  # ...the new stop: +5% over our buy price = about break-even after fees/slippage
+  be_floor_mult: 1.05
+  real_hours_start: 12                 # REAL buys only from noon...
+  real_hours_end: 24                   # ...to midnight (this PC's clock). Paper Reclaim still buys 24h. 0/24 = always                  # ...the new stop: +5% over our buy price = about break-even after fees/slippage
   min_entry_mcap_sol: 35
   min_trades_2m: 15                    # activity: at least this many trades in the last 2 minutes
   dead_mcap_sol: 25                    # stop tracking below this

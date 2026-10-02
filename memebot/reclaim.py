@@ -94,6 +94,17 @@ class Reclaim(Lookalike):
         """Engine: keep watching a new coin until we know whether it made a first run."""
         return self.active and self.enabled() and mint not in self.known
 
+    @staticmethod
+    def _outside_real_hours(c, ts):
+        """Real buys only between real_hours_start and real_hours_end (this PC's clock, 24h). 2 Oct: over 163 paper
+        trades, buys from midnight to noon lost $296 and buys from noon to midnight made $262. Paper keeps buying 24h."""
+        a, b = int(c.get("real_hours_start", 0)), int(c.get("real_hours_end", 24))
+        if (a, b) == (0, 24) or a == b:
+            return None
+        h = time.localtime(ts).tm_hour
+        inside = a <= h < b if a < b else (h >= a or h < b)
+        return None if inside else f"outside real-money hours ({a}:00-{b}:00), paper only"
+
     async def _activity(self, mint):
         sigs = await self._rpc("getSignaturesForAddress", [curve_address(mint), {"limit": 100, "commitment": "confirmed"}])
         now = time.time()
@@ -128,7 +139,7 @@ class Reclaim(Lookalike):
         log.info("RECLAIM buy %s at mcap %.0f (peak %.0f, low %.0f, %d trades/2m)",
                  cd["symbol"], mc, cd["peak"], cd["low"], trades_2m)
         if c.get("real_enabled") and self.live is not None:          # the real wallet trades Reclaim
-            why = self.live.open_strategy(self.NAME, cd["mint"], cd["symbol"], float(c.get("real_size_usd", 10)),
+            why = self._outside_real_hours(c, ts) or self.live.open_strategy(self.NAME, cd["mint"], cd["symbol"], float(c.get("real_size_usd", 10)),
                                           int(c.get("real_max_open", 20)), float(c.get("real_daily_loss_usd", 25)))
             if why is None:
                 self.positions[cd["mint"]]["real"] = True
@@ -285,7 +296,9 @@ class Reclaim(Lookalike):
                        f"{c.get('min_of_peak_pct', 0):g}%+ of the old high, {c.get('min_entry_mcap_sol', 35):g}+ SOL, "
                        f"{c.get('min_age_min', 30):g}+ min old · sells: stop −{c.get('stop_pct', 25):g}%, "
                        f"break-even after +{c.get('be_after_pct', 0):g}%, ⅓ at {c.get('tp_mult', 2):g}×, "
-                       f"trail {c.get('trail_pct', 35):g}% from {c.get('trail_arm_mult', 1.5):g}× · ${c.get('size_usd', 25)} paper"))
+                       f"trail {c.get('trail_pct', 35):g}% from {c.get('trail_arm_mult', 1.5):g}× · ${c.get('size_usd', 25)} paper"
+                       + (f" · real buys only {int(c.get('real_hours_start', 0))}:00-{int(c.get('real_hours_end', 24))}:00"
+                          if (int(c.get('real_hours_start', 0)), int(c.get('real_hours_end', 24))) != (0, 24) else "")))
         return s
 
 

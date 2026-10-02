@@ -396,7 +396,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <div id="screenMain">
   <section id="realmoney"></section>
   <section id="reclaim"></section>
-  <section id="reclaimbig"></section>
+  
   <section id="reclaimbe"></section>
   <section id="rangebreak"></section>
   <section id="narratives"></section>
@@ -1187,7 +1187,7 @@ async function callBuy() {
     if (!j.error) $("#callq").value = "";
   } catch (e) { $("#callout").textContent = "Failed: " + e; }
 }
-function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimbe"), RBE, "🛡 Reclaim · break-even after +20% test"); renderStrat($("#reclaimbig"), RCC, "🐳 Reclaim · big coins test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); }
+function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimbe"), RBE, "🛡 Reclaim · break-even after +20% test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";

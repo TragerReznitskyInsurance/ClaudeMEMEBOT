@@ -28,7 +28,7 @@ from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
-from memebot.reclaim import Reclaim, ReclaimBig, ReclaimBE
+from memebot.reclaim import Reclaim, ReclaimBE
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord
 from memebot.calls import CallBuyer
@@ -94,7 +94,6 @@ class Runner:
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
         self.survivor.breakouts = self.breakouts
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
-        self.reclaim_big = ReclaimBig(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.reclaim_be = ReclaimBE(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
@@ -105,7 +104,7 @@ class Runner:
         self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -115,7 +114,7 @@ class Runner:
         out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -126,7 +125,7 @@ class Runner:
         self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -162,7 +161,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak):
             try:
                 strat._save()
             except Exception:
@@ -251,8 +250,6 @@ class Runner:
             self.hotword.feed_price = feed_price
             eng.hotword = self.hotword
             eng.breakouts = self.breakouts
-            self.reclaim_big.active = True
-            self.reclaim_big.feed_price = feed_price
             self.reclaim_be.active = True
             self.reclaim_be.feed_price = feed_price
             eng.reclaim_be = self.reclaim_be
@@ -261,7 +258,6 @@ class Runner:
             self.rangebreak.feed_price = feed_price
             eng.rangebreak = self.rangebreak
             self.calls.feed_price = feed_price
-            eng.reclaim_big = self.reclaim_big
             try:                                             # also follow coins it saw in the last 3 days that got bought up
                 seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
                                              for m, v in list(self.narr.mints.items())
@@ -303,7 +299,7 @@ class Runner:
         self.live2.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_big, self.reclaim_be, self.calls, self.rangebreak):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -449,7 +445,7 @@ class Runner:
                 "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
-                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_big": self.reclaim_big.state(), "reclaim_be": self.reclaim_be.state(),
+                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_be": self.reclaim_be.state(),
                 "calls": dict(self.calls.state(), notify=self.notify.state()), "rangebreak": self.rangebreak.state(),
                 "narratives": self.narr.state()}
 
@@ -489,8 +485,25 @@ def _settings_fix_1001b():
         log.warning("settings fix b skipped: %s", e)
 
 
+def _settings_fix_1002():
+    """One-time (2 Oct): break-even stop level back to 1.05 (the settings page had saved 1.0, so break-even exits
+    filled below our buy price), real Reclaim buys only noon-midnight."""
+    mark = os.path.join(HERE, "data", "settings_fix_1002.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"reclaim.be_floor_mult": 1.05, "reclaim.be_after_pct": 50, "reclaim.real_hours_start": 12,
+                          "reclaim.real_hours_end": 24}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: break-even level 1.05, real Reclaim buys noon-midnight (one-time update)")
+    except Exception as e:
+        log.warning("settings fix 1002 skipped: %s", e)
+
+
 _settings_fix_1001()
 _settings_fix_1001b()
+_settings_fix_1002()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
@@ -539,7 +552,6 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.survivor.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
-    test_tasks.append(asyncio.create_task(runner.reclaim_big.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.reclaim_be.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangebreak.run(every=10)))
@@ -560,7 +572,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_big, runner.reclaim_be, runner.calls, runner.rangebreak, runner.breakouts):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_be, runner.calls, runner.rangebreak, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -873,6 +885,8 @@ STRAT_LABELS.update({
     "max_hold_h": "Time limit (hours)", "max_paper_open": "Max open call positions (incl. paper)",
     "poll_s": "Check notifications every (seconds)",
     "auto_take_profit": "Automatic take-profits / trailing stop / time limit (off = you sell)",
+    "real_hours_start": "Real buys from (hour, 0-23, this PC's clock)", "real_hours_end": "Real buys until (hour, 24 = midnight)",
+    "be_after_pct": "Break-even stop after the coin is up (%)", "be_floor_mult": "Break-even sell level (1.05 = 5% above our buy, covers fees)",
     "auto_sell_on": "Auto-sell on (off = the bot never sells call coins itself, not even the stop)",
     "tp6_on": "Sell 1/3 at 6x (runner profit while you sleep)", "tp10_on": "Sell half at 10x (runner profit while you sleep)",
     "consol_min": "Sideways for at least (min)", "max_range_pct": "Range no wider than (% low to high)",
@@ -889,7 +903,7 @@ STRAT_HIDE = {}
 
 def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
-    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_big": (runner.reclaim_big, "reclaim_big"), "reclaim_be": (runner.reclaim_be, "reclaim_be"),
+    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_be": (runner.reclaim_be, "reclaim_be"),
             "calls": (runner.calls, "calls"), "rangebreak": (runner.rangebreak, "rangebreak"),
             "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
             "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
@@ -945,7 +959,7 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim,
-             "reclaim_big": runner.reclaim_big, "reclaim_be": runner.reclaim_be, "calls": runner.calls, "rangebreak": runner.rangebreak,
+             "reclaim_be": runner.reclaim_be, "calls": runner.calls, "rangebreak": runner.rangebreak,
              "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
