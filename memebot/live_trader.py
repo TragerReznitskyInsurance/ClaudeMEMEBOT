@@ -40,6 +40,9 @@ TOKEN_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP
 for _p in TOKEN_PROGRAMS:          # fail loudly at startup, not with a cryptic RPC error later
     Pubkey.from_string(_p)
 LAMPORTS = 1_000_000_000
+WSOL_MINT = "So11111111111111111111111111111111111111112"
+JUP_QUOTE = os.environ.get("MOMENTUM_JUP_QUOTE", "https://lite-api.jup.ag/swap/v1/quote")
+JUP_SWAP = os.environ.get("MOMENTUM_JUP_SWAP", "https://lite-api.jup.ag/swap/v1/swap")
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
 
@@ -376,17 +379,65 @@ class LiveTrader:
                             ui=float(info["tokenAmount"].get("uiAmountString") or 0)))
         return out
 
-    async def _pumpportal(self, action, mint, amount, denom_sol, slippage):
+    async def _pumpportal_only(self, action, mint, amount, denom_sol, slippage):
         s = await self._session()
         body = {"publicKey": self.address, "action": action, "mint": mint, "amount": amount,
                 "denominatedInSol": "true" if denom_sol else "false", "slippage": slippage,
                 "priorityFee": self.cfg().get("priority_fee_sol", 0.0003), "pool": "auto"}
-        async with s.post(TRADE_LOCAL, data=body, timeout=aiohttp.ClientTimeout(total=15)) as r:
+        async with s.post(TRADE_LOCAL, data=body, timeout=aiohttp.ClientTimeout(total=8)) as r:
             raw = await r.read()
             if r.status != 200:
                 raise RuntimeError(f"PumpPortal HTTP {r.status}: {raw[:120].decode(errors='ignore')}")
         tx = VersionedTransaction.from_bytes(raw)
         return VersionedTransaction(tx.message, [self.kp])
+
+    async def _jupiter(self, action, mint, amount, denom_sol, slippage):
+        """Backup route: Jupiter's swap API builds the transaction (it routes pump.fun curves and pools too)."""
+        s = await self._session()
+        if action == "buy":
+            in_mint, out_mint = WSOL_MINT, mint
+            raw_amount = int(float(amount) * LAMPORTS)
+        else:
+            in_mint, out_mint = mint, WSOL_MINT
+            accts = await self._token_accounts(mint)
+            have = sum(a["amount"] for a in accts)
+            pct = float(str(amount).rstrip("%")) / 100 if isinstance(amount, str) and amount.endswith("%") else None
+            raw_amount = int(have * pct) if pct is not None else int(float(amount))
+            if raw_amount <= 0:
+                raise RuntimeError("nothing to sell")
+        q = {"inputMint": in_mint, "outputMint": out_mint, "amount": str(raw_amount),
+             "slippageBps": str(int(float(slippage) * 100)), "restrictIntermediateTokens": "true"}
+        async with s.get(JUP_QUOTE, params=q, timeout=aiohttp.ClientTimeout(total=8)) as r:
+            quote = await r.json(content_type=None)
+            if r.status != 200 or not isinstance(quote, dict) or "outAmount" not in quote:
+                raise RuntimeError(f"Jupiter quote: {str(quote)[:100]}")
+        prio = int(float(self.cfg().get("priority_fee_sol", 0.0003)) * LAMPORTS)
+        body = {"quoteResponse": quote, "userPublicKey": self.address, "wrapAndUnwrapSol": True,
+                "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": prio}
+        async with s.post(JUP_SWAP, json=body, timeout=aiohttp.ClientTimeout(total=8)) as r:
+            j = await r.json(content_type=None)
+            if r.status != 200 or not isinstance(j, dict) or not j.get("swapTransaction"):
+                raise RuntimeError(f"Jupiter swap: {str(j)[:100]}")
+        tx = VersionedTransaction.from_bytes(base64.b64decode(j["swapTransaction"]))
+        return VersionedTransaction(tx.message, [self.kp])
+
+    async def _pumpportal(self, action, mint, amount, denom_sol, slippage):
+        """Build a buy/sell: PumpPortal first (one retry), Jupiter if PumpPortal is down or refuses."""
+        errs = []
+        for attempt in range(2):
+            try:
+                return await self._pumpportal_only(action, mint, amount, denom_sol, slippage)
+            except Exception as e:
+                errs.append(f"PumpPortal {type(e).__name__}{': ' + str(e)[:80] if str(e) else ''}")
+                if "HTTP 400" in str(e):
+                    break                                 # PumpPortal can't route this coin: go straight to Jupiter
+        try:
+            tx = await self._jupiter(action, mint, amount, denom_sol, slippage)
+            self._event("info", f"{action} of {mint[:5]} built by Jupiter (PumpPortal: {errs[-1][:60]})")
+            return tx
+        except Exception as e:
+            errs.append(f"Jupiter {type(e).__name__}{': ' + str(e)[:80] if str(e) else ''}")
+        raise RuntimeError(" / ".join(errs))
 
     def _lock(self, mint):
         return self.locks.setdefault(mint, asyncio.Lock())
@@ -495,7 +546,7 @@ class LiveTrader:
                 p["tokens_bought"] += tok
                 self._event("buy", f"Bought more {p['symbol']} for {sol:.4f} SOL (added to the position)", sig=sig, mint=mint)
             except Exception as e:
-                self._event("error", f"Add-buy {p['symbol']} failed: {e}", mint=mint, sig=sig)
+                self._event("error", f"Add-buy {p['symbol']} failed: {e or type(e).__name__}", mint=mint, sig=sig)
             self._save()
         await self.refresh_balance(force=True)
 
@@ -588,7 +639,7 @@ class LiveTrader:
             except Exception as e:
                 self.positions.pop(mint, None)
                 self._save()
-                self._event("error", f"Buy {p['symbol']} failed: {e}", mint=mint, sig=sig)
+                self._event("error", f"Buy {p['symbol']} failed: {e or type(e).__name__}", mint=mint, sig=sig)
                 if sig:                                   # in case it lands late, adopt it rather than lose track
                     asyncio.get_running_loop().create_task(self._late_check(mint, p, sig))
                 return
@@ -889,7 +940,7 @@ class LiveTrader:
             except Exception as e:
                 p["status"] = "open"
                 self._save()
-                return self._event("error", f"Sell {p['symbol']} ({reason}) failed: {e}", mint=mint)
+                return self._event("error", f"Sell {p['symbol']} ({reason}) failed: {e or type(e).__name__}", mint=mint)
             if full or p["tokens"] <= p["tokens_bought"] * 0.005:
                 rent = await self._close_accounts(mint)
                 p["sol_out"] += rent
