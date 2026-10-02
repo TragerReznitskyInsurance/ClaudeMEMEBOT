@@ -277,6 +277,8 @@ class Reclaim(Lookalike):
         s = super().state()
         c = self.cfg()
         s.update(name=self.NAME, candidates=len(self.cands), tp_mult=c.get("tp_mult", 2),
+                 be_after_pct=float(c.get("be_after_pct", 0) or 0), stop_pct=c.get("stop_pct", 25),
+                 trail_arm_mult=c.get("trail_arm_mult", 1.5), trail_pct=c.get("trail_pct", 35),
                  pulled=sum(1 for x in self.cands.values() if x.get("pulled")),
                  desc=(f"Coins that ran to {c.get('run_mcap_sol', 80):g}+ SOL, pulled back {c.get('pullback_pct', 40):g}%+, then bounce "
                        f"{c.get('bounce_pct', 25):g}%+ with {c.get('min_trades_2m', 15)}+ trades/2 min, back to "

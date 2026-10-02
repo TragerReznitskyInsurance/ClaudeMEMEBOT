@@ -1213,7 +1213,7 @@ function renderStrat(el, L, title) {
       ? p => p.stages.includes("zone") ? (p.graduated ? "moonbag · graduated" : "moonbag · in grad zone") : p.stages.includes("3x") ? `⅓ sold · trailing (${p.peak.toFixed(1)}x high)` : "stop at −30%"
       : L.name === "reclaim_be" ? p => (p.peak >= 1.2 ? `stop at our buy price (was ${p.peak.toFixed(2)}x)` : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "reclaim" || L.name === "reclaim_big"
-      ? p => (p.peak >= 1.5 ? `trailing · peak ${p.peak.toFixed(1)}x` : p.peak >= 1.2 ? "stop at break-even" : "stop at −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
+      ? p => (p.peak >= (L.trail_arm_mult || 1.5) ? `trailing · peak ${p.peak.toFixed(1)}x` : (L.be_after_pct && p.peak >= 1 + L.be_after_pct / 100) ? "stop at break-even" : `stop at −${L.stop_pct || 25}%`) + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "skimmer" ? p => `sells at +20% / −5%`
       : L.name === "calls" ? callStage
       : L.name === "rangebreak" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "sells if back inside the range / −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
@@ -1323,7 +1323,8 @@ function renderLiveFor(L, el, which) {
   const svPos = {}; if (lk && SV) for (const q of SV.positions || []) svPos[q.mint] = q;
   const rcPos = {}; if (lk && RC) for (const q of RC.positions || []) rcPos[q.mint] = q;
   const clPos = {}; if (lk && CL) for (const q of CL.positions || []) clPos[q.mint] = q;
-  const rcStage = q => !q ? "—" : (q.peak >= 1.5 ? `trailing 35% below ${q.peak.toFixed(1)}x high` : q.peak >= 1.2 ? `stop at our buy price · now ${q.mult.toFixed(2)}x` : `stop at −25% · now ${q.mult.toFixed(2)}x`) + (q.stages.includes("2x") ? ` · ⅓ sold at ${RC && RC.tp_mult ? RC.tp_mult : 3}×` : "");
+  const rcBE = RC && RC.be_after_pct != null ? 1 + RC.be_after_pct / 100 : 1.5, rcArm = (RC && RC.trail_arm_mult) || 1.5;
+  const rcStage = q => !q ? "—" : (q.peak >= rcArm ? `trailing ${(RC && RC.trail_pct) || 35}% below ${q.peak.toFixed(1)}x high` + (RC && RC.be_after_pct && q.peak >= rcBE ? " · never below our buy price" : "") : (RC && RC.be_after_pct && q.peak >= rcBE) ? `stop at our buy price · now ${q.mult.toFixed(2)}x` : `stop at −${(RC && RC.stop_pct) || 25}% (break-even from +${RC && RC.be_after_pct != null ? RC.be_after_pct : 50}%) · now ${q.mult.toFixed(2)}x`) + (q.stages.includes("2x") ? ` · ⅓ sold at ${RC && RC.tp_mult ? RC.tp_mult : 3}×` : "");
   const svStage = q => !q ? "—" : q.stages.includes("5x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("2x") ? `¼ sold at 2× · stop at break-even · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`;
   const lgStage = q => !q ? "—" : q.stages.includes("zone") ? (q.graduated ? "moonbag · graduated" : "moonbag · grad zone") : q.stages.includes("3x") ? `⅓ sold · trailing (${q.peak.toFixed(1)}x high)` : (q.peak >= 2 ? `stop at break-even (was ${q.peak.toFixed(1)}x) · now ${q.mult.toFixed(2)}x` : `stop at −30% · now ${q.mult.toFixed(2)}x`);
   const px = L.sol_usd, $u = sol => px && sol != null ? "$" + (sol * px).toFixed(2) : "";
