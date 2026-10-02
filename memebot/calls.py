@@ -255,7 +255,7 @@ class CallBuyer(Lookalike):
                  auto_sell_on=bool(c.get("auto_sell_on", True)), stop_pct=c.get("stop_pct", 40),
                  tp6_on=bool(c.get("tp6_on")), tp10_on=bool(c.get("tp10_on")),
                  desc=(f"Buys every coin posted in the Discord calls · ${c.get('buy_usd', 10):g} each · "
-                       ("AUTO-SELL OFF (no stop) · " if not c.get("auto_sell_on", True) else f"stop −{c.get('stop_pct', 40):g}% · ") + (
+                       + ("AUTO-SELL OFF (no stop) · " if not c.get("auto_sell_on", True) else f"stop −{c.get('stop_pct', 40):g}% · ") + (
                            f"¼ at {c.get('tp1_mult', 3):g}×/{c.get('tp2_mult', 5):g}×/{c.get('tp3_mult', 10):g}× · "
                            f"{c.get('max_hold_h', 48):g}h limit" if c.get("auto_take_profit", False)
                            else "no automatic selling otherwise - you sell with the Sell button")))
