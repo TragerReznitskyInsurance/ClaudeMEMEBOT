@@ -1026,8 +1026,9 @@ class LiveTrader:
         self._save()
 
     # ------------------------------------------------------------------ manual controls
-    async def sell_now(self, mint):
-        await self._sell(mint, 1.0, "manual")
+    async def sell_now(self, mint, frac=1.0):
+        frac = min(max(float(frac), 0.01), 1.0)
+        await self._sell(mint, frac, "manual" if frac >= 0.99 else f"manual - sold {frac * 100:.0f}%")
 
     async def sell_all(self):
         for m in list(self.positions):

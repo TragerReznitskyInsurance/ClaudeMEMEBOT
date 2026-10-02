@@ -151,6 +151,16 @@ class CallBuyer(Lookalike):
         self._save()
         return None if p.get("real") else real_note
 
+    def manual_sell(self, mint, frac):
+        """Your Sell button (all / half / third / quarter) on a call coin: sells for real and updates the record."""
+        p = self.positions.get(mint)
+        if not p:
+            return False
+        frac = min(max(float(frac), 0.01), 1.0)
+        self._sell(p, frac, "sold by you" if frac >= 0.99 else f"sold {frac * 100:.0f}% by you", p["last_px"], time.time())
+        self._save()
+        return True
+
     async def _add_to(self, mint):
         """Manual re-buy of a coin we still hold: buy `buy_usd` more (paper + real), averaging the entry price."""
         c = self.cfg()
@@ -203,8 +213,9 @@ class CallBuyer(Lookalike):
                 and ts - p["opened"] > 120:                   # you sold it on the real wallet (Sell button)
             p["real"] = False
             return self._sell(p, 1.0, "sold by you", px, ts)
-        if mult <= 1 - float(c.get("stop_pct", 40)) / 100:
-            return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 40):g}%", px, ts)
+        stop = float(c.get("stop_pct", 40) or 0)
+        if stop > 0 and mult <= 1 - stop / 100:
+            return self._sell(p, 1.0, f"stop -{stop:g}%", px, ts)
         if not c.get("auto_take_profit", False):
             return                                         # everything else is your call: sell with the Sell button
         if ts - p["opened"] > float(c.get("max_hold_h", 48)) * 3600:

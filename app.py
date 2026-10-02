@@ -770,7 +770,12 @@ async def api_live_sell(request):
     if body.get("all"):
         asyncio.create_task(tr.sell_all())
     elif body.get("mint") in tr.positions:
-        asyncio.create_task(tr.sell_now(body["mint"]))
+        frac = float(body.get("frac") or 1.0)
+        p = tr.positions[body["mint"]]
+        if tr is runner.live2 and p.get("wallet") == "calls" and body["mint"] in runner.calls.positions:
+            runner.calls.manual_sell(body["mint"], frac)          # keeps the calls record in step with the real sale
+        else:
+            asyncio.create_task(tr.sell_now(body["mint"], frac))
     else:
         return web.json_response({"error": "No such live position"}, status=400)
     return web.json_response({"ok": True})
