@@ -1331,6 +1331,7 @@ function renderLiveFor(L, el, which) {
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="stratSettings('reclaim')" title="Edit the Reclaim strategy this wallet trades">⚙ Reclaim settings</button>`;
+  if (L.has_wallet && lk) h += `<button class="btn" onclick="pnlReset('${which}')" title="Start the profit / loss count from now (trade history is kept)">↺ Reset P&L</button>`;
   if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
       <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>
       <button class="btn danger" onclick="liveSellAll('${which}')" ${L.positions.length ? "" : "disabled"}>Sell all</button>
