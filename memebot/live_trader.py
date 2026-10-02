@@ -1077,6 +1077,29 @@ class LiveTrader:
         self._save()
 
     # ------------------------------------------------------------------ manual controls
+    def fix_outside_sale(self, mint, opened, usd_back):
+        """You sold a coin outside the bot (Phantom): record what you actually got back, in dollars."""
+        px = self._usd()
+        if not px:
+            return "no SOL price yet"
+        for c in reversed(self.closed):
+            if c["mint"] == mint and abs(float(c["opened"]) - float(opened)) < 2:
+                c["sol_out"] = round(float(usd_back) / px, 6)
+                pnl = c["sol_out"] - c["sol_in"]
+                c.update(pnl_sol=round(pnl, 6), pnl_pct=round(pnl / c["sol_in"] * 100, 1) if c["sol_in"] else 0.0,
+                         pnl_usd=round(pnl * px, 2), how="sold in Phantom (amount entered by you)", fixed=True)
+                self._save()
+                try:
+                    with open(os.path.join(self.dir, "corrections.csv"), "a", encoding="utf-8") as fh:
+                        fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')},{c['symbol']},{mint},usd_back={usd_back},"
+                                 f"pnl_usd={c['pnl_usd']}\n")
+                except OSError:
+                    pass
+                self._event("info", f"{c['symbol']}: result corrected to {c['pnl_pct']:+.0f}% (${c['pnl_usd']:+.2f}) "
+                                    f"- sold in Phantom for ${float(usd_back):.2f}")
+                return None
+        return "trade not found"
+
     async def sell_now(self, mint, frac=1.0):
         frac = min(max(float(frac), 0.01), 1.0)
         await self._sell(mint, frac, "manual" if frac >= 0.99 else f"manual - sold {frac * 100:.0f}%")

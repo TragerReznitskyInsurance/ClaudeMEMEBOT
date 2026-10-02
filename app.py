@@ -781,6 +781,17 @@ async def api_live_sell(request):
     return web.json_response({"ok": True})
 
 
+async def api_live_fix(request):
+    """Enter what you got back for a coin you sold in Phantom, so the record and the daily loss limit are right."""
+    body = await _body(request)
+    tr = _trader(body)
+    try:
+        why = tr.fix_outside_sale(str(body.get("mint")), float(body.get("opened")), float(body.get("usd_back")))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "enter a dollar amount"}, status=400)
+    return web.json_response({"error": why}, status=400) if why else web.json_response({"ok": True})
+
+
 async def api_live_withdraw(request):
     body = await _body(request)
     tr = _trader(body)
@@ -994,7 +1005,7 @@ async def api_diagnostics(request):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
-        for name in ("live_trades.csv", "live_state.json"):     # the lookalike wallet (never its key file)
+        for name in ("live_trades.csv", "live_state.json", "corrections.csv"):     # the lookalike wallet (never its key file)
             p = os.path.join(data_dir, "lookalike_wallet", name)
             if os.path.exists(p):
                 z.write(p, "lookalike_wallet_" + name)
@@ -1031,6 +1042,7 @@ def make_app():
     app.router.add_post("/api/live/pause", api_live_pause)
     app.router.add_post("/api/live/sell", api_live_sell)
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
+    app.router.add_post("/api/live/fix", api_live_fix)
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/calls/buy", api_calls_buy)

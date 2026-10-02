@@ -1359,6 +1359,9 @@ function renderLiveFor(L, el, which) {
         <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>
         <td class="r" style="white-space:nowrap">${[[1, "Sell all"], [0.5, "½"], [1 / 3, "⅓"], [0.25, "¼"]].map(([f, t]) => `<button class="btn" style="padding:4px 8px;font-size:12px;margin-left:2px" title="Sell ${t === "Sell all" ? "everything" : t}" onclick="liveSell('${p.mint}','${which}',${f})" ${p.status === "open" ? "" : "disabled"}>${t}</button>`).join("")}</td></tr>`).join("")}</tbody></table></div>`;
     else h += `<div class="faint" style="font-size:12.5px">${lk ? "No open real positions yet." : `No open real positions. Each copied buy is $${L.trade_usd}, up to ${L.max_open} per wallet and $${L.budget_usd} in use per wallet.`}</div>`;
+    const outside = (L.closed || []).filter(c => c.how === "sold in wallet" && Date.now() / 1000 - c.closed < 3 * 86400);
+    if (outside.length) h += `<div class="notice" style="margin:8px 0"><span>✏️</span><div style="flex:1"><b>Sold in Phantom?</b> The bot can't see what you got back for these, so they show as −100%. Enter the dollars you received to fix the record:
+      ${outside.map(c => `<div style="margin-top:4px"><b>${esc(c.symbol)}</b> · cost $${(c.sol_in * (px || 0)).toFixed(2)} · <a href="#" onclick="liveFix('${c.mint}',${c.opened},'${which}','${esc(c.symbol)}');return false">enter what I got back</a></div>`).join("")}</div></div>`;
     if (L.events.length) h += `<div class="rm-events">${L.events.slice(0, 12).map(e => `<div class="${e.kind}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span>${esc(e.text)}${e.sig ? ` <a class="faint" href="https://solscan.io/tx/${e.sig}" target="_blank" rel="noopener">↗</a>` : ""}</span></div>`).join("")}</div>`;
   }
   el.innerHTML = h + `</div></div>`;
@@ -1366,6 +1369,11 @@ function renderLiveFor(L, el, which) {
 async function notifyTest() {
   try { const r = await fetch("/api/notify/test", {method: "POST"}); const j = await r.json(); toast(j.ok ? "Test alert sent - check your phone" : "Couldn't send: " + (j.error || "unknown")); }
   catch (e) { toast("Couldn't send: " + e); }
+}
+async function liveFix(mint, opened, which, sym) {
+  const v = prompt(`How many dollars did you get back when you sold ${sym} in Phantom? (total received, e.g. 42.80)`);
+  if (v == null || v.trim() === "") return;
+  try { await api("/api/live/fix", {mint, opened, usd_back: parseFloat(v.replace(/[$,]/g, "")), which}); toast(`${sym} corrected`); } catch (e) { toast(e.message); }
 }
 async function liveCreate(which = "copy") {
   if (!confirm(`Create a new ${which === "lookalike" ? "lookalike" : "trading"} wallet on this computer? You'll fund it with a small amount of SOL.`)) return;
