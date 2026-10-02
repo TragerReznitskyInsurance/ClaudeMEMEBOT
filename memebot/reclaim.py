@@ -45,6 +45,7 @@ class Reclaim(Lookalike):
         self.cands: dict[str, dict] = {}
         self.known: set[str] = set()
         self.track: dict[str, dict] = {}                   # research: price path from buy until 6 h after the sale
+        self.charts: dict[str, list] = {}                  # research: 1-min mcap chart of each candidate before a buy
         try:
             with open(self.cands_path, encoding="utf-8", errors="replace") as fh:
                 s = json.load(fh)
@@ -134,6 +135,7 @@ class Reclaim(Lookalike):
         self._event("buy", f"Paper buy {cd['symbol']} at {mc:.0f} SOL mcap - bounced from {cd['low']:.0f} after a "
                            f"{cd['peak']:.0f} SOL peak ({trades_2m} trades in 2 min)", mint=cd["mint"])
         if self.NAME == "reclaim":
+            self._log_chart(cd, mc, ts, True)
             self.track[cd["mint"]] = dict(entry_px=px, opened=ts, until=ts + 30 * 3600, last=0.0, sym=cd["symbol"],
                                           cid=f"path:{cd['mint']}:{int(ts)}")
         log.info("RECLAIM buy %s at mcap %.0f (peak %.0f, low %.0f, %d trades/2m)",
@@ -150,6 +152,22 @@ class Reclaim(Lookalike):
 
     async def _enter_checked(self, cd, px, ts, trades_2m):
         self._enter(cd, px, ts, trades_2m)
+
+    def _chart(self, mint, now):
+        """[[minutes before now, mcap SOL], ...] from when the coin first reached the run size (1-min samples)."""
+        return [[round((ts - now) / 60, 1), mc] for ts, mc in self.charts.get(mint, [])]
+
+    def _log_chart(self, cd, mc, now, bought):
+        bl = getattr(self, "breakouts", None)
+        if bl is None or self.NAME != "reclaim":
+            return
+        try:
+            bl._write(dict(type="reclaim_chart", id=f"chart:{cd['mint']}:{int(now)}", mint=cd["mint"], sym=cd["symbol"],
+                           ts=round(now, 1), bought=bought, mcap=round(mc, 1), peak=round(cd["peak"], 1),
+                           low=round(cd["low"] or mc, 1), age_min=round((now - cd["created"]) / 60, 1),
+                           chart=self._chart(cd["mint"], now)))
+        except Exception as e:
+            log.debug("chart log: %s", e)
 
     def _log_signal(self, cd, mc, age, now, c):
         bl = getattr(self, "breakouts", None)
@@ -248,6 +266,12 @@ class Reclaim(Lookalike):
                     continue
             cd.pop("suspect", None)
             cd["last_mc"] = mc
+            if self.NAME == "reclaim":                     # research (2 Oct): chart shape before the buy
+                ch = self.charts.setdefault(m, [])
+                if not ch or now - ch[-1][0] >= 60:
+                    ch.append([int(now), round(mc, 1)])
+                    if len(ch) > 420:
+                        del ch[0]
             if mc < float(c.get("dead_mcap_sol", 25)):
                 self.cands.pop(m, None)
                 continue
@@ -263,6 +287,7 @@ class Reclaim(Lookalike):
             if signal and self.NAME == "reclaim" and now - cd.get("logged_at", 0) >= 600:
                 cd["logged_at"] = now                       # research: volume & launch speed of every signal
                 self._log_signal(cd, mc, age, now, c)
+                self._log_chart(cd, mc, now, False)
             if (signal
                     and mc >= cd["peak"] * float(c.get("min_of_peak_pct", 0) or 0) / 100   # held up, not a crash
                     and mc >= float(c.get("min_entry_mcap_sol", 35))
@@ -277,6 +302,8 @@ class Reclaim(Lookalike):
                 if n >= int(c.get("min_trades_2m", 15)):
                     await self._enter_checked(cd, price, now, n)
                     self.cands.pop(m, None)
+        for m in [m for m in self.charts if m not in self.cands]:
+            self.charts.pop(m, None)
         for m in list(self.positions):
             p = self.positions.get(m)
             price, src = px.get(m, (None, None))
