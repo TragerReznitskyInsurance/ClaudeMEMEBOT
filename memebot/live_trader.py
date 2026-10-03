@@ -422,8 +422,15 @@ class LiveTrader:
         return VersionedTransaction(tx.message, [self.kp])
 
     async def _pumpportal(self, action, mint, amount, denom_sol, slippage):
-        """Build a buy/sell: PumpPortal first (one retry), Jupiter if PumpPortal is down or refuses."""
+        """Build a buy/sell: PumpPortal first (one retry), Jupiter if PumpPortal is down or refuses.
+        Coins whose bonding curve just completed (error 0x1775 - migrating) go straight to Jupiter, which routes
+        the new pool: PumpPortal kept building curve trades that fail (MIMIC at 3.3x, 2 Oct)."""
         errs = []
+        if mint in getattr(self, "curve_done", set()):
+            try:
+                return await self._jupiter(action, mint, amount, denom_sol, slippage)
+            except Exception as e:
+                raise RuntimeError(f"coin is migrating to its new pool; Jupiter: {str(e)[:80] or type(e).__name__}")
         for attempt in range(2):
             try:
                 return await self._pumpportal_only(action, mint, amount, denom_sol, slippage)
@@ -940,6 +947,10 @@ class LiveTrader:
             except Exception as e:
                 p["status"] = "open"
                 self._save()
+                if "0x1775" in str(e):                    # bonding curve complete: sell through the new pool next time
+                    if not hasattr(self, "curve_done"):
+                        self.curve_done = set()
+                    self.curve_done.add(mint)
                 return self._event("error", f"Sell {p['symbol']} ({reason}) failed: {e or type(e).__name__}", mint=mint)
             if full or p["tokens"] <= p["tokens_bought"] * 0.005:
                 rent = await self._close_accounts(mint)
