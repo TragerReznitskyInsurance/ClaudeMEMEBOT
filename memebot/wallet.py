@@ -98,8 +98,15 @@ async def fetch_history(session, wallet, key, since_ts, max_tx, progress: Progre
                 raise RuntimeError(f"Helius unreachable: {type(e).__name__}")
             await asyncio.sleep(2 * retries)
             continue
-        if status == 429:
+        if status == 429 or status == 402:
+            low = body.lower()
+            if status == 402 or "max usage" in low or "credit" in low or "quota" in low:
+                raise RuntimeError("Helius credits are used up for this billing period - wallet analysis needs "
+                                   "Helius credits (check usage at dashboard.helius.dev)")
             retries += 1
+            if retries > 6:
+                raise RuntimeError("Helius keeps refusing (rate limit / HTTP 429) - try again in a few minutes. "
+                                   f"Helius said: {body[:120]}")
             await asyncio.sleep(min(2 * retries, 10))
             continue
         if status in (401, 403):
