@@ -136,6 +136,9 @@ class Reclaim(Lookalike):
                            f"{cd['peak']:.0f} SOL peak ({trades_2m} trades in 2 min)", mint=cd["mint"])
         if self.NAME == "reclaim":
             self._log_chart(cd, mc, ts, True)
+            bl = getattr(self, "breakouts", None)
+            if bl is not None:                             # research (2 Oct): holder concentration at the buy itself
+                bl._put(("holders", f"buy:{cd['mint']}:{int(ts)}", cd["mint"], None))
             self.track[cd["mint"]] = dict(entry_px=px, opened=ts, until=ts + 30 * 3600, last=0.0, sym=cd["symbol"],
                                           cid=f"path:{cd['mint']}:{int(ts)}")
         log.info("RECLAIM buy %s at mcap %.0f (peak %.0f, low %.0f, %d trades/2m)",
