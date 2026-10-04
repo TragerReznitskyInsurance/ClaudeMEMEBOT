@@ -71,6 +71,7 @@ SCHEMA = [
         {"path": "lookalike_grad.max_prior_peak_mult", "label": "Only buy near its high: skip if it was already this far above the line (0 = off)", "unit": "x", "type": "float"},
         {"path": "lookalike_grad.min_rise_2m_pct", "label": "Only buy on an up trend: must be up this much over 2 min (0 = off)", "unit": "%", "type": "float"},
         {"path": "lookalike_grad.min_buys_2m", "label": "Only buy with a crowd: at least this many buys in the last 2 min (0 = off)", "type": "int"},
+        {"path": "fastlaunch.enabled", "label": "Fast launch paper test (wallet BB1jeGTH's style)", "type": "bool"},
         {"path": "reclaim_be.enabled", "label": "Reclaim · break-even paper test (stop to buy price after +20%)", "type": "bool"},
         {"path": "lookalike_grad_old.enabled", "label": "Paper comparison: old rules without these two filters", "type": "bool"},
         {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: the real wallet trades the Reclaim strategy", "type": "bool"},

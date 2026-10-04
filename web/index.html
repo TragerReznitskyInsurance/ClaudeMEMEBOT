@@ -399,6 +399,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   
   <section id="reclaimbe"></section>
   <section id="rangebreak"></section>
+  <section id="fastlaunch"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
@@ -602,7 +603,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; RBE = j.reclaim_be; RB = j.rangebreak; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; RBE = j.reclaim_be; RB = j.rangebreak; FL = j.fastlaunch; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1067,7 +1068,7 @@ function renderLab() {
 
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
-let AT = null, BOOT = null, SV = null, SK = null, RCC = null, RBE = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
+let FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RBE = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 function renderAgeTest() {
   const el = $("#agetest");
   if (!el) return;
@@ -1086,7 +1087,7 @@ function renderAgeTest() {
 }
 
 /* ── lookalike paper test ─────────────────── */
-const stratOpen = {rangebreak: true, calls: true, lookalike: true, reclaim: true, lookalike_grad: true, skimmer: true, reclaim_big: true, reclaim_be: true};
+const stratOpen = {fastlaunch: true, rangebreak: true, calls: true, lookalike: true, reclaim: true, lookalike_grad: true, skimmer: true, reclaim_big: true, reclaim_be: true};
 function renderLkRules() {
   const el = $("#lkrules"), L = SV;
   if (!L) { el.innerHTML = ""; return; }
@@ -1187,7 +1188,7 @@ async function callBuy() {
     if (!j.error) $("#callq").value = "";
   } catch (e) { $("#callout").textContent = "Failed: " + e; }
 }
-function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimbe"), RBE, "🛡 Reclaim · break-even after +20% test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); }
+function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimbe"), RBE, "🛡 Reclaim · break-even after +20% test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); renderStrat($("#fastlaunch"), FL, "⚡ Fast launch test"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";
@@ -1196,7 +1197,7 @@ function renderStrat(el, L, title) {
   const tot = (L.realized || 0) + (L.open_pnl || 0);
   let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>${title}</h2>${status}
     <span class="faint" style="font-size:12px">${esc(L.desc || "")}${["reclaim", "reclaim_big", "reclaim_be"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : L.name === "rangebreak" ? ` · watching ${L.candidates} coins (${L.pulled} trading sideways now)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
-    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_be", "skimmer", "lookalike", "calls", "rangebreak"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_be", "skimmer", "lookalike", "calls", "rangebreak", "fastlaunch"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
   if (L.stats_since) h += `<div class="faint" style="font-size:12px;padding:6px 16px 0">Results since ${new Date(L.stats_since * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>`;
   h += `<div class="card-b"><table class="wtab"><tr class="faint"><td>Open</td><td class="r">Closed</td><td class="r">Win rate</td><td class="r">Hit 2x</td><td class="r">Hit 6x</td><td class="r">Realized</td><td class="r">Open P&L</td><td class="r">Total</td></tr>
     <tr><td class="num">${L.open}</td><td class="r num">${L.closed}</td><td class="r num">${L.win_rate == null ? "—" : L.win_rate + "%"}</td><td class="r num">${L.hit_2x}</td><td class="r num">${L.hit_6x}</td>
@@ -1216,6 +1217,7 @@ function renderStrat(el, L, title) {
       ? p => (p.peak >= (L.trail_arm_mult || 1.5) ? `trailing · peak ${p.peak.toFixed(1)}x` : (L.be_after_pct && p.peak >= 1 + L.be_after_pct / 100) ? "stop at break-even" : `stop at −${L.stop_pct || 25}%`) + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : L.name === "skimmer" ? p => `sells at +20% / −5%`
       : L.name === "calls" ? callStage
+      : L.name === "fastlaunch" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "stop −25% / out if no move in 4 min") + (p.stages.includes("add") ? " · added" : "") + (p.stages.includes("tp1") ? " · ⅓ sold" : "")
       : L.name === "rangebreak" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "sells if back inside the range / −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : p => p.stages.includes("10x") ? "past 10x" : p.stages.includes("6x") ? "past 6x · floor at entry" : p.stages.includes("2x") ? "initial out · free ride" : "stop at −30%";
     if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th class="r">Now</th><th class="r">Peak</th><th>Stage</th><th class="r">Worth</th><th class="r">Held</th></tr></thead><tbody>

@@ -189,6 +189,25 @@ reclaim_be:
   be_after_pct: 20
   be_floor_mult: 1.05
 
+# Fast launch PAPER test (4 Oct) - wallet BB1jeGTH's style: brand-new coins taking off fast, cut fast, add to winners
+fastlaunch:
+  enabled: true
+  size_usd: 25
+  min_age_s: 60                        # coin 1-5 min old...
+  max_age_s: 300
+  min_mcap_sol: 50                     # ...already at 50-120 SOL and rising
+  max_mcap_sol: 120
+  stop_pct: 25
+  no_move_s: 240                       # sell if never up 10% and below our price after 4 min
+  add_pct: 20                          # add the same size once when up 20%...
+  add_window_s: 600                    # ...within the first 10 min
+  tp1_mult: 1.5                        # sell 1/3 at 1.5x
+  tp2_mult: 2                          # half of the rest at 2x
+  trail_pct: 30                        # trailing stop once up 1.5x
+  bond_exit_mcap_sol: 375
+  max_hold_min: 60
+  max_open: 50
+
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:
   enabled: true
