@@ -449,3 +449,23 @@ class ReclaimBE(Reclaim):
         s.update(name=self.NAME, desc=(f"Same buys as Reclaim, but once a coin is up {c.get('be_after_pct', 20):g}% the stop "
                                        f"moves to our buy price · ${c.get('size_usd', 25)} each · no real money"))
         return s
+
+
+class ReclaimStrong(Reclaim):
+    """PAPER test (4 Oct): Reclaim, but only buys after a STRONG recovery - the coin has bounced `bounce_pct` (50%)
+    off its low (Reclaim itself: 15%). Failure analysis of 156 trades: bounces of 1.5x+ went +20% before -20% 62% of
+    the time (+6.6% avg) vs ~48% for smaller bounces. Uses the `reclaim` settings (stops, exits) plus the
+    `reclaim_strong` section; never real money. Pass mark: +20% first on 58%+ of 100+ trades and profit after costs."""
+    NAME = "reclaim_strong"
+
+    def cfg(self):
+        c = dict(self._cfg().get("reclaim") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        s["desc"] = "STRONG bounce only (50%+ off the low) · " + s.get("desc", "")
+        return s

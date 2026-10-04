@@ -28,7 +28,7 @@ from memebot.chain import ChainBackup
 from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
-from memebot.reclaim import Reclaim, ReclaimBE
+from memebot.reclaim import Reclaim, ReclaimStrong
 from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
 from memebot.survivor import Survivor, HotWord
 from memebot.calls import CallBuyer
@@ -95,7 +95,7 @@ class Runner:
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
         self.survivor.breakouts = self.breakouts
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
-        self.reclaim_be = ReclaimBE(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        self.reclaim_strong = ReclaimStrong(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.fastlaunch = FastLaunch(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
@@ -106,7 +106,7 @@ class Runner:
         self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak, self.fastlaunch):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.fastlaunch):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -116,7 +116,7 @@ class Runner:
         out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
         out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak, self.fastlaunch):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.fastlaunch):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -127,7 +127,7 @@ class Runner:
         self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.reclaim.rename(mint, info["symbol"])
         self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak, self.fastlaunch):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.fastlaunch):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -163,7 +163,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak, self.fastlaunch):
+        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.fastlaunch):
             try:
                 strat._save()
             except Exception:
@@ -252,9 +252,9 @@ class Runner:
             self.hotword.feed_price = feed_price
             eng.hotword = self.hotword
             eng.breakouts = self.breakouts
-            self.reclaim_be.active = True
-            self.reclaim_be.feed_price = feed_price
-            eng.reclaim_be = self.reclaim_be
+            self.reclaim_strong.active = True
+            self.reclaim_strong.feed_price = feed_price
+            eng.reclaim_strong = self.reclaim_strong
             self.calls.active = True
             self.rangebreak.active = True
             self.rangebreak.feed_price = feed_price
@@ -304,7 +304,7 @@ class Runner:
         self.live2.active = False
         self.reclaim.active = False
         self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_be, self.calls, self.rangebreak, self.fastlaunch):
+        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.fastlaunch):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -450,7 +450,7 @@ class Runner:
                 "reclaim": self.reclaim.state(),
                 "lookalike_grad": self.lookalike_grad.state(),
                 "age_test": self.age_test(),
-                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_be": self.reclaim_be.state(),
+                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_strong": self.reclaim_strong.state(),
                 "calls": dict(self.calls.state(), notify=self.notify.state()), "rangebreak": self.rangebreak.state(), "fastlaunch": self.fastlaunch.state(),
                 "narratives": self.narr.state()}
 
@@ -506,9 +506,23 @@ def _settings_fix_1002():
         log.warning("settings fix 1002 skipped: %s", e)
 
 
+def _settings_fix_1004():
+    """One-time (4 Oct): Fast launch paper test off (278 trades in a day, -$722)."""
+    mark = os.path.join(HERE, "data", "settings_fix_1004.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"fastlaunch.enabled": False}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+    except Exception as e:
+        log.warning("settings fix 1004 skipped: %s", e)
+
+
 _settings_fix_1001()
 _settings_fix_1001b()
 _settings_fix_1002()
+_settings_fix_1004()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
@@ -557,7 +571,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.survivor.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
-    test_tasks.append(asyncio.create_task(runner.reclaim_be.run(every=5)))
+    test_tasks.append(asyncio.create_task(runner.reclaim_strong.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangebreak.run(every=10)))
     test_tasks.append(asyncio.create_task(runner.fastlaunch.run(every=3)))
@@ -578,7 +592,7 @@ async def broadcaster(app):
     for tt in test_tasks:
         tt.cancel()
     await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_be, runner.calls, runner.rangebreak, runner.fastlaunch, runner.breakouts):
+    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_strong, runner.calls, runner.rangebreak, runner.fastlaunch, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -914,7 +928,7 @@ STRAT_HIDE = {}
 
 def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
-    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_be": (runner.reclaim_be, "reclaim_be"),
+    return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_strong": (runner.reclaim_strong, "reclaim_strong"),
             "calls": (runner.calls, "calls"), "rangebreak": (runner.rangebreak, "rangebreak"),
             "fastlaunch": (runner.fastlaunch, "fastlaunch"),
             "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
@@ -971,7 +985,7 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim,
-             "reclaim_be": runner.reclaim_be, "calls": runner.calls, "rangebreak": runner.rangebreak, "fastlaunch": runner.fastlaunch,
+             "reclaim_strong": runner.reclaim_strong, "calls": runner.calls, "rangebreak": runner.rangebreak, "fastlaunch": runner.fastlaunch,
              "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
@@ -1032,7 +1046,7 @@ async def api_diagnostics(request):
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
                      "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "reclaim_big_state.json", "reclaim_big_trades.csv",
                      "reclaim_big_fills.csv", "calls_state.json", "calls_trades.csv", "calls_fills.csv",
-                     "reclaim_be_state.json", "reclaim_be_trades.csv", "reclaim_be_fills.csv",
+                     "reclaim_strong_state.json", "reclaim_strong_trades.csv", "reclaim_strong_fills.csv",
                      "rangebreak_state.json", "rangebreak_trades.csv", "rangebreak_fills.csv",
                      "fastlaunch_state.json", "fastlaunch_trades.csv", "fastlaunch_fills.csv",
                      "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):

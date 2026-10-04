@@ -183,15 +183,13 @@ reclaim_big:
   min_entry_mcap_sol: 100
 
 # ── Reclaim · break-even (PAPER ONLY) ───────────────────────────
-# Same buys as Reclaim; once a coin has been up be_after_pct, the stop moves to our buy price.
-reclaim_be:
+reclaim_strong:                        # PAPER (4 Oct): Reclaim, but only after a 50%+ bounce off the low
   enabled: true
-  be_after_pct: 20
-  be_floor_mult: 1.05
+  bounce_pct: 50
 
 # Fast launch PAPER test (4 Oct) - wallet BB1jeGTH's style: brand-new coins taking off fast, cut fast, add to winners
 fastlaunch:
-  enabled: true
+  enabled: false                       # 4 Oct: 278 paper trades in one day, 26% wins, -$722 - switched off
   size_usd: 25
   min_age_s: 60                        # coin 1-5 min old...
   max_age_s: 300
