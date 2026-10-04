@@ -206,6 +206,12 @@ fastlaunch:
   max_hold_min: 60
   max_open: 50
 
+# Research (4 Oct): save pump.fun's Explore lists (top market cap / last traded / new) every 5 min - free, best effort
+explore:
+  enabled: true
+  every_s: 300
+  limit: 50
+
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:
   enabled: true

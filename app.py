@@ -99,6 +99,8 @@ class Runner:
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.fastlaunch = FastLaunch(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
+        from memebot.explore import ExploreLog
+        self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
         self.live2.notifier, self.live2.notify_label = self.notifier, "Real wallet"
         self.live.notifier, self.live.notify_label = self.notifier, "Copy wallet"
         self.calls = CallBuyer(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -153,7 +155,7 @@ class Runner:
                     rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
                     rugcheck_last_error=getattr(self.screener, "last_error", ""),
                     trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state(), boot=BOOT_ID,
-                    notify=self.notifier.state())
+                    notify=self.notifier.state(), explore=self.explore.state())
 
     def busy_trades(self):
         """Real buys/sells in flight right now (don't restart for an update in the middle of one)."""
@@ -575,6 +577,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangebreak.run(every=10)))
     test_tasks.append(asyncio.create_task(runner.fastlaunch.run(every=3)))
+    test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
@@ -1044,7 +1047,7 @@ async def api_diagnostics(request):
                                           "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
                      "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
                      "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
-                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "reclaim_big_state.json", "reclaim_big_trades.csv",
+                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "explore.jsonl", "reclaim_big_state.json", "reclaim_big_trades.csv",
                      "reclaim_big_fills.csv", "calls_state.json", "calls_trades.csv", "calls_fills.csv",
                      "reclaim_strong_state.json", "reclaim_strong_trades.csv", "reclaim_strong_fills.csv",
                      "rangebreak_state.json", "rangebreak_trades.csv", "rangebreak_fills.csv",
