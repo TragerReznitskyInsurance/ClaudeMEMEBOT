@@ -885,6 +885,7 @@ STRAT_LABELS.update({
     "max_hold_h": "Time limit (hours)", "max_paper_open": "Max open call positions (incl. paper)",
     "poll_s": "Check notifications every (seconds)",
     "auto_take_profit": "Automatic take-profits / trailing stop / time limit (off = you sell)",
+    "bond_exit_mcap_sol": "Sell everything at this mcap - bonding level (SOL, 0 = off)",
     "real_hours_start": "Real buys from (hour, 0-23, this PC's clock)", "real_hours_end": "Real buys until (hour, 24 = midnight)",
     "be_after_pct": "Break-even stop after the coin is up (%)", "be_floor_mult": "Break-even sell level (1.05 = 5% above our buy, covers fees)",
     "auto_sell_on": "Auto-sell on (off = the bot never sells call coins itself, not even the stop)",

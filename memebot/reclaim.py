@@ -224,6 +224,11 @@ class Reclaim(Lookalike):
         p["last_px"], p["last_px_ts"] = px, ts
         mult = px / p["entry_px"]
         p["peak_mult"] = max(p["peak_mult"], mult)
+        bond = float(c.get("bond_exit_mcap_sol", 0) or 0)    # 3 Oct: sell everything at the bonding level - most coins
+        if bond and p.get("entry_mcap", 0) < bond and (px * SUPPLY >= bond or p.get("graduated")):   # dump after migrating
+            why = ("migrating - sold everything" if p.get("graduated") and px * SUPPLY < bond
+                   else f"bonding level ({px * SUPPLY:.0f} SOL mcap) - sold everything")
+            return self._sell(p, 1.0, why, px, ts)
         be = float(c.get("be_after_pct", 0) or 0)            # break-even stop (real wallet since 1 Oct 17:45)
         if be and p["peak_mult"] >= 1 + be / 100 and mult <= float(c.get("be_floor_mult", 1.0)):
             return self._sell(p, 1.0, f"back to entry after +{be:g}%", px, ts)
@@ -310,6 +315,8 @@ class Reclaim(Lookalike):
         for m in list(self.positions):
             p = self.positions.get(m)
             price, src = px.get(m, (None, None))
+            if p and src == "jupiter" and not p.get("graduated"):
+                p["graduated"] = True                      # its bonding curve completed (now priced on its new pool)
             if p and price and price > 0 and self._accept(p, price, now):
                 self.check(p, price, now)
         self._save()
@@ -326,6 +333,7 @@ class Reclaim(Lookalike):
                        f"{c.get('min_of_peak_pct', 0):g}%+ of the old high, {c.get('min_entry_mcap_sol', 35):g}+ SOL, "
                        f"{c.get('min_age_min', 30):g}+ min old · sells: stop −{c.get('stop_pct', 25):g}%, "
                        f"break-even after +{c.get('be_after_pct', 0):g}%, ⅓ at {c.get('tp_mult', 2):g}×, "
+                       + (f"all sold at {c.get('bond_exit_mcap_sol'):g} SOL (bonding level), " if c.get('bond_exit_mcap_sol') else "") +
                        f"trail {c.get('trail_pct', 35):g}% from {c.get('trail_arm_mult', 1.5):g}× · ${c.get('size_usd', 25)} paper"
                        + (f" · real buys only {int(c.get('real_hours_start', 0))}:00-{int(c.get('real_hours_end', 24))}:00"
                           if (int(c.get('real_hours_start', 0)), int(c.get('real_hours_end', 24))) != (0, 24) else "")))
