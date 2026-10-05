@@ -1068,6 +1068,8 @@ function renderLab() {
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
 let RH = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
+/* ── paper test panels: open/closed ─────────── */
+const stratOpen = {reclaim: true, reclaim_strong: true, rangebreak: true, rangehold: true, calls: true};
 function renderLkRules() {
   const el = $("#lkrules"), R = RC;
   if (!R) { el.innerHTML = ""; return; }
