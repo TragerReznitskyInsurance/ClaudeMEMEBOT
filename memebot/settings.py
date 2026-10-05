@@ -65,6 +65,7 @@ SCHEMA = [
         {"path": "reclaim_strong.enabled", "label": "Reclaim · strong bounce (buys only after a 50%+ bounce off the low)", "type": "bool"},
         {"path": "rangebreak.enabled", "label": "Range breakout (original exits)", "type": "bool"},
         {"path": "rangehold.enabled", "label": "Range breakout · hold to bonding", "type": "bool"},
+        {"path": "confirmed.enabled", "label": "Confirmed breakout V1 (breakout + checks + retest)", "type": "bool"},
     ]},
     {"group": "Reclaim (paper test)", "items": [
         {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},

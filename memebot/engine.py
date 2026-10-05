@@ -225,6 +225,7 @@ class Engine:
         self.reclaim_strong = None                   # Reclaim, strong bounce only (paper)
         self.rangebreak = None                     # range breakout (paper)
         self.rangehold = None                      # range breakout buys, hold for the bonding level (paper)
+        self.confirmed = None                      # confirmed breakout V1 (owner's spec, paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
@@ -485,6 +486,8 @@ class Engine:
             self.rangebreak.maybe_enter(t, prev_mcap, ts)
         if self.rangehold is not None and t.creator:
             self.rangehold.maybe_enter(t, prev_mcap, ts)
+        if self.confirmed is not None and t.creator:
+            self.confirmed.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
         if self.skimmer is not None and t.creator and prev_mcap:
