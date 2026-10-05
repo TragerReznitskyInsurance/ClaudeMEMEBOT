@@ -85,53 +85,6 @@ lookalike_grad:
   real_max_open: 20                    # max real coins open at once
   real_daily_loss_usd: 25              # stop real buys for the day after losing this much
 
-# ── Lookalike "old rules" comparison (PAPER ONLY) ──────────────
-# Same as lookalike_grad but WITHOUT the up-trend / near-its-high entry filters, to judge them.
-lookalike_grad_old:
-  enabled: true
-
-# ── Survivor breakout (the REAL lookalike wallet's strategy) ──────────────
-# Trades like wallet #1: old coins (30 min - 6 h) that survived the launch and grind up to a NEW HIGH
-# through 44 SOL on a quiet tape; losers are scratched fast, winners sold in quarters.
-# Real money on/off, $ per coin, max open and daily loss limit are the "Lookalike · graduation exit"
-# real-money settings (same wallet).
-survivor:
-  enabled: true
-  size_usd: 10                         # paper tracking size
-  intake_mcap_sol: 32                  # follow coins that reached this (real buying) and passed the safety checks
-  # From wallet #1's last 30 days (2,552 trades): its best buys were coins 10-30 min old (+84 SOL), then
-  # 1-24 h; coins over a day old LOST money. It held winners and losers for hours, never cut fast.
-  min_age_min: 10
-  max_age_h: 24
-  settle_min: 5                        # its "all-time high" only counts prices after the first 5 minutes (launch spikes)
-  entry_mcap_sol: 44
-  max_entry_mult: 1.35                 # skip if it jumped straight past 44 to more than ~59 SOL
-  near_high_pct: 3                     # must be within 3% of (or above) its all-time high
-  min_rise_2m_pct: 5                   # grinding up over the last ~2 min...
-  max_pullback_pct: 12                 # ...without a pullback bigger than this (nobody dumping)
-  scratch_min: 0                       # 0 = off. (Wallet #1's trades closed within 10 min lost money on average;
-  scratch_mult: 1.10                   #  its profit came from holding 10 min - 24 h, so no quick scratch.)
-  stop_pct: 30                         # its losers closed at about -29% (median)
-  breakeven_floor_mult: 1.08           # after 2x the rest never goes back below break-even
-  trail_pct: 30                        # last quarter rides with this trailing stop
-  max_hold_h: 24
-  hot_from_pct: 80                     # coins above 80% of the line are checked every few seconds
-  cold_every_s: 90                     # the rest about every 1.5 minutes...
-  old_after_h: 6
-  old_every_s: 240                     # ...coins older than 6 h every 4 minutes
-  dead_mcap_sol: 29.5
-  dead_every_s: 600                    # coins back at the launch price every 10 minutes (they can still revive)
-  max_candidates: 8000
-
-# ── Hot-word test (PAPER ONLY) ─────────────────────────────────
-# Survivor's rules (all "survivor" settings apply) but only for coins whose name uses a word that
-# produced 2+ graduations in the last 6 hours, and from 15 minutes old.
-hotword:
-  enabled: true
-  min_age_min: 15
-  window_h: 6
-  min_grads: 2
-
 # ── Breakout recorder (research) ──────────────────────────────
 # Records EVERY coin crossing 44 SOL (young and old), holder concentration, a sample of launch
 # bundle/sniper checks, every wallet #1 buy with the wallets that bought just before it, and
@@ -175,36 +128,10 @@ reclaim:
   tp_frac_pct: 33.3
   max_hold_h: 24
 
-# ── Reclaim · big coins (PAPER ONLY) ─────────────────────────────
-# Reclaim (all its settings apply) but only buys coins still worth min_entry_mcap_sol+ when the
-# signal fires (1 Oct: Reclaim buys at 130+ SOL won 50% and made most of the money; under 80 SOL lost).
-reclaim_big:
-  enabled: true
-  min_entry_mcap_sol: 100
-
 # ── Reclaim · break-even (PAPER ONLY) ───────────────────────────
 reclaim_strong:                        # PAPER (4 Oct): Reclaim, but only after a 50%+ bounce off the low
   enabled: true
   bounce_pct: 50
-
-# Fast launch PAPER test (4 Oct) - wallet BB1jeGTH's style: brand-new coins taking off fast, cut fast, add to winners
-fastlaunch:
-  enabled: false                       # 4 Oct: 278 paper trades in one day, 26% wins, -$722 - switched off
-  size_usd: 25
-  min_age_s: 60                        # coin 1-5 min old...
-  max_age_s: 300
-  min_mcap_sol: 50                     # ...already at 50-120 SOL and rising
-  max_mcap_sol: 120
-  stop_pct: 25
-  no_move_s: 240                       # sell if never up 10% and below our price after 4 min
-  add_pct: 20                          # add the same size once when up 20%...
-  add_window_s: 600                    # ...within the first 10 min
-  tp1_mult: 1.5                        # sell 1/3 at 1.5x
-  tp2_mult: 2                          # half of the rest at 2x
-  trail_pct: 30                        # trailing stop once up 1.5x
-  bond_exit_mcap_sol: 375
-  max_hold_min: 60
-  max_open: 50
 
 # Research (4 Oct): save pump.fun's Explore lists (top market cap / last traded / new) every 5 min - free, best effort
 explore:

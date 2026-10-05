@@ -225,7 +225,6 @@ class Engine:
         self.reclaim_strong = None                   # Reclaim, strong bounce only (paper)
         self.rangebreak = None                     # range breakout (paper)
         self.rangehold = None                      # range breakout buys, hold for the bonding level (paper)
-        self.fastlaunch = None                     # fast launch, wallet BB1jeGTH's style (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
@@ -486,8 +485,6 @@ class Engine:
             self.rangebreak.maybe_enter(t, prev_mcap, ts)
         if self.rangehold is not None and t.creator:
             self.rangehold.maybe_enter(t, prev_mcap, ts)
-        if self.fastlaunch is not None and t.creator and prev_mcap:
-            self.fastlaunch.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
         if self.skimmer is not None and t.creator and prev_mcap:
@@ -823,10 +820,7 @@ class Engine:
             snap_done = t.snapped or not (self.snaps is not None and self.snaps.enabled())
             lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, *self.tests, *([self.skimmer] if self.skimmer else [])))
             rc_done = not self._rc_on() or not self.reclaim.wants_watch(t.mint)
-            fl = self.fastlaunch                          # fast-launch test: keep new coins until 5 min old
-            fl_done = (fl is None or not fl.active or not fl.enabled() or t.mint in fl.traded
-                       or age > float(fl.cfg().get("max_age_s", 300)))
-            if (snap_done and lk_done and rc_done and fl_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
+            if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return
         fail, path = self.entry_status(t, ts)

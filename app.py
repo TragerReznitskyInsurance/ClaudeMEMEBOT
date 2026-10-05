@@ -29,12 +29,9 @@ from memebot.live_trader import LiveTrader
 from memebot.snapshots import SnapshotRecorder
 from memebot.names import TokenNames
 from memebot.reclaim import Reclaim, ReclaimStrong
-from memebot.lookalike_grad import LookalikeGrad, LookalikeGrad3, LookalikeGradOld
-from memebot.survivor import Survivor, HotWord
 from memebot.calls import CallBuyer
 from memebot.notify import Notifier
 from memebot.rangebreak import RangeBreak, RangeHold
-from memebot.fastlaunch import FastLaunch
 from memebot.winnotify import NotificationWatcher
 from memebot.breakouts import BreakoutLog
 from memebot.narratives import Narratives
@@ -68,9 +65,6 @@ class Runner:
         self.live = LiveTrader(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.lookalike_grad = LookalikeGrad(os.path.join(HERE, "data"),
-                                            lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
-                                            lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         # a SEPARATE real-money wallet just for the lookalike (graduation exit): own key, balance, positions, history
         cur = lambda: self.engine.cfg if (self.engine and self.running) else self.cfg
         self.live2 = LiveTrader(os.path.join(HERE, "data", "lookalike_wallet"),
@@ -78,27 +72,17 @@ class Runner:
                                                       enabled=bool((cur().get("lookalike_grad") or {}).get("real_enabled"))),
                                          "copy_trade": {}},
                                 lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.lookalike_grad.live = self.live2
-        self.lookalike_fresh = LookalikeGradOld(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG),
-                                                lambda: sol_price.usd)    # paper: old entry rules, for comparison
-        self.tests = [self.lookalike_fresh]              # (the 3-minute test was removed on 30 Sep: it lost)
-        self.survivor = Survivor(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.survivor.live = self.live2                     # still sells the real coins it bought (paper for new buys)
-        self.hotword = HotWord(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.traders = {"copy": self.live, "lookalike": self.live2}
         self.reclaim = Reclaim(os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg,
                                lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.reclaim.live = self.live2                      # Reclaim trades the real (lookalike) wallet since 30 Sep 18:30
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
-        self.hotword.narr = self.narr
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
-        self.survivor.breakouts = self.breakouts
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
         self.reclaim_strong = ReclaimStrong(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangebreak = RangeBreak(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold = RangeHold(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.fastlaunch = FastLaunch(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
         from memebot.explore import ExploreLog
         self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
@@ -109,7 +93,7 @@ class Runner:
         self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold, self.fastlaunch):
+        for strat in (self.reclaim, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -118,8 +102,7 @@ class Runner:
         from memebot.names import is_placeholder
         out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
-        out += [m for m, p in self.lookalike_grad.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold, self.fastlaunch):
+        for tst in (self.reclaim_strong, self.calls, self.rangebreak, self.rangehold):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -129,8 +112,7 @@ class Runner:
         self.live.rename(mint, info["symbol"], info.get("name", ""))
         self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.reclaim.rename(mint, info["symbol"])
-        self.lookalike_grad.rename(mint, info["symbol"])
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold, self.fastlaunch):
+        for tst in (self.reclaim_strong, self.calls, self.rangebreak, self.rangehold):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -166,7 +148,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.lookalike_grad, *self.tests, self.reclaim, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold, self.fastlaunch):
+        for strat in (self.reclaim, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold):
             try:
                 strat._save()
             except Exception:
@@ -241,19 +223,6 @@ class Runner:
                 return None
             self.reclaim.active = True
             self.reclaim.feed_price = feed_price
-            self.lookalike_grad.active = True
-            self.lookalike_grad.feed_price = feed_price
-            eng.lookalike_grad = self.lookalike_grad
-            for tst in self.tests:
-                tst.active = True
-                tst.feed_price = feed_price
-            eng.tests = self.tests
-            self.survivor.active = True
-            self.survivor.feed_price = feed_price
-            eng.survivor = self.survivor
-            self.hotword.active = True
-            self.hotword.feed_price = feed_price
-            eng.hotword = self.hotword
             eng.breakouts = self.breakouts
             self.reclaim_strong.active = True
             self.reclaim_strong.feed_price = feed_price
@@ -265,18 +234,7 @@ class Runner:
             self.rangehold.active = True
             self.rangehold.feed_price = feed_price
             eng.rangehold = self.rangehold
-            self.fastlaunch.active = True
-            self.fastlaunch.feed_price = feed_price
-            eng.fastlaunch = self.fastlaunch
             self.calls.feed_price = feed_price
-            try:                                             # also follow coins it saw in the last 3 days that got bought up
-                seeded = self.survivor.seed([(m, v.get("symbol"), v.get("name"), v["ts"])
-                                             for m, v in list(self.narr.mints.items())
-                                             if "hit44" in (v.get("hits") or {}) and not v.get("excluded")])
-                if seeded:
-                    log.info("SURVIVOR following %d older coins from the last 3 days", seeded)
-            except Exception as e:
-                log.warning("survivor seed failed: %s", e)
             eng.reclaim = self.reclaim
             eng.narr = self.narr
             eng.why = self.why
@@ -294,7 +252,7 @@ class Runner:
                         self.live2.refresh_balance(force=True)):
                 self.tasks.append(asyncio.create_task(job))
             if self.live2.kp and (self.cfg.get("lookalike_grad") or {}).get("real_enabled"):
-                self.live2._event("info", "Real-money lookalike (graduation exit) is ON for this session")
+                self.live2._event("info", "Real-money wallet (Reclaim + calls) is ON for this session")
             if self.live.enabled():
                 self.live._event("info", "Real-money copy trading is ON for this session")
         else:
@@ -309,8 +267,7 @@ class Runner:
         self.live.active = False
         self.live2.active = False
         self.reclaim.active = False
-        self.lookalike_grad.active = False
-        for tst in (*self.tests, self.survivor, self.hotword, self.reclaim_strong, self.calls, self.rangebreak, self.rangehold, self.fastlaunch):
+        for tst in (self.reclaim_strong, self.calls, self.rangebreak, self.rangehold):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -402,62 +359,14 @@ class Runner:
                 last_tick += 1.0
                 eng.on_tick(last_tick)
 
-    def survivor_state(self):
-        sv = self.survivor
-        s = sv.state()
-        hw = self.hotword
-        since = max(sv.since, hw.since)                       # same period for all three
-        s["vs"] = dict(since=since, survivor=sv.stats_since(since), lookalike=self.lookalike_grad.stats_since(since),
-                       hotword=hw.stats_since(since))
-        s["hotword"] = dict(candidates=len(hw.cands), coins=self._age_test_coins(hw),
-                            min_age_min=hw.cfg().get("min_age_min", 15))
-        s["coins"] = self._age_test_coins(sv)
-        return s
-
-    def age_test(self):
-        f = self._fresh_test()
-        return dict(fresh=f) if f else None
-
-    def _fresh_test(self):
-        f = self.lookalike_fresh
-        if not f.enabled():
-            return None
-        c = self.lookalike_grad.cfg()
-        return dict(since=f.since, cap=c.get("max_prior_peak_mult", 0), rise=c.get("min_rise_2m_pct", 0),
-                    buys=c.get("min_buys_2m", 0),
-                    base=self.lookalike_grad.stats_since(f.since), fresh=f.stats_since(f.since),
-                    coins=self._age_test_coins(f))
-
-    @staticmethod
-    def _age_test_coins(g3):
-        """The 3-minute test's coins (newest first): open ones with their current multiple, closed ones with P/L."""
-        usd = sol_price.usd or 0
-        out = []
-        for p in g3.positions.values():
-            if p["opened"] >= g3.since and p.get("verified", True):
-                val = g3._sell_value(p["tokens"], p["last_px"])
-                pnl = val + p["sol_out"] - p["sol_in"]
-                out.append(dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], age_s=p.get("age_at_entry_s"),
-                                entry_mcap=p["entry_mcap"], open=True, mult=round(p["last_px"] / p["entry_px"], 2),
-                                pnl_usd=round(pnl * usd, 2), note=",".join(p["done"]), prior_peak=p.get("prior_peak"),
-                                hot=p.get("hot")))
-        for x in g3.closed:
-            if x["opened"] >= g3.since:
-                out.append(dict(mint=x["mint"], symbol=x["symbol"], opened=x["opened"], age_s=x.get("age_at_entry_s"),
-                                entry_mcap=x["entry_mcap"], open=False, pnl_usd=x["pnl_usd"], pct=x["pnl_pct"],
-                                note=x.get("exit", ""), prior_peak=x.get("prior_peak")))
-        return sorted(out, key=lambda c: -c["opened"])[:40]
-
     def snapshot(self):
         snap = self.engine.snapshot() if self.engine else None
         cw = self.engine.copy_wallets() if self.engine else set()
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
-                "lookalike_grad": self.lookalike_grad.state(),
-                "age_test": self.age_test(),
-                "survivor": self.survivor_state(), "breakouts": self.breakouts.summary(), "reclaim_strong": self.reclaim_strong.state(),
-                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangebreak": self.rangebreak.state(), "fastlaunch": self.fastlaunch.state(), "rangehold": self.rangehold.state(),
+                "breakouts": self.breakouts.summary(), "reclaim_strong": self.reclaim_strong.state(),
+                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangebreak": self.rangebreak.state(), "rangehold": self.rangehold.state(),
                 "narratives": self.narr.state()}
 
 
@@ -512,23 +421,9 @@ def _settings_fix_1002():
         log.warning("settings fix 1002 skipped: %s", e)
 
 
-def _settings_fix_1004():
-    """One-time (4 Oct): Fast launch paper test off (278 trades in a day, -$722)."""
-    mark = os.path.join(HERE, "data", "settings_fix_1004.done")
-    if os.path.exists(mark):
-        return
-    try:
-        S.save_overrides({"fastlaunch.enabled": False}, config_path=CONFIG)
-        with open(mark, "w") as fh:
-            fh.write(str(time.time()))
-    except Exception as e:
-        log.warning("settings fix 1004 skipped: %s", e)
-
-
 _settings_fix_1001()
 _settings_fix_1001b()
 _settings_fix_1002()
-_settings_fix_1004()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
@@ -571,16 +466,11 @@ async def broadcaster(app):
     live_px_task = asyncio.create_task(runner.live.price_loop())
     live2_px_task = asyncio.create_task(runner.live2.price_loop())
     rc_task = asyncio.create_task(runner.reclaim.run(every=3))
-    lg_every = float((runner.cfg.get("lookalike_grad") or {}).get("check_every_s", 3))
-    lg_task = asyncio.create_task(runner.lookalike_grad.run(every=lg_every))
-    test_tasks = [asyncio.create_task(tst.run(every=lg_every)) for tst in runner.tests]
-    test_tasks.append(asyncio.create_task(runner.survivor.run(every=5)))
-    test_tasks.append(asyncio.create_task(runner.hotword.run(every=5)))
+    test_tasks = []
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
     test_tasks.append(asyncio.create_task(runner.reclaim_strong.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangebreak.run(every=10)))
-    test_tasks.append(asyncio.create_task(runner.fastlaunch.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangehold.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
@@ -596,11 +486,9 @@ async def broadcaster(app):
     live2_px_task.cancel()
     await runner.live2.close()
     rc_task.cancel()
-    lg_task.cancel()
     for tt in test_tasks:
         tt.cancel()
-    await runner.lookalike_grad.close()
-    for tst in (*runner.tests, runner.survivor, runner.hotword, runner.reclaim_strong, runner.calls, runner.rangebreak, runner.rangehold, runner.fastlaunch, runner.breakouts):
+    for tst in (runner.reclaim_strong, runner.calls, runner.rangebreak, runner.rangehold, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -939,9 +827,7 @@ def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
     return {"reclaim": (runner.reclaim, "reclaim"), "reclaim_strong": (runner.reclaim_strong, "reclaim_strong"),
             "calls": (runner.calls, "calls"), "rangebreak": (runner.rangebreak, "rangebreak"),
-            "fastlaunch": (runner.fastlaunch, "fastlaunch"), "rangehold": (runner.rangehold, "rangehold"),
-            "survivor": (runner.survivor, "survivor"), "hotword": (runner.hotword, "hotword"),
-            "lookalike_grad": (runner.lookalike_grad, "lookalike_grad")}
+            "rangehold": (runner.rangehold, "rangehold")}
 
 
 async def api_strategy_settings(request):
@@ -994,8 +880,7 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim,
-             "reclaim_strong": runner.reclaim_strong, "calls": runner.calls, "rangebreak": runner.rangebreak, "fastlaunch": runner.fastlaunch, "rangehold": runner.rangehold,
-             "survivor": runner.survivor, "hotword": runner.hotword}.get(body.get("name"))
+             "reclaim_strong": runner.reclaim_strong, "calls": runner.calls, "rangebreak": runner.rangebreak, "rangehold": runner.rangehold}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
     return web.json_response({"since": strat.reset_stats()})
@@ -1051,15 +936,11 @@ async def api_diagnostics(request):
         z.writestr("snapshot.json", json.dumps(runner.snapshot(), default=str, indent=1))
         for name in ("live_trades.csv", "live_state.json", "app.log", "creator_blocklist.txt", "snapshots.jsonl",
                                           "reclaim_state.json", "reclaim_trades.csv", "reclaim_fills.csv", "reclaim_candidates.json",
-                     "narratives.json", "lookalike_grad_state.json", "lookalike_grad_trades.csv",
-                     "lookalike_grad_fills.csv", "coin_decisions.jsonl", "lookalike_grad_old_state.json", "survivor_state.json", "survivor_trades.csv",
-                     "survivor_fills.csv", "hotword_state.json", "hotword_trades.csv", "hotword_fills.csv", "breakouts.jsonl", "explore.jsonl", "reclaim_big_state.json", "reclaim_big_trades.csv",
-                     "reclaim_big_fills.csv", "calls_state.json", "calls_trades.csv", "calls_fills.csv",
+                     "narratives.json", "coin_decisions.jsonl", "breakouts.jsonl", "explore.jsonl",
+                     "calls_state.json", "calls_trades.csv", "calls_fills.csv",
                      "reclaim_strong_state.json", "reclaim_strong_trades.csv", "reclaim_strong_fills.csv",
                      "rangebreak_state.json", "rangebreak_trades.csv", "rangebreak_fills.csv",
-                     "fastlaunch_state.json", "fastlaunch_trades.csv", "fastlaunch_fills.csv",
-                     "rangehold_state.json", "rangehold_trades.csv", "rangehold_fills.csv",
-                     "lookalike_grad_old_trades.csv", "lookalike_grad_old_fills.csv"):
+                     "rangehold_state.json", "rangehold_trades.csv", "rangehold_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

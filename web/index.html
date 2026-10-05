@@ -384,7 +384,6 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
     <section id="lkwallet"></section>
     <section id="calls"></section>
     <section id="lkrules"></section>
-    <section id="agetest"></section>
     <section id="whybox"><div class="card" style="margin-top:14px"><div class="rm-head"><h2>🔎 Why didn't it buy?</h2></div><div class="card-b">
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="whyq" placeholder="Paste a pump.fun link or coin address" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter')whyLookup()">
       <button class="btn primary" onclick="whyLookup()">Check</button>
@@ -400,7 +399,6 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="reclaimstrong"></section>
   <section id="rangebreak"></section>
   <section id="rangehold"></section>
-  <section id="fastlaunch"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
@@ -1070,58 +1068,15 @@ function renderLab() {
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
 let RH = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
-function renderAgeTest() {
-  const el = $("#agetest");
-  if (!el) return;
-  if (!AT) { el.innerHTML = ""; return; }
-  const m = s => (s / 60).toFixed(s % 60 ? 1 : 0) + " min", $$ = v => v == null ? "—" : `<span class="num ${cls(v)}">${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}</span>`;
-  const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}${x.young ? ` <span class="faint">(${x.young} under 5 min)</span>` : ""}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r num">${x.hit3x}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
-  if (!AT.fresh) { el.innerHTML = ""; return; }
-  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="card-b">
-    ${AT.fresh ? (() => { const F = AT.fresh, fh = (Date.now() / 1000 - F.since) / 3600, fd = F.fresh.total_usd - F.base.total_usd;
-      return `<h3 style="margin:0 0 4px;font-size:14px">🧪 Did the up-trend filter help? (paper Lookalike) <button class="btn" style="padding:3px 9px;font-size:12px;margin-left:6px" onclick="stratSettings('lookalike_grad')">⚙ Settings</button></h3>
-      <div class="faint" style="font-size:12.5px;margin-bottom:6px">The paper Lookalike only buys coins that are up ${F.rise}%+ over the last 2 minutes, not falling in the last minute, within ${Math.round((F.cap - 1) * 100)}% of their high${F.buys ? `, and with ${F.buys}+ buys in the last 2 minutes` : ""}. "Old rules" is a paper copy without those filters, over the same period. Running ${fh < 1 ? Math.round(fh * 60) + " min" : fh.toFixed(1) + " h"}.</div>
-      <table class="wtab"><tr class="faint"><td>Rule</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Hit 3×</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
-      ${row("Current filters (paper)", F.base)}${row("Old rules (paper)", F.fresh)}</table>
-      <div style="font-size:13px;margin-top:6px">${F.base.buys + F.fresh.buys < 10 ? `<span class="faint">Too early to tell.</span>` : fd < 0 ? `The up-trend filter is ahead by <b>$${(-fd).toFixed(2)}</b>.` : fd > 0 ? `The old rules would have done <b>$${fd.toFixed(2)}</b> better.` : "Even so far."}</div>`; })() : ""}
-  </div></div>`;
-}
-
-/* ── lookalike paper test ─────────────────── */
-const stratOpen = {rangehold: true, fastlaunch: true, rangebreak: true, calls: true, lookalike: true, reclaim: true, lookalike_grad: true, skimmer: true, reclaim_big: true, reclaim_strong: true};
 function renderLkRules() {
-  const el = $("#lkrules"), L = SV;
-  if (!L) { el.innerHTML = ""; return; }
-  const V = L.vs, $$ = v => v == null ? "—" : `<span class="num ${cls(v)}">${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}</span>`;
-  const row = (lab, x) => `<tr><td><b>${lab}</b></td><td class="r num">${x.buys}</td><td class="r num">${x.closed ? `${x.wins}/${x.closed}` : "—"}</td><td class="r">${$$(x.realized_usd)}</td><td class="r">${$$(x.open_pnl_usd)}</td><td class="r"><b>${$$(x.total_usd)}</b></td></tr>`;
-  const hrs = (Date.now() / 1000 - V.since) / 3600;
-  const R = RC || {};
-  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Reclaim (second wave)</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('reclaim')">⚙ Reclaim settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    <b>Buys</b> ${R.real_enabled ? `<b>$${R.real_size_usd}</b>` : "(real trading is OFF)"} of coins that already made a first run (80+ SOL), <b>pulled back 40%+</b>, then <b>bounce 25%+ with 15+ trades in 2 minutes</b> while still at most 80% of the old high (30+ min old). It buys the second wave, after the launch crowd has dumped.
-    <b>Sells:</b> stop −25% · <b>once it's been up 20%, the stop moves to our buy price</b> · from 1.5× a trailing stop 35% below the high · <b>⅓ at ${R.tp_mult ?? 3}×</b> · 24h limit.
-    <div class="faint" style="margin-top:6px">Paper record since Sep 30: see 🔁 Reclaim on the Dashboard. Limits: max ${R.real_max_open ?? "—"} open · stops buying after −$${R.real_daily_loss_usd ?? "—"} in a day · ⏸ pauses new buys. Coins bought under Survivor / the old lookalike rules are still sold by their own plan.</div>
-  </div></div>
-  <div class="card" style="margin-top:14px"><div class="rm-head"><h2>Paper: Survivor breakout (wallet #1 style)</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('survivor')">⚙ Survivor settings</button><button class="btn" onclick="stratSettings('hotword')">⚙ Hot-word test</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    <b>Buys</b> (paper) of coins <b>${L.min_age_min} min to ${L.max_age_h} h old</b> that break to a <b>new high through 44 SOL</b> (ignoring launch-minute spikes), grinding up (+5% over ~2 min) with no big pullback (nobody dumping). Never Mayhem-mode coins; only coins that passed the safety checks.
-    <b>Sells:</b> stop −30% · <b>¼ at 2×</b> (then the rest never goes below break-even) · <b>¼ at 3×</b> · <b>¼ at 5×</b> · last ¼ rides with a 30% trailing stop · 24h limit.
-    <div class="faint" style="margin-top:6px">Following ${L.candidates} coins right now (${L.hot} near 44 SOL). Limits: max ${L.real_max_open} open · stops buying after −$${L.real_daily_loss_usd} in a day · ⏸ pauses new buys. Coins bought under the old lookalike rules are still sold by their old plan.</div>
-    <h3 style="margin:14px 0 4px;font-size:14px">Survivor vs the old lookalike rules (both tracked on paper, same period)</h3>
-    <table class="wtab"><tr class="faint"><td>Strategy</td><td class="r">Buys</td><td class="r">Wins</td><td class="r">Realized</td><td class="r">Open</td><td class="r">Total</td></tr>
-      ${row("Survivor (real wallet's strategy)", V.survivor)}${V.hotword ? row(`Hot words only, ${L.hotword ? L.hotword.min_age_min : 15}+ min old (paper test)`, V.hotword) : ""}${row("Lookalike, current filters", V.lookalike)}</table>
-    <div class="faint" style="font-size:12px;margin-top:4px">Running ${hrs < 1 ? Math.round(hrs * 60) + " min" : hrs.toFixed(1) + " h"}. Paper at $${V.survivor.size_usd} vs $${V.lookalike.size_usd} per coin.${L.hotword ? ` Hot-word test is following ${L.hotword.candidates} coins.` : ""}</div>
-    ${L.hotword && L.hotword.coins.length ? `<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Hot-word test coins</th><th>Hot word</th><th class="r">Age at buy</th><th class="r">Result</th><th>Status</th></tr></thead><tbody>
-      ${L.hotword.coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td><td>${esc((c.hot || []).join(", "))}</td>
-        <td class="r num">${c.age_s != null ? Math.round(c.age_s / 60) + " min" : "—"}</td>
-        <td class="r">${$$(c.pnl_usd)}${c.open ? ` <span class="faint">(${c.mult.toFixed(2)}x)</span>` : c.pct != null ? ` <span class="faint">(${c.pct > 0 ? "+" : ""}${c.pct}%)</span>` : ""}</td>
-        <td>${c.open ? `<span class="badge up">open</span>` : `<span class="faint">closed · ${esc(c.note)}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
-    ${(L.coins || []).length ? `<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Survivor coins</th><th class="r">Age at buy</th><th class="r">Entry</th><th class="r">Result</th><th>Status</th></tr></thead><tbody>
-      ${L.coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
-        <td class="r num">${c.age_s != null ? (c.age_s / 3600 >= 1 ? (c.age_s / 3600).toFixed(1) + " h" : Math.round(c.age_s / 60) + " min") : "—"}</td><td class="r num">${c.entry_mcap.toFixed(0)} SOL</td>
-        <td class="r">${$$(c.pnl_usd)}${c.open ? ` <span class="faint">(${c.mult.toFixed(2)}x)</span>` : c.pct != null ? ` <span class="faint">(${c.pct > 0 ? "+" : ""}${c.pct}%)</span>` : ""}</td>
-        <td>${c.open ? `<span class="badge up">open</span>` : `<span class="faint">closed · ${esc(c.note)}</span>`}</td></tr>`).join("")}</tbody></table></div>` : `<div class="faint" style="margin-top:6px">No Survivor buys yet. They're rarer than the old rules: an old coin has to break to a new high.</div>`}
+  const el = $("#lkrules"), R = RC;
+  if (!R) { el.innerHTML = ""; return; }
+  const hrs = (R.real_hours_start != null && R.real_hours_end != null) ? `${R.real_hours_start}:00-${R.real_hours_end}:00` : "";
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Reclaim</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('reclaim')">⚙ Reclaim settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
+    <b>Real money:</b> ${R.real_enabled ? `<b>$${R.real_size_usd}</b> per coin` : "OFF"}${hrs ? ` · real buys only ${hrs}` : ""} · limits: max ${R.real_max_open ?? "—"} open, stops after −$${R.real_daily_loss_usd ?? "—"} in a day · ⏸ pauses new buys.
+    <div class="faint" style="margin-top:6px">${esc(R.desc || "")}</div>
   </div></div>`;
 }
-function renderLookalike() { renderStrat($("#lookalike"), LK, "🧪 Lookalike test"); }
 function renderCalls() {
   const el = $("#calls"), L = CL;
   if (!L) { el.innerHTML = ""; return; }
@@ -1189,7 +1144,7 @@ async function callBuy() {
     if (!j.error) $("#callq").value = "";
   } catch (e) { $("#callout").textContent = "Failed: " + e; }
 }
-function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimstrong"), RST, "💪 Reclaim · strong bounce test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#fastlaunch"), FL, "⚡ Fast launch test"); }
+function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#reclaimstrong"), RST, "💪 Reclaim · strong bounce test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";
@@ -1311,7 +1266,6 @@ function renderLive() {
   pill.style.cssText = realOn ? "background:var(--down-soft);color:var(--down)" : "";
   renderLiveFor(LIVE, $("#realmoney"), "copy");
   renderLiveFor(LIVE2, $("#lkwallet"), "lookalike");
-  renderAgeTest();
 }
 function entryMcapCell(e, n, px) {
   if (e == null) return `<span class="faint">—</span>`;
