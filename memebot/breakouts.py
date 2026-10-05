@@ -41,6 +41,15 @@ CHECKS_MIN = (30, 120, 360)
 MAX_BYTES = 40_000_000
 
 
+SYSTEM_PROGRAM = "11111111111111111111111111111111"
+# Token lock / vesting programs (a top holder owned by one of these = supply locked, not a wallet).
+LOCK_PROGRAMS = {
+    "strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m": "Streamflow",
+    "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn": "Jupiter Lock",
+    "CChTq6PthWU82YZkbveA3WDf7s97BWhBK4Vx9bmsT743": "Bonfida vesting",
+}
+
+
 class BreakoutLog:
     def __init__(self, path, key_getter, cfg_getter):
         self.path = path
@@ -166,14 +175,36 @@ class BreakoutLog:
         rec = dict(type="holders", id=cid, mint=mint, n_top=len(amts),
                    top1_pct=round(amts[0] / SUPPLY * 100, 2) if amts else 0.0,
                    top10_pct=round(sum(amts[:10]) / SUPPLY * 100, 2), top20_pct=round(sum(amts[:20]) / SUPPLY * 100, 2))
-        if creator and vals:
+        if vals:
             accs = await self._rpc("getMultipleAccounts", [[v["address"] for v in vals[:20]], {"encoding": "jsonParsed"}])
+            owners = []
             for v, a, amt in zip(vals, (accs or {}).get("value") or [], amts):
                 owner = (((a or {}).get("data") or {}).get("parsed") or {}).get("info", {}).get("owner")
-                if owner == creator:
+                owners.append((owner, amt))
+                if creator and owner == creator and "creator_pct" not in rec:
                     rec["creator_pct"] = round(amt / SUPPLY * 100, 2)
-                    break
-            rec.setdefault("creator_pct", 0.0)                 # not among the top 20
+            if creator:
+                rec.setdefault("creator_pct", 0.0)             # not among the top 20
+            # 4 Oct: is any top holder a lock contract (dev-locked supply) rather than a normal wallet? A normal wallet
+            # is owned by the System program; a lock/vesting escrow is owned by the lock program.
+            uniq = list(dict.fromkeys(o for o, _ in owners if o))
+            if uniq:
+                info = await self._rpc("getMultipleAccounts", [uniq, {"encoding": "base64", "dataSlice": {"offset": 0, "length": 0}}])
+                prog = {o: (x or {}).get("owner") for o, x in zip(uniq, (info or {}).get("value") or [])}
+                locks, other = {}, {}
+                for o, amt in owners:
+                    pg = prog.get(o)
+                    if not pg or pg == SYSTEM_PROGRAM:
+                        continue
+                    name = LOCK_PROGRAMS.get(pg)
+                    tgt = locks if name else other
+                    key = name or pg
+                    tgt[key] = tgt.get(key, 0.0) + amt / SUPPLY * 100
+                rec["locked_pct"] = round(sum(locks.values()), 2)
+                if locks:
+                    rec["locks"] = {k: round(v, 2) for k, v in locks.items()}
+                if other:                                       # held by some other program (unknown locker, pool...)
+                    rec["program_held"] = {k: round(v, 2) for k, v in sorted(other.items(), key=lambda kv: -kv[1])[:5]}
         self._write(rec)
         self.stats["holders"] += 1
 
