@@ -224,6 +224,7 @@ class Engine:
         self.reclaim_big = None                  # Reclaim, big coins only (paper)
         self.reclaim_strong = None                   # Reclaim, strong bounce only (paper)
         self.rangebreak = None                     # range breakout (paper)
+        self.rangehold = None                      # range breakout buys, hold for the bonding level (paper)
         self.fastlaunch = None                     # fast launch, wallet BB1jeGTH's style (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
@@ -483,6 +484,8 @@ class Engine:
             self.reclaim_strong.maybe_enter(t, prev_mcap, ts)
         if self.rangebreak is not None and t.creator:
             self.rangebreak.maybe_enter(t, prev_mcap, ts)
+        if self.rangehold is not None and t.creator:
+            self.rangehold.maybe_enter(t, prev_mcap, ts)
         if self.fastlaunch is not None and t.creator and prev_mcap:
             self.fastlaunch.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:

@@ -177,3 +177,53 @@ class RangeBreak(Reclaim):
                        f"≤{c.get('max_range_pct', 35):g}% wide, then break {c.get('break_pct', 5):g}%+ above it with "
                        f"{c.get('min_trades_2m', 20)}+ trades/2 min · ${c.get('size_usd', 25)} each · no real money"))
         return s
+
+
+class RangeHold(RangeBreak):
+    """PAPER test (5 Oct): Range breakout's buys, but HOLD for the bonding level instead of selling on a failed
+    breakout. Analysis of 120 on-curve Range breakout trades: 29% reached 375 SOL / migrated within 6 h (median 1.4 h
+    after our buy) vs 7.7% of all coins - but 171 of 261 trades had been sold early by the "back inside the range" exit.
+    Buys only coins still on the bonding curve and under `max_entry_mcap_sol`.
+    Sells: everything at `bond_exit_mcap_sol` (375 SOL) or if it migrates; stop -`stop_pct` (50%); after `max_hold_h` (6h).
+    Uses the `rangebreak` settings for buys plus the `rangehold` section; never real money."""
+    NAME = "rangehold"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    async def prices(self, mints):
+        px = await super().prices(mints)
+        self._src = {m: v[1] for m, v in px.items()}
+        return px
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        if cd.get("src") == "jupiter" or px * SUPPLY >= float(c.get("max_entry_mcap_sol", 250)):
+            self.traded.add(cd["mint"])                    # already graduated / too close to the bonding level
+            return
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        p["last_px"], p["last_px_ts"] = px, ts
+        mult = px / p["entry_px"]
+        p["peak_mult"] = max(p["peak_mult"], mult)
+        mc = px * SUPPLY
+        if mc >= float(c.get("bond_exit_mcap_sol", 375)) or getattr(self, "_src", {}).get(p["mint"]) == "jupiter":
+            return self._sell(p, 1.0, f"bonding level ({mc:.0f} SOL) - sold everything", px, ts)
+        if mult <= 1 - float(c.get("stop_pct", 50)) / 100:
+            return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 50):g}%", px, ts)
+        if ts - p["opened"] > float(c.get("max_hold_h", 6)) * 3600:
+            return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 6):g}h", px, ts)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s.update(name=self.NAME, desc=(f"Range breakout buys (on the curve, under {c.get('max_entry_mcap_sol', 250):g} SOL), "
+                                       f"but HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
+                                       f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money"))
+        return s

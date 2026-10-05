@@ -212,6 +212,14 @@ explore:
   every_s: 300
   limit: 50
 
+# PAPER (5 Oct): Range breakout's buys, but hold for the bonding level (uses the rangebreak buy settings)
+rangehold:
+  enabled: true
+  max_entry_mcap_sol: 250              # only coins still on the curve, well under the bonding level
+  bond_exit_mcap_sol: 375              # sell everything here, or if it migrates
+  stop_pct: 50                         # wide stop: these coins chop around inside their range
+  max_hold_h: 6
+
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:
   enabled: true
