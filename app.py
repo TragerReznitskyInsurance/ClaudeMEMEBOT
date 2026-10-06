@@ -431,9 +431,31 @@ def _settings_fix_1002():
         log.warning("settings fix 1002 skipped: %s", e)
 
 
+def _settings_fix_1006():
+    """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
+    mark = os.path.join(HERE, "data", "settings_fix_1006.done")
+    if os.path.exists(mark):
+        return
+    try:
+        new = "BB1jeGTHnvU3DLiAQkuucBsRWqEx4R4oPLXV52RX9QSh"
+        cur = (S.load_overrides(CONFIG).get("values") or {}).get("copy_trade.wallet")
+        if cur is None:
+            cur = str((S.load_config(CONFIG).get("copy_trade") or {}).get("wallet", ""))
+        ws = [w.strip() for w in str(cur).split(",") if w.strip()]
+        if new not in ws:
+            ws.append(new)
+        S.save_overrides({"copy_trade.wallet": ",".join(ws), "copy_trade.enabled": True}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: paper copy trading now also follows BB1jeG... (one-time update)")
+    except Exception as e:
+        log.warning("settings fix 1006 skipped: %s", e)
+
+
 _settings_fix_1001()
 _settings_fix_1001b()
 _settings_fix_1002()
+_settings_fix_1006()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
