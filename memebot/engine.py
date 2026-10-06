@@ -125,6 +125,7 @@ class Order:
     frac_of_initial: float | None = None   # sell: fraction of initial tokens; None = sell everything
     frac_of_left: float | None = None      # sell: fraction of tokens still held (copy mode)
     defer_sell: float = 0.0                # copy: share the wallet sold while our buy was still filling
+    waited_s: float = 0.0                  # copy: how long we've waited for a first price for this coin
 
 
 @dataclass
@@ -963,8 +964,12 @@ class Engine:
         for mint, o in list(self.pending_buys.items()):
             if ts < o.due_ts:
                 continue
-            del self.pending_buys[mint]
             t = self.tokens[mint]
+            if not t.price and not t.dev_sold and o.reason.startswith("copy") and o.waited_s < 20:
+                o.waited_s += 1.0                         # coin we weren't watching: its price arrives with the next
+                o.due_ts = ts + 1.0                       # on-chain poll (every ~3 s) - wait for it instead of giving up
+                continue
+            del self.pending_buys[mint]
             if t.dev_sold or not t.price:
                 self._reject(t, "aborted before fill (dev sold / no price)", ts)
                 continue
