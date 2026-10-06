@@ -229,3 +229,33 @@ class RangeHold(RangeBreak):
                                        f"but HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
                                        f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money"))
         return s
+
+
+class RangeHoldSmall(RangeHold):
+    """PAPER test (6 Oct): same as hold-to-bonding, but only buys coins under `max_entry_mcap_usd` ($12K, ~100 SOL),
+    so the bonding level (375 SOL) is ~4x+ away. Uses rangebreak + rangehold settings plus the `rangehold_small`
+    section; never real money."""
+    NAME = "rangehold_small"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        usd = self._usd()
+        if usd and px * SUPPLY * usd >= float(c.get("max_entry_mcap_usd", 12000)):
+            return                                          # too big right now - may still dip back under later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K mcap, "
+                     f"HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
+                     f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money")
+        return s

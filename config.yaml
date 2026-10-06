@@ -177,6 +177,11 @@ rangehold:
   stop_pct: 50                         # wide stop: these coins chop around inside their range
   max_hold_h: 6
 
+# PAPER (6 Oct): same as rangehold, but only coins under $12K market cap (bonding level ~4x+ away)
+rangehold_small:
+  enabled: true
+  max_entry_mcap_usd: 12000
+
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:
   enabled: true
