@@ -225,6 +225,7 @@ calls:
   channel: ""                          # ONLY buy from this channel: text in the pop-up's title, e.g. "calls" or "alpha-calls"
                                        # (empty = read pop-ups but buy nothing). Set it on the dashboard.
   telegram_channel: ""                 # same for Telegram Desktop pop-ups: the group/channel name in the pop-up title
+  telegram_real_money: false           # false = Telegram calls are tracked on PAPER only (Discord calls follow real_money)
   buy_usd: 10
   max_buys_per_day: 10
   max_open: 10                         # real positions open at once

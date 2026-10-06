@@ -131,7 +131,10 @@ class CallBuyer(Lookalike):
                  size_usd=round(size_usd, 2), source=tag, graduated=src == "jupiter")
         self.positions[mint] = p
         real_note = "paper only"
-        if c.get("real_money") and self.live is not None:
+        tg_paper = source.lower().startswith("telegram") and not c.get("telegram_real_money", False)
+        if tg_paper:
+            real_note = "paper only - Telegram calls are paper-tracked (real money off for Telegram)"
+        elif c.get("real_money") and self.live is not None:
             if self._real_today() >= int(c.get("max_buys_per_day", 10)):
                 real_note = f"no real buy - {c.get('max_buys_per_day', 10)} real buys already today"
             else:
@@ -243,9 +246,35 @@ class CallBuyer(Lookalike):
                 if p["mint"] not in self.positions:
                     return
 
+    def by_source(self):
+        """Per call source (Discord channel / Telegram group): how its calls have done since the call, paper."""
+        out = {}
+        for q in [*self.positions.values(), *self.closed]:
+            src = str(q.get("source") or "unknown")
+            key = src.split(" · ", 1)[0] if src.startswith("pasted") else src[:60]
+            o = out.setdefault(key, dict(calls=0, open=0, hit2=0, hit5=0, hit10=0, now=[], pnl_usd=0.0))
+            o["calls"] += 1
+            pk = float(q.get("peak_mult") or 1.0)
+            o["hit2"] += pk >= 2
+            o["hit5"] += pk >= 5
+            o["hit10"] += pk >= 10
+            if q["mint"] in self.positions:
+                o["open"] += 1
+                if q.get("entry_px") and q.get("last_px"):
+                    o["now"].append(q["last_px"] / q["entry_px"])
+            else:
+                o["pnl_usd"] += float(q.get("pnl_usd") or 0)
+        for o in out.values():
+            n = o.pop("now")
+            o["avg_now_mult"] = round(sum(n) / len(n), 2) if n else None
+            o["pnl_usd"] = round(o["pnl_usd"], 2)
+        return out
+
     def state(self):
         s = super().state()
         c = self.cfg()
+        s["by_source"] = self.by_source()
+        s["telegram_real_money"] = bool(c.get("telegram_real_money", False))
         s.update(name=self.NAME, buy_usd=c.get("buy_usd", 10), real_money=bool(c.get("real_money")),
                  real_enabled=bool(c.get("real_money")), real_size_usd=c.get("buy_usd", 10),
                  real_max_open=c.get("max_open", 10), real_daily_loss_usd=c.get("daily_loss_usd", 50),

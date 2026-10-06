@@ -828,6 +828,7 @@ STRAT_LABELS = {
     "zone_sell_pct": "Sell in the zone (% of what's left)", "moon_trail_pct": "Moonbag trailing stop (%)",
     "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "min_of_peak_pct": "...and back to at least (% of old peak)", "settle_min": "Ignore launch spikes for (min)",
 }
+STRAT_LABELS["telegram_real_money"] = "Telegram calls with real money (off = paper only)"
 STRAT_LABELS["max_entry_mcap_usd"] = "Only buy coins under this market cap ($)"
 STRAT_LABELS["be_after_pct"] = "Stop moves to our buy price once up (%)"
 STRAT_LABELS["be_floor_mult"] = "...the new stop (x of our buy price)"
