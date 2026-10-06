@@ -259,3 +259,27 @@ class RangeHoldSmall(RangeHold):
                      f"HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
                      f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldV2(RangeHold):
+    """PAPER test (6 Oct): hold-to-bonding, but only coins aged `min_age_min`-`max_age_h` at the breakout.
+    First 39 hold-to-bonding trades: coins 85-190 min old -> 7 of 21 bonded (+39%/trade); younger or older ->
+    1 of 18 bonded (-$176). Uses rangebreak + rangehold settings plus the `rangehold_v2` section; never real money."""
+    NAME = "rangehold_v2"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys of coins {c.get('min_age_min', 80):g} min-{c.get('max_age_h', 3.2):g} h old "
+                     f"(on the curve, under {c.get('max_entry_mcap_sol', 250):g} SOL), HOLD: sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        return s

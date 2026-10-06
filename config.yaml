@@ -182,6 +182,13 @@ rangehold_small:
   enabled: true
   max_entry_mcap_usd: 12000
 
+# PAPER (6 Oct): same as rangehold, but only coins 80 min - 3.2 h old at the breakout (first 39 trades: 85-190 min
+# old -> 7 of 21 bonded; younger/older -> 1 of 18)
+rangehold_v2:
+  enabled: true
+  min_age_min: 80
+  max_age_h: 3.2
+
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:
   enabled: true
