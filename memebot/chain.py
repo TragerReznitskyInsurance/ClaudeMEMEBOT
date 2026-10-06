@@ -15,6 +15,7 @@ from the chain (Helius RPC, same free key as Wallet Lab).
 Cheap: ~1 credit per call on Helius's free plan. Read-only.
 """
 import asyncio
+import re
 import base64
 import logging
 import struct
@@ -73,7 +74,11 @@ def trade_from_tx(tx: dict, wallet: str, sig: str):
     if not tx or (tx.get("meta") or {}).get("err"):
         return None
     meta = tx["meta"]
-    keys = [k["pubkey"] if isinstance(k, dict) else k for k in tx["transaction"]["message"]["accountKeys"]]
+    msg = (tx.get("transaction") or {}).get("message") or {}
+    keys = [k["pubkey"] if isinstance(k, dict) else k for k in msg.get("accountKeys") or msg.get("staticAccountKeys") or []]
+    la = meta.get("loadedAddresses") or {}
+    if la and len(keys) < len(meta.get("preBalances") or []):
+        keys += list(la.get("writable") or []) + list(la.get("readonly") or [])
     sol = 0.0
     if wallet in keys:
         i = keys.index(wallet)
@@ -130,10 +135,26 @@ class ChainBackup:
                 raise RuntimeError(str(j["error"])[:120])
             return j.get("result")
 
+    async def _get_tx(self, sig):
+        """getTransaction that also accepts newer transaction versions: some wallets (trading bots/terminals) send
+        version-1 transactions, which the RPC refuses unless we say we can read them (6 Oct: every BB1jeG trade
+        failed with 'Transaction version (1) is not supported')."""
+        ver = getattr(self, "tx_version", 0)
+        for _ in range(3):
+            try:
+                return await self._rpc("getTransaction", [sig, {"encoding": "jsonParsed", "commitment": "confirmed",
+                                                                 "maxSupportedTransactionVersion": ver}])
+            except RuntimeError as e:
+                m = re.search(r"[Tt]ransaction version \((\d+)\) is not supported", str(e))
+                if not m or int(m.group(1)) <= ver:
+                    raise
+                ver = self.tx_version = int(m.group(1))
+                log.info("wallet feed: reading version-%d transactions from now on", ver)
+        return None
+
     async def fetch_trade(self, sig, wallet, want_time=False):
         for wait in (0.3, 0.6, 1.0, 1.5, 2.5, 4.0):  # a just-landed tx can take a moment to be queryable
-            tx = await self._rpc("getTransaction", [sig, {"encoding": "jsonParsed", "commitment": "confirmed",
-                                                          "maxSupportedTransactionVersion": 0}])
+            tx = await self._get_tx(sig)
             if tx:
                 ev = trade_from_tx(tx, wallet, sig)
                 return (ev, tx.get("blockTime")) if want_time else ev
