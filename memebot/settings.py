@@ -15,6 +15,7 @@ SCHEMA = [
     {"group": "Security gate · checked before a token is watched", "items": [
         {"path": "security.max_dev_buy_pct", "label": "Max dev share of supply", "unit": "%", "type": "float"},
         {"path": "security.max_launches_per_creator_24h", "label": "Max launches per creator / 24h", "type": "int"},
+        {"path": "security.max_launches_per_creator_7d", "label": "Max launches per creator / 7 days (0 = off)", "type": "int"},
         {"path": "security.block_repeat_dumpers", "label": "Block creators who dumped before", "type": "bool"},
         {"path": "security.rugcheck", "label": "RugCheck screening", "type": "bool"},
         {"path": "security.rugcheck_on_error", "label": "If RugCheck is unreachable", "type": "choice",

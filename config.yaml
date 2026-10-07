@@ -268,6 +268,8 @@ max_concurrent_watch: 120              # tokens being watched at once (not yet b
 security:
   max_dev_buy_pct: 5                   # dev's launch buy as % of total supply (1 SOL ≈ 3.5%)
   max_launches_per_creator_24h: 2      # creator launched more than this in 24h -> serial launcher, skip
+  max_launches_per_creator_7d: 3       # ...or more than this in 7 days (0 = off). Launch history is saved, so restarts
+                                       #   don't reset it (data/creator_launches.log)
                                        #   (counts launches seen since the bot started)
   block_repeat_dumpers: true           # creators the bot has seen dump a token are blocked for good
   name_blacklist: ["test", "rug", "scam", "honeypot"]

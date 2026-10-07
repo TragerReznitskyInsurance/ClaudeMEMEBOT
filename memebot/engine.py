@@ -191,6 +191,9 @@ class NullFeed:
 
 
 # ─────────────────────────────────────────────────────────────── engine
+LAUNCH_WINDOW_S = 7 * 86400                # creator launch history kept / counted (serial-launcher check)
+
+
 class Engine:
     def __init__(self, cfg: dict, feed=None, journal: Journal | None = None,
                  screener=None, blocklist_path: str | None = None):
@@ -203,6 +206,10 @@ class Engine:
             with open(blocklist_path, encoding="utf-8", errors="replace") as fh:
                 self.bad_creators = {ln.strip() for ln in fh if ln.strip()}
         self.creator_launches = defaultdict(deque)
+        # every launch we've seen, kept on disk so restarts (updates) don't reset the serial-launcher count
+        self.launch_log_path = os.path.join(os.path.dirname(blocklist_path), "creator_launches.log") if blocklist_path else None
+        self._launch_fh = None
+        self._load_launches()
         self.security_passed = 0
         self.security_failed = 0
         self._seen_sigs: deque = deque()
@@ -320,6 +327,48 @@ class Engine:
         if d != self.day:
             self.day, self.day_pnl, self.day_trade_msgs = d, 0.0, 0
 
+    # ---------------------------------------------------------- creator launch history (survives restarts)
+    def _load_launches(self):
+        """Read the saved launch history (last 7 days) and rewrite the file without older lines."""
+        p = self.launch_log_path
+        if not p or not os.path.exists(p):
+            return
+        cut = time.time() - LAUNCH_WINDOW_S
+        rows = []
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                for ln in fh:
+                    parts = ln.split()
+                    if len(parts) == 2:
+                        try:
+                            ts = float(parts[0])
+                        except ValueError:
+                            continue
+                        if ts >= cut:
+                            rows.append((ts, parts[1]))
+            rows.sort()
+            for ts, c in rows:
+                self.creator_launches[c].append(ts)
+            tmp = p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.writelines(f"{int(ts)} {c}\n" for ts, c in rows)
+            os.replace(tmp, p)
+            log.info("creator launch history: %d launches by %d creators in the last 7 days", len(rows),
+                     len(self.creator_launches))
+        except OSError as e:
+            log.warning("couldn't read the creator launch history: %s", e)
+
+    def _log_launch(self, creator, ts):
+        if not self.launch_log_path:
+            return
+        try:
+            if self._launch_fh is None:
+                os.makedirs(os.path.dirname(self.launch_log_path) or ".", exist_ok=True)
+                self._launch_fh = open(self.launch_log_path, "a", encoding="utf-8", buffering=1)
+            self._launch_fh.write(f"{int(ts)} {creator}\n")
+        except OSError:
+            self._launch_fh = None
+
     # ---------------------------------------------------------- security gate
     def _security_local(self, t: TokenState, ts: float) -> str | None:
         """Instant checks that need no network. Returns a failure reason or None."""
@@ -333,11 +382,16 @@ class Engine:
             if sec.get("block_repeat_dumpers", True) and t.creator in self.bad_creators:
                 return "creator dumped a previous token"
             q = self.creator_launches[t.creator]
-            while q and ts - q[0] > 86400:
+            while q and ts - q[0] > LAUNCH_WINDOW_S:
                 q.popleft()
-            prior = len(q)
+            prior_7d = len(q)
+            prior_24h = sum(1 for x in q if ts - x <= 86400)
             q.append(ts)
-            if prior >= sec["max_launches_per_creator_24h"]:
+            self._log_launch(t.creator, ts)
+            if prior_24h >= sec["max_launches_per_creator_24h"]:
+                return "serial launcher"
+            lim7 = int(sec.get("max_launches_per_creator_7d", 3) or 0)
+            if lim7 and prior_7d >= lim7:
                 return "serial launcher"
         return None
 
