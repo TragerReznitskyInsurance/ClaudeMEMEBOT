@@ -307,7 +307,7 @@ class Engine:
             t = self.tokens.get(mint)
             if t and t.status == "watching":
                 self._evaluate_entry(t, ts)
-            if t and t.sec_state == "pending" and ts - t.screen_started > sec.get("rugcheck_timeout_s", 6) + 90:
+            if t and t.sec_state == "pending" and ts - t.screen_started > sec.get("rugcheck_timeout_s", 6) + 300:
                 # screener never answered - apply the configured error policy
                 self.on_screen_result(mint, sec.get("rugcheck_on_error", "skip") == "allow",
                                       "rugcheck unavailable", ts)

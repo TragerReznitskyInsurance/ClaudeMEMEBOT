@@ -33,7 +33,7 @@ def judge(summary: dict, sec: dict) -> tuple[bool, str]:
 
 
 class RugCheckScreener:
-    def __init__(self, engine_getter, sec_getter, concurrency=4, max_queue=40):
+    def __init__(self, engine_getter, sec_getter, concurrency=4, max_queue=150):
         self._engine = engine_getter        # callables so settings changes apply live
         self._sec = sec_getter
         self.sem = asyncio.Semaphore(concurrency)
@@ -56,10 +56,10 @@ class RugCheckScreener:
         allow = self._sec().get("rugcheck_on_error", "skip") == "allow"
         self._engine().on_screen_result(mint, allow, "rugcheck unavailable" if allow else f"rugcheck unavailable ({why})")
 
-    # RugCheck answers HTTP 400/404 until it has indexed a brand-new mint, which
-    # takes a few seconds after launch. Retry on this schedule (seconds after the
-    # first try) - all well inside the 30s before the bot is allowed to buy.
-    RETRY_DELAYS = [3, 4, 5, 6, 7]
+    # RugCheck answers HTTP 400/404 until it has indexed a brand-new mint. That used to take a few seconds; since
+    # early Oct it often takes longer (8 Oct: 221 of 691 checks gave up after ~27 s). Keep retrying for ~3.5 min -
+    # our strategies buy coins 30+ min old, so waiting costs nothing; the coin just can't be bought until it passes.
+    RETRY_DELAYS = [3, 4, 5, 6, 7, 10, 15, 20, 30, 45, 60]
 
     async def _check(self, mint):
         why = "no response"
