@@ -101,13 +101,15 @@ class Reclaim(Lookalike):
             if m in self.positions or m in self.traded:
                 continue
             mc, peak, low = cd.get("last_mc") or 0, cd.get("peak") or 0, cd.get("low")
+            if not mc or mc >= 411:
+                continue                                   # graduated / bad price: not a curve coin any more
             age = (now - cd["created"]) / 60
             if not cd.get("pulled"):
-                why, rank = f"ran to {peak:.0f} SOL · waiting for a {pb:g}% pullback (below {peak * (1 - pb / 100):.0f})", 2
+                why, rank = f"Ran to {peak:.0f} SOL · waiting for a {pb:g}% pullback (below {peak * (1 - pb / 100):.0f} SOL)", 3
             elif age < float(c.get("min_age_min", 30)):
-                why, rank = f"pulled back · too young (buys from {c.get('min_age_min', 30):g} min)", 1
+                why, rank = f"Pulled back to {low or mc:.0f} SOL, but too young (buys from {c.get('min_age_min', 30):g} min)", 1
             else:
-                why, rank = f"pulled back to {low or mc:.0f} · buys on a {bounce:g}% bounce (above {(low or mc) * (1 + bounce / 100):.0f})", 0
+                why, rank = f"Pulled back to {low or mc:.0f} SOL · buys on a {bounce:g}% bounce (above {(low or mc) * (1 + bounce / 100):.0f} SOL)", 0
             out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
                             peak=round(peak, 1), why=why, rank=rank))
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
