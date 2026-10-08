@@ -230,11 +230,11 @@ class Engine:
         self.lookalike = None                      # Lookalike paper strategy, live mode only
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.reclaim_big = None                  # Reclaim, big coins only (paper)
-        self.reclaim_strong = None                   # Reclaim, strong bounce only (paper)
         self.rangebreak = None                     # range breakout (paper)
         self.rangehold = None                      # range breakout buys, hold for the bonding level (paper)
         self.rangehold_small = None                # same, only coins under $12K (paper)
         self.rangehold_v2 = None                   # same, only coins 80 min - 3.2 h old (paper)
+        self.rangehold_mix = None                  # v2 age window + under $12K (paper)
         self.confirmed = None                      # confirmed breakout V1 (owner's spec, paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
@@ -537,8 +537,6 @@ class Engine:
             self.reclaim.maybe_enter(t, prev_mcap, ts)
         if self.reclaim_big is not None and t.creator:
             self.reclaim_big.maybe_enter(t, prev_mcap, ts)
-        if self.reclaim_strong is not None and t.creator:
-            self.reclaim_strong.maybe_enter(t, prev_mcap, ts)
         if self.rangebreak is not None and t.creator:
             self.rangebreak.maybe_enter(t, prev_mcap, ts)
         if self.rangehold is not None and t.creator:
@@ -547,6 +545,8 @@ class Engine:
             self.rangehold_small.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_v2 is not None and t.creator:
             self.rangehold_v2.maybe_enter(t, prev_mcap, ts)
+        if self.rangehold_mix is not None and t.creator:
+            self.rangehold_mix.maybe_enter(t, prev_mcap, ts)
         if self.confirmed is not None and t.creator:
             self.confirmed.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:

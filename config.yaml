@@ -129,10 +129,6 @@ reclaim:
   max_hold_h: 24
 
 # ── Reclaim · break-even (PAPER ONLY) ───────────────────────────
-reclaim_strong:                        # PAPER (4 Oct): Reclaim, but only after a 50%+ bounce off the low
-  enabled: true
-  bounce_pct: 50
-
 # Research (4 Oct): save pump.fun's Explore lists (top market cap / last traded / new) every 5 min - free, best effort
 explore:
   enabled: true
@@ -188,6 +184,13 @@ rangehold_v2:
   enabled: true
   min_age_min: 80
   max_age_h: 3.2
+
+# PAPER (8 Oct): hybrid of v2 and under-$12K - coins 80 min - 3.2 h old AND under $12K at the breakout
+rangehold_mix:
+  enabled: true
+  min_age_min: 80
+  max_age_h: 3.2
+  max_entry_mcap_usd: 12000
 
 # Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
 rangebreak:

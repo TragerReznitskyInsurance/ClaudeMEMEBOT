@@ -283,3 +283,27 @@ class RangeHoldV2(RangeHold):
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldMix(RangeHoldSmall):
+    """PAPER test (8 Oct): hybrid of the two hold-to-bonding variants - only coins aged `min_age_min`-`max_age_h`
+    (v2's window) AND under `max_entry_mcap_usd` ($12K, the small test's cap). Uses rangebreak + rangehold settings
+    plus the `rangehold_mix` section; never real money."""
+    NAME = "rangehold_mix"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys of coins {c.get('min_age_min', 80):g} min-{c.get('max_age_h', 3.2):g} h old AND "
+                     f"under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K, HOLD: sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        return s
