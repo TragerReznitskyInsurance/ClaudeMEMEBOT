@@ -1202,7 +1202,7 @@ function renderOverview() {
   const el = $("#overview");
   const T = TESTS.map(([k, name, get, col]) => ({k, name, col, L: get()})).filter(t => t.L && (t.L.enabled || t.L.closed || t.L.open));
   if (!T.length) { el.innerHTML = ""; ovSig = ""; return; }
-  const sig = JSON.stringify([T.map(t => [t.k, t.L.closed, t.L.open, Math.round(totUsd(t.L)), (t.L.curve || []).length]), document.documentElement.dataset.theme || ""]);
+  const sig = JSON.stringify([T.map(t => [t.k, t.L.closed, t.L.open, Math.round(totUsd(t.L)), (t.L.curve || []).length, t.L.candidates]), document.documentElement.dataset.theme || ""]);
   if (sig === ovSig) return;                          // unchanged: keep hover state
   ovSig = sig;
   const all = T.reduce((a, t) => ({tot: a.tot + totUsd(t.L), closed: a.closed + (t.L.closed || 0), wins: a.wins + (t.L.wins || 0), open: a.open + (t.L.open || 0)}), {tot: 0, closed: 0, wins: 0, open: 0});
@@ -1221,10 +1221,14 @@ function renderOverview() {
         <div class="ov-chart" id="ovChart"></div></div>
       <div class="ov-box"><h3>Total P&L by test <span class="faint" style="text-transform:none;font-weight:500">(realized + open)</span></h3>
         <div class="ov-bars" id="ovBars"></div></div>
-    </div></div>`;
+    </div>
+    <div style="padding:0 18px 16px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:13px">👀 Watch list:</b>
+      ${T.map(t => `<button class="btn wchip" data-k="${t.k}" style="padding:5px 11px;font-size:12.5px" onclick="watchPick('${t.k}')"><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(${t.col})"></i>${esc(t.name)} <span class="faint num">${t.L.candidates ?? ""}</span></button>`).join("")}
+      <span class="faint" style="font-size:12px">click a test to see only the coins it's watching</span></div>
+      <div id="ovWatch"></div></div></div>`;
   el.innerHTML = h;
   ovSeries = T.map(t => ({k: t.k, name: t.name, col: t.col, pts: t.L.curve || []}));
-  drawOvLegend(); drawOvChart(); drawOvBars(T);
+  drawOvLegend(); drawOvChart(); drawOvBars(T); renderOvWatch();
 }
 function drawOvLegend() {
   $("#ovLegend").innerHTML = ovSeries.map(s => `<span style="cursor:pointer;${ovHidden.has(s.k) ? "opacity:.4;text-decoration:line-through" : ""}" title="Click to ${ovHidden.has(s.k) ? "show" : "hide"} this line" onclick="ovToggle('${s.k}')"><i style="background:var(${s.col})"></i>${esc(s.name)}</span>`).join("") +
@@ -1298,12 +1302,25 @@ function stratViz(L) {
 }
 
 /* ── "Watching" list per test ─────────────── */
-const WOPEN = {}, WATCH = {};
-let watchTimer = null;
+const WOPEN = {}, WATCH = {}, WALL = {};
+let watchTimer = null, WSEL = null, wselTimer = null;
+function watchPick(k) {
+  WSEL = WSEL === k ? null : k;
+  clearInterval(wselTimer);
+  if (WSEL) { watchFetch(WSEL); wselTimer = setInterval(() => WSEL && watchFetch(WSEL), 10000); }
+  renderOvWatch();
+}
+function renderOvWatch() {
+  const el = $("#ovWatch"); if (!el) return;
+  document.querySelectorAll(".wchip").forEach(b => { const on = b.dataset.k === WSEL; b.style.background = on ? "var(--brand-soft)" : ""; b.style.color = on ? "var(--brand)" : ""; });
+  if (!WSEL) { el.innerHTML = ""; return; }
+  const t = TESTS.find(x => x[0] === WSEL);
+  el.innerHTML = `<div style="margin-top:10px">${watchTable(WSEL, t ? t[1] : WSEL)}</div>`;
+}
 async function watchFetch(name) {
   try { const r = await fetch("/api/watching?name=" + encodeURIComponent(name)); WATCH[name] = await r.json(); }
   catch (e) { WATCH[name] = {error: String(e)}; }
-  WATCH[name].at = Date.now(); render();
+  WATCH[name].at = Date.now(); render(); renderOvWatch();
 }
 function watchToggle(name) {
   WOPEN[name] = !WOPEN[name];
@@ -1312,16 +1329,19 @@ function watchToggle(name) {
   if (Object.values(WOPEN).some(Boolean)) watchTimer = setInterval(() => Object.keys(WOPEN).filter(k => WOPEN[k]).forEach(watchFetch), 10000);
   render();
 }
-function watchTable(name) {
+function watchTable(name, label) {
   const W = WATCH[name];
+  const coins = W && W.coins ? (WALL[name] ? W.coins : W.coins.filter(c => c.rank <= 1)) : [];
+  const hidden = W && W.coins ? W.coins.length - coins.length : 0;
   let h = `<div style="margin:4px 0 14px;border:1px solid var(--line);border-radius:12px;overflow:hidden">
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--card-2);font-size:12.5px"><b>👀 Coins this test is watching</b>
-    <span class="faint">${W && W.coins ? `${W.coins.length}${W.total > W.coins.length ? " of " + W.total : ""} · closest to a buy first · refreshes every 10 s` : ""}</span></div>`;
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--card-2);font-size:12.5px"><b>👀 ${label ? esc(label) + " · " : ""}${WALL[name] ? "every coin it follows" : "coins setting up for a buy"}</b>
+    <span class="faint">${W && W.coins ? `${coins.length} shown · closest to a buy first · refreshes every 10 s` : ""}</span><span style="flex:1"></span>
+    ${W && W.coins && (hidden || WALL[name]) ? `<button class="btn" style="padding:3px 9px;font-size:12px" onclick="WALL['${name}']=!WALL['${name}'];render();renderOvWatch()">${WALL[name] ? "Only coins setting up" : `Show all ${W.coins.length} it follows`}</button>` : ""}</div>`;
   if (!W) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Loading…</div></div>`;
   if (W.error) return h + `<div style="padding:10px 12px;font-size:12.5px;color:var(--warn)">${esc(W.error)}</div></div>`;
-  if (!W.coins.length) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Not watching any coins right now${META?.running ? "" : " (the bot isn't running)"}.</div></div>`;
+  if (!coins.length) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">${!META?.running ? "The bot isn't running." : W.coins.length ? `No coin is setting up for a buy right now (${W.coins.length} followed, none in position yet).` : "Not following any coins right now."}</div></div>`;
   return h + `<div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
-    ${W.coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
+    ${coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
       <td class="r num">${c.mcap_usd != null ? usd(c.mcap_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.mcap)} SOL</span>` : Math.round(c.mcap) + " SOL"}</td>
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : (c.age_min / 60).toFixed(1) + "h"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
