@@ -135,36 +135,6 @@ explore:
   every_s: 300
   limit: 50
 
-# PAPER (5 Oct): Confirmed breakout V1 - the owner's spec, run exactly as written (don't tune mid-run)
-confirmed:
-  enabled: true
-  size_sol: 0.02                       # every paper trade the same size
-  run_mcap_sol: 60                     # start following a coin here (the setup itself only counts at 80-250 SOL)
-  min_mcap_sol: 80
-  max_mcap_sol: 250
-  range_min_s: 180                     # range of at least 3 min...
-  range_min_pct: 5                     # ...5-20% from low to high
-  range_max_pct: 20
-  breakout_pct: 8                      # breakout = 8%+ above the range high
-  min_trades_2m: 50
-  min_buy_sell: 1.75                   # last 60 s
-  min_buy_vol_pct: 3                   # last 60 s buy SOL >= 3% of market cap
-  min_buyers: 10
-  max_top_buyer_pct: 25
-  max_top3_buyers_pct: 50
-  max_dev_pct: 5
-  retest_wait_min: 15                  # give up if no retest within this long (never chase)
-  retest_zone_pct: 8                   # retest = back to within 0-8% above the breakout level...
-  retest_floor_pct: 3                  # ...never more than 3% below it (else cancel)
-  rebound_pct: 3                       # entry: +3% off the retest low...
-  retest_buy_sell: 1.5                 # ...with the last 30 s: buy:sell >= 1.5, 5+ buyers, 10+ trades
-  retest_buyers: 5
-  retest_trades: 10
-  max_loss_pct: 15                     # stop never worse than -15% from entry
-  max_age_h: 6
-  dead_mcap_sol: 30
-  max_candidates: 300
-
 # PAPER (5 Oct): Range breakout's buys, but hold for the bonding level (uses the rangebreak buy settings)
 rangehold:
   enabled: true

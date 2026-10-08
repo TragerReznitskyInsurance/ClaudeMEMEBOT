@@ -32,7 +32,6 @@ from memebot.reclaim import Reclaim
 from memebot.calls import CallBuyer
 from memebot.notify import Notifier
 from memebot.rangebreak import RangeHold, RangeHoldSmall, RangeHoldV2, RangeHoldMix
-from memebot.confirmed import ConfirmedBreakout
 from memebot.winnotify import NotificationWatcher
 from memebot.breakouts import BreakoutLog
 from memebot.narratives import Narratives
@@ -85,7 +84,6 @@ class Runner:
         self.rangehold_small = RangeHoldSmall(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_v2 = RangeHoldV2(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_mix = RangeHoldMix(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
-        self.confirmed = ConfirmedBreakout(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
         from memebot.explore import ExploreLog
         self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
@@ -96,7 +94,7 @@ class Runner:
         self.notify = NotificationWatcher(cur, self.calls.add_call)
         self.names = TokenNames(os.path.join(HERE, "data", "token_names.json"), lambda: S.helius_key(CONFIG))
         self.why = WhyLog(os.path.join(HERE, "data", "coin_decisions.jsonl"), lambda: S.helius_key(CONFIG))
-        for strat in (self.reclaim, self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix, self.confirmed):
+        for strat in (self.reclaim, self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix):
             strat.why = self.why
         self.updater = Updater(HERE, os.path.join(HERE, "data"),
                                lambda: self.engine.cfg if (self.engine and self.running) else self.cfg)
@@ -105,7 +103,7 @@ class Runner:
         from memebot.names import is_placeholder
         out = self.live.name_targets() + self.live2.name_targets()
         out += [m for m, p in self.reclaim.positions.items() if is_placeholder(p["symbol"], m)]
-        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix, self.confirmed):
+        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix):
             out += [m for m, p in tst.positions.items() if is_placeholder(p["symbol"], m)]
         if self.engine is not None and self.mode == "live":
             out += self.engine.name_targets()
@@ -115,7 +113,7 @@ class Runner:
         self.live.rename(mint, info["symbol"], info.get("name", ""))
         self.live2.rename(mint, info["symbol"], info.get("name", ""))
         self.reclaim.rename(mint, info["symbol"])
-        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix, self.confirmed):
+        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix):
             tst.rename(mint, info["symbol"])
         if self.engine is not None and self.mode == "live":
             self.engine.rename(mint, info["symbol"], info.get("name", ""))
@@ -151,7 +149,7 @@ class Runner:
     async def shutdown_for_update(self):
         await self.stop()
         self.narr.save(force=True)
-        for strat in (self.reclaim, self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix, self.confirmed):
+        for strat in (self.reclaim, self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix):
             try:
                 strat._save()
             except Exception:
@@ -240,10 +238,6 @@ class Runner:
             self.rangehold_mix.active = True
             self.rangehold_mix.feed_price = feed_price
             eng.rangehold_mix = self.rangehold_mix
-            self.confirmed.active = True
-            self.confirmed.feed_price = feed_price
-            self.confirmed.breakouts = self.breakouts
-            eng.confirmed = self.confirmed
             self.calls.feed_price = feed_price
             eng.reclaim = self.reclaim
             eng.narr = self.narr
@@ -277,7 +271,7 @@ class Runner:
         self.live.active = False
         self.live2.active = False
         self.reclaim.active = False
-        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix, self.confirmed):
+        for tst in (self.calls, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix):
             tst.active = False
         for t in self.tasks:
             t.cancel()
@@ -376,7 +370,7 @@ class Runner:
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
                 "breakouts": self.breakouts.summary(),
-                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_small": self.rangehold_small.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "confirmed": self.confirmed.state(),
+                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_small": self.rangehold_small.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(),
                 "narratives": self.narr.state()}
 
 
@@ -505,7 +499,6 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.rangehold_small.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_v2.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_mix.run(every=5)))
-    test_tasks.append(asyncio.create_task(runner.confirmed.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
     nr_task = asyncio.create_task(runner.narr.run())
@@ -522,7 +515,7 @@ async def broadcaster(app):
     rc_task.cancel()
     for tt in test_tasks:
         tt.cancel()
-    for tst in (runner.calls, runner.rangehold, runner.rangehold_small, runner.rangehold_v2, runner.rangehold_mix, runner.confirmed, runner.breakouts):
+    for tst in (runner.calls, runner.rangehold, runner.rangehold_small, runner.rangehold_v2, runner.rangehold_mix, runner.breakouts):
         await tst.close()
     nr_task.cancel()
     why_task.cancel()
@@ -863,7 +856,7 @@ def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
     return {"reclaim": (runner.reclaim, "reclaim"),
             "calls": (runner.calls, "calls"),
-            "rangehold": (runner.rangehold, "rangehold"), "rangehold_small": (runner.rangehold_small, "rangehold_small"), "rangehold_v2": (runner.rangehold_v2, "rangehold_v2"), "rangehold_mix": (runner.rangehold_mix, "rangehold_mix"), "confirmed": (runner.confirmed, "confirmed")}
+            "rangehold": (runner.rangehold, "rangehold"), "rangehold_small": (runner.rangehold_small, "rangehold_small"), "rangehold_v2": (runner.rangehold_v2, "rangehold_v2"), "rangehold_mix": (runner.rangehold_mix, "rangehold_mix")}
 
 
 async def api_strategy_settings(request):
@@ -916,7 +909,7 @@ async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
     strat = {"reclaim": runner.reclaim,
-             "calls": runner.calls, "rangehold": runner.rangehold, "rangehold_small": runner.rangehold_small, "rangehold_v2": runner.rangehold_v2, "rangehold_mix": runner.rangehold_mix, "confirmed": runner.confirmed}.get(body.get("name"))
+             "calls": runner.calls, "rangehold": runner.rangehold, "rangehold_small": runner.rangehold_small, "rangehold_v2": runner.rangehold_v2, "rangehold_mix": runner.rangehold_mix}.get(body.get("name"))
     if strat is None:
         return web.json_response({"error": "unknown strategy"}, status=400)
     return web.json_response({"since": strat.reset_stats()})
@@ -977,8 +970,7 @@ async def api_diagnostics(request):
                      "rangehold_state.json", "rangehold_trades.csv", "rangehold_fills.csv",
                      "rangehold_small_state.json", "rangehold_small_trades.csv", "rangehold_small_fills.csv",
                      "rangehold_v2_state.json", "rangehold_v2_trades.csv", "rangehold_v2_fills.csv",
-                     "rangehold_mix_state.json", "rangehold_mix_trades.csv", "rangehold_mix_fills.csv",
-                     "confirmed_state.json", "confirmed_trades.csv", "confirmed_fills.csv"):
+                     "rangehold_mix_state.json", "rangehold_mix_trades.csv", "rangehold_mix_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)

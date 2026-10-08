@@ -234,7 +234,6 @@ class Engine:
         self.rangehold_small = None                # same, only coins under $12K (paper)
         self.rangehold_v2 = None                   # same, only coins 80 min - 3.2 h old (paper)
         self.rangehold_mix = None                  # v2 age window + under $12K (paper)
-        self.confirmed = None                      # confirmed breakout V1 (owner's spec, paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
@@ -544,8 +543,6 @@ class Engine:
             self.rangehold_v2.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_mix is not None and t.creator:
             self.rangehold_mix.maybe_enter(t, prev_mcap, ts)
-        if self.confirmed is not None and t.creator:
-            self.confirmed.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
         if self.skimmer is not None and t.creator and prev_mcap:
