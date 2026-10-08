@@ -650,7 +650,13 @@ function connect() {
 connect();
 
 /* ── render ──────────────────────────────── */
-function render() { renderHeader(); renderBody(); renderLive(); renderReclaim(); renderCalls(); renderNarratives(); renderLkRules(); renderScreens(); }
+/* lists that live-refresh keep their scroll position (data-ks = a stable id per scroll box) */
+function keepScroll(fn) {
+  const saved = {}; document.querySelectorAll("[data-ks]").forEach(e => { if (e.scrollTop) saved[e.dataset.ks] = e.scrollTop; });
+  fn();
+  for (const [k, v] of Object.entries(saved)) { const e = document.querySelector(`[data-ks="${k}"]`); if (e) e.scrollTop = v; }
+}
+function render() { keepScroll(() => { renderHeader(); renderBody(); renderLive(); renderReclaim(); renderCalls(); renderNarratives(); renderLkRules(); renderScreens(); }); }
 let SCREEN = (() => { try { return localStorage.getItem("screen") || "main"; } catch (e) { return "main"; } })();
 function showScreen(s) { SCREEN = s; try { localStorage.setItem("screen", s); } catch (e) {} renderScreens(); }
 function renderScreens() {
@@ -1313,9 +1319,12 @@ function watchPick(k) {
 function renderOvWatch() {
   const el = $("#ovWatch"); if (!el) return;
   document.querySelectorAll(".wchip").forEach(b => { const on = b.dataset.k === WSEL; b.style.background = on ? "var(--brand-soft)" : ""; b.style.color = on ? "var(--brand)" : ""; });
-  if (!WSEL) { el.innerHTML = ""; return; }
+  if (!WSEL) { el.innerHTML = ""; el.dataset.sig = ""; return; }
+  const sig = [WSEL, WATCH[WSEL]?.at || 0, WALL[WSEL] ? 1 : 0, META?.running ? 1 : 0].join("|");
+  if (el.dataset.sig === sig && el.innerHTML) return;           // nothing new: leave it alone (keeps your scroll spot)
+  el.dataset.sig = sig;
   const t = TESTS.find(x => x[0] === WSEL);
-  el.innerHTML = `<div style="margin-top:10px">${watchTable(WSEL, t ? t[1] : WSEL)}</div>`;
+  keepScroll(() => { el.innerHTML = `<div style="margin-top:10px">${watchTable(WSEL, t ? t[1] : WSEL)}</div>`; });
 }
 async function watchFetch(name) {
   try { const r = await fetch("/api/watching?name=" + encodeURIComponent(name)); WATCH[name] = await r.json(); }
@@ -1340,7 +1349,7 @@ function watchTable(name, label) {
   if (!W) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Loading…</div></div>`;
   if (W.error) return h + `<div style="padding:10px 12px;font-size:12.5px;color:var(--warn)">${esc(W.error)}</div></div>`;
   if (!coins.length) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">${!META?.running ? "The bot isn't running." : W.coins.length ? `No coin is setting up for a buy right now (${W.coins.length} followed, none in position yet).` : "Not following any coins right now."}</div></div>`;
-  return h + `<div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
+  return h + `<div class="tbl-wrap" data-ks="w-${name}-${label ? "ov" : "card"}" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
     ${coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
       <td class="r num">${c.mcap_usd != null ? usd(c.mcap_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.mcap)} SOL</span>` : Math.round(c.mcap) + " SOL"}</td>
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : (c.age_min / 60).toFixed(1) + "h"}</td>
@@ -1416,7 +1425,7 @@ function nrCoinList() {
     <button class="btn" style="padding:3px 9px;font-size:12px" onclick="nrPick(nrSel)">✕</button></div>`;
   if (nrLoading || nrCoins == null) return h + `<div class="faint">Loading…</div></div></div>`;
   if (!nrCoins.length) return h + `<div class="faint" style="font-size:12.5px">No coins yet for this filter.</div></div></div>`;
-  h += `<div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Coin</th><th>Milestones</th><th class="r">Peak seen</th><th class="r">Launched</th><th class="r">Latest milestone</th></tr></thead><tbody>
+  h += `<div class="tbl-wrap" data-ks="nr-coins" style="max-height:420px;overflow:auto"><table><thead><tr><th>Coin</th><th>Milestones</th><th class="r">Peak seen</th><th class="r">Launched</th><th class="r">Latest milestone</th></tr></thead><tbody>
     ${nrCoins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol || c.mint.slice(0, 6))}</b> <span class="ext">↗</span></a>${c.name && c.name !== c.symbol ? `<div class="faint" style="font-size:11.5px">${esc(c.name)}</div>` : ""}</td>
       <td>${c.excluded ? `<span class="badge down">${esc(c.excluded)}</span>` : ["hit44", "hit80", "hit3x", "hit6x", "grad"].filter(k => c.hits[k]).map(k => `<span class="badge ${NR_BADGE[k][1]}" style="margin-right:3px">${NR_BADGE[k][0]}</span>`).join("")}</td>
       <td class="r num">${c.peak_mcap ? `${Math.round(c.peak_mcap)} SOL${META?.sol_usd ? `<div class="faint" style="font-size:11px">${usd(c.peak_mcap * META.sol_usd)}</div>` : ""}` : "—"}</td>
