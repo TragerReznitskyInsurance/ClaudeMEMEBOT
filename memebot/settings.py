@@ -63,7 +63,6 @@ SCHEMA = [
         {"path": "lookalike_grad.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
     ]},
     {"group": "Paper tests", "items": [
-        {"path": "rangebreak.enabled", "label": "Range breakout (original exits)", "type": "bool"},
         {"path": "rangehold.enabled", "label": "Range breakout · hold to bonding", "type": "bool"},
         {"path": "rangehold_small.enabled", "label": "Hold to bonding · under $12K only", "type": "bool"},
         {"path": "rangehold_v2.enabled", "label": "Hold to bonding v2 · coins 80 min-3.2 h old", "type": "bool"},

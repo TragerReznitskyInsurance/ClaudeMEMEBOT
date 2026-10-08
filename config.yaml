@@ -192,7 +192,8 @@ rangehold_mix:
   max_age_h: 3.2
   max_entry_mcap_usd: 12000
 
-# Range breakout PAPER test: sideways for a while, then breaks out of the top of the range
+# Range breakout BUY settings (sideways for a while, then breaks out of the top of the range) - used by the
+# hold-to-bonding tests. The original range-breakout test itself was removed on 8 Oct.
 rangebreak:
   enabled: true
   size_usd: 25

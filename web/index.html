@@ -396,7 +396,6 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="realmoney"></section>
   <section id="reclaim"></section>
   
-  <section id="rangebreak"></section>
   <section id="rangehold"></section>
   <section id="rangeholdsmall"></section>
   <section id="rangeholdv2"></section>
@@ -605,7 +604,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; RB = j.rangebreak; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; CB = j.confirmed; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; CB = j.confirmed; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1072,7 +1071,7 @@ function renderLab() {
 /* ── 3-minute vs 5-minute age test (paper) ── */
 let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
-const stratOpen = {confirmed: true, reclaim: true, rangebreak: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, calls: true};
+const stratOpen = {confirmed: true, reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, calls: true};
 function renderLkRules() {
   const el = $("#lkrules"), R = RC;
   if (!R) { el.innerHTML = ""; return; }
@@ -1150,7 +1149,7 @@ async function callBuy() {
     if (!j.error) $("#callq").value = "";
   } catch (e) { $("#callout").textContent = "Failed: " + e; }
 }
-function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangebreak"), RB, "📦 Range breakout test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); renderStrat($("#confirmed"), CB, "✅ Confirmed breakout V1 test"); }
+function renderReclaim() { renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); renderStrat($("#confirmed"), CB, "✅ Confirmed breakout V1 test"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";
