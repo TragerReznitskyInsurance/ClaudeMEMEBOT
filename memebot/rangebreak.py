@@ -156,6 +156,7 @@ class RangeBreak(Reclaim):
                 except Exception as e:
                     self.last_error = f"activity check: {e}"
                     continue
+                cd["trades_2m"], cd["trades_at"] = n, now
                 if n < int(c.get("min_trades_2m", 20)):
                     continue
             self._enter(cd, price, now, n)
@@ -191,8 +192,17 @@ class RangeBreak(Reclaim):
             over = ("above the $%gK cap" % (cap_usd / 1000)) if cap_usd and usd and mc * usd >= cap_usd else \
                    ("above the %g SOL limit" % cap_sol) if cap_sol and mc >= cap_sol else ""
             top = rg[1] * (1 + float(c.get("break_pct", 5)) / 100) if rg else 0
-            if sideways and not over and age >= min_age:
-                why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL · buys above {top:.0f} SOL", 0
+            chase = rg[1] * (1 + float(c.get("max_chase_pct", 40)) / 100) if rg else 0
+            need = int(c.get("min_trades_2m", 20))
+            n2 = cd.get("trades_2m") if now - cd.get("trades_at", 0) < 120 else None
+            if sideways and not over and age >= min_age and mc > chase:
+                why, rank = (f"Ran past the breakout zone ({mc / rg[1] * 100 - 100:.0f}% above the {rg[0]:.0f}–{rg[1]:.0f} range, "
+                             f"limit {c.get('max_chase_pct', 40):g}%) · won't chase", 1)
+            elif sideways and not over and age >= min_age and mc >= top:
+                why, rank = ((f"Above the breakout level, but only {n2} trades in 2 min (needs {need}+ to buy)" if n2 is not None
+                              and n2 < need else f"Breaking out now · checking for {need}+ trades in 2 min"), 0)
+            elif sideways and not over and age >= min_age:
+                why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL · buys above {top:.0f} SOL with {need}+ trades in 2 min", 0
             elif sideways and age < min_age:
                 why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL, but too young ({age:.0f} min old, buys from {min_age:g} min)", 1
             elif sideways and over:
