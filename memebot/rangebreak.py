@@ -167,6 +167,39 @@ class RangeBreak(Reclaim):
                 self.check(p, price, now)
         self._save()
 
+    def watching(self, limit=200):
+        c = self.cfg()
+        now = time.time()
+        usd = self._usd()
+        cap_usd = float(c.get("max_entry_mcap_usd", 0) or 0)
+        out = []
+        for m, cd in self.cands.items():
+            if m in self.positions or m in self.traded:
+                continue
+            mc = cd.get("last_mc") or 0
+            age = (now - cd["created"]) / 60
+            rg = cd.get("range")
+            w = (rg[1] / rg[0] - 1) * 100 if rg else None
+            if age < float(c.get("min_age_min", 30)):
+                why, rank = f"too young · can buy from {c.get('min_age_min', 30):g} min", 2
+            elif not rg:
+                why, rank = "collecting price history", 3
+            elif w > float(c.get("max_range_pct", 35)):
+                why, rank = f"too choppy · {w:.0f}% range (needs ≤{c.get('max_range_pct', 35):g}%)", 3
+            elif rg[0] < float(c.get("min_entry_mcap_sol", 40)):
+                why, rank = f"range too low ({rg[0]:.0f} SOL)", 3
+            else:
+                why, rank = (f"sideways {rg[0]:.0f}–{rg[1]:.0f} SOL ({w:.0f}%) · buys above "
+                             f"{rg[1] * (1 + float(c.get('break_pct', 5)) / 100):.0f}"), 0
+            if cap_usd and usd and mc * usd >= cap_usd:
+                why, rank = f"above the ${cap_usd / 1000:g}K cap · " + why, max(rank, 1)
+            if mc >= float(c.get("max_entry_mcap_sol", 1e9)):
+                why, rank = "too close to bonding · " + why, max(rank, 1)
+            out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
+                            why=why, rank=rank))
+        out.sort(key=lambda x: (x["rank"], -x["mcap"]))
+        return out[:limit]
+
     def state(self):
         s = super().state()
         c = self.cfg()

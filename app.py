@@ -859,6 +859,18 @@ def _strategies():
             "rangehold": (runner.rangehold, "rangehold"), "rangehold_small": (runner.rangehold_small, "rangehold_small"), "rangehold_v2": (runner.rangehold_v2, "rangehold_v2"), "rangehold_mix": (runner.rangehold_mix, "rangehold_mix")}
 
 
+async def api_watching(request):
+    """GET ?name=<test>: the coins that paper test is following right now and what it's waiting for."""
+    got = _strategies().get(request.rel_url.query.get("name", ""))
+    if not got or not hasattr(got[0], "watching"):
+        return web.json_response({"error": "unknown strategy"}, status=400)
+    coins = got[0].watching()
+    usd = sol_price.usd
+    for x in coins:
+        x["mcap_usd"] = round(x["mcap"] * usd) if usd else None
+    return web.json_response({"coins": coins, "total": len(got[0].cands)})
+
+
 async def api_strategy_settings(request):
     """GET: the editable numbers of one paper strategy. POST {name, values:{key: value}}: save them (live)."""
     if request.method == "GET":
@@ -1016,6 +1028,7 @@ def make_app():
     app.router.add_get("/api/diagnostics", api_diagnostics)
     app.router.add_get("/api/why", api_why)
     app.router.add_post("/api/calls/buy", api_calls_buy)
+    app.router.add_get("/api/watching", api_watching)
     app.router.add_post("/api/calls/channel", api_calls_channel)
     app.router.add_post("/api/notify/test", api_notify_test)
     app.router.add_post("/api/strategy/reset", api_strategy_reset)

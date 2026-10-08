@@ -1296,6 +1296,36 @@ function stratViz(L) {
       <div class="dist">${d.map((v, i) => `<div title="${DIST_LBL[i]}: ${v} trade${v === 1 ? "" : "s"}" style="height:${v ? Math.max(6, v / mx * 100) : 2}%;background:${v ? (i < 3 ? "var(--down)" : "var(--up)") : "var(--line)"};opacity:${v ? .85 : 1}"></div>`).join("")}</div>
       <div class="dist-l">${["<−50%", "−50…−25", "−25…0", "0…+50", "+50…100", "+100…200", ">+200%"].map(x => `<span>${x}</span>`).join("")}</div></div></div>`;
 }
+
+/* ── "Watching" list per test ─────────────── */
+const WOPEN = {}, WATCH = {};
+let watchTimer = null;
+async function watchFetch(name) {
+  try { const r = await fetch("/api/watching?name=" + encodeURIComponent(name)); WATCH[name] = await r.json(); }
+  catch (e) { WATCH[name] = {error: String(e)}; }
+  WATCH[name].at = Date.now(); render();
+}
+function watchToggle(name) {
+  WOPEN[name] = !WOPEN[name];
+  if (WOPEN[name]) watchFetch(name);
+  clearInterval(watchTimer);
+  if (Object.values(WOPEN).some(Boolean)) watchTimer = setInterval(() => Object.keys(WOPEN).filter(k => WOPEN[k]).forEach(watchFetch), 10000);
+  render();
+}
+function watchTable(name) {
+  const W = WATCH[name];
+  let h = `<div style="margin:4px 0 14px;border:1px solid var(--line);border-radius:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--card-2);font-size:12.5px"><b>👀 Coins this test is watching</b>
+    <span class="faint">${W && W.coins ? `${W.coins.length}${W.total > W.coins.length ? " of " + W.total : ""} · closest to a buy first · refreshes every 10 s` : ""}</span></div>`;
+  if (!W) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Loading…</div></div>`;
+  if (W.error) return h + `<div style="padding:10px 12px;font-size:12.5px;color:var(--warn)">${esc(W.error)}</div></div>`;
+  if (!W.coins.length) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Not watching any coins right now${META?.running ? "" : " (the bot isn't running)"}.</div></div>`;
+  return h + `<div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
+    ${W.coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
+      <td class="r num">${c.mcap_usd != null ? usd(c.mcap_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.mcap)} SOL</span>` : Math.round(c.mcap) + " SOL"}</td>
+      <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : (c.age_min / 60).toFixed(1) + "h"}</td>
+      <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
+}
 function renderReclaim() { renderOverview(); renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
@@ -1305,7 +1335,7 @@ function renderStrat(el, L, title) {
   const tot = (L.realized || 0) + (L.open_pnl || 0);
   let h = `<div class="card strat" style="margin-top:14px;--sc:var(${TCOLOR[L.name] || "--line"})"><div class="rm-head"><h2>${title}</h2>${status}
     <span class="faint" style="font-size:12px">${esc(L.desc || "")}${["reclaim", "reclaim_big", "reclaim_strong"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : L.name === "confirmed" ? ` · watching ${L.candidates} coins (${L.pulled} confirmed breakouts waiting for a retest)` : ["rangebreak", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} trading sideways now)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
-    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_strong", "skimmer", "lookalike", "calls", "rangebreak", "fastlaunch", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "confirmed"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_strong", "skimmer", "lookalike", "calls", "rangebreak", "fastlaunch", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "confirmed"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}${L.candidates != null && L.name !== "calls" ? `<button class="btn" style="${WOPEN[L.name] ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="watchToggle('${L.name}')" title="The coins this test is following right now and what it's waiting for">👀 Watching (${L.candidates})</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
   if (L.stats_since) h += `<div class="faint" style="font-size:12px;padding:6px 16px 0">Results since ${new Date(L.stats_since * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>`;
   const isHold = ["rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix"].includes(L.name);
   const T_ = (l, v, c = "") => `<div class="t"><div class="l">${l}</div><div class="v num ${c}">${v}</div></div>`;
@@ -1313,7 +1343,7 @@ function renderStrat(el, L, title) {
     ${T_("Total", $u(tot) || signed(tot, 4), cls(tot))}${T_("Realized", $u(L.realized) || signed(L.realized, 4), cls(L.realized))}${T_("Open P&L", $u(L.open_pnl) || signed(L.open_pnl, 4), cls(L.open_pnl))}
     ${T_("Closed", L.closed)}${T_("Open", L.open)}${T_("Win rate", L.win_rate == null ? "—" : L.win_rate + "%")}${T_("Hit 2×", L.hit_2x)}
     ${isHold ? T_("Bonded", `${L.bonded ?? 0}${L.closed ? ` <span class="faint" style="font-size:12px">${Math.round((L.bonded ?? 0) / L.closed * 100)}%</span>` : ""}`) : T_("Hit 6×", L.hit_6x)}</div>
-    ${stratViz(L)}`;
+    ${stratViz(L)}${WOPEN[L.name] ? watchTable(L.name) : ""}`;
   if (L.last_error) h += `<div class="faint" style="font-size:12px;color:var(--warn)">Price check error: ${esc(L.last_error)}</div>`;
   const RW = L.name === "lookalike_grad" ? (LIVE2?.per_wallet || {})["Lookalike·grad"] : (LIVE?.per_wallet || {})["Lookalike"];
   if (L.name === "reclaim" && L.real_enabled) h += `<div class="notice" style="margin:4px 0 10px;background:var(--down-soft);border-color:color-mix(in srgb,var(--down) 30%,transparent)"><span>💵</span><div><b style="color:var(--down)">REAL MONEY:</b> every Reclaim buy is also made for real ($${L.real_size_usd} each) in the real wallet · see the 💵 Real wallet tab.</div></div>`;
