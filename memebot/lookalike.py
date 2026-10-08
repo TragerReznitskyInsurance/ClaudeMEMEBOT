@@ -570,11 +570,34 @@ class Lookalike:
             fh.write(str(ts))
         return ts
 
+    DIST_EDGES = (-50, -25, 0, 50, 100, 200)       # result buckets (%): <=-50 | -50..-25 | -25..0 | 0..50 | 50..100 | 100..200 | 200+
+
+    def _charts(self, cl):
+        """Cumulative realized P&L ($) over time (max ~120 points) + how many trades landed in each result bucket.
+        Cached until a trade closes - the dashboard asks for this every second."""
+        key = (len(cl), cl[-1]["closed"] if cl else 0)
+        if getattr(self, "_chart_key", None) == key:
+            return self._chart_cache
+        pts, cum = [], 0.0
+        for x in sorted(cl, key=lambda x: x["closed"]):
+            cum += float(x.get("pnl_usd") or 0)
+            pts.append([round(x["closed"]), round(cum, 2)])
+        if len(pts) > 120:
+            step = len(pts) / 120
+            pts = [pts[int(i * step)] for i in range(120)] + [pts[-1]]
+        dist = [0] * (len(self.DIST_EDGES) + 1)
+        for x in cl:
+            v = float(x.get("pnl_pct") or 0)
+            dist[sum(1 for e in self.DIST_EDGES if v > e)] += 1
+        self._chart_key, self._chart_cache = key, (pts, dist)
+        return pts, dist
+
     def state(self):
         usd = self._usd()
         c = self.cfg()
         since = self.stats_from()
         cl = [x for x in self.closed if x["opened"] >= since]
+        curve, dist = self._charts(cl)
         wins = [x for x in cl if x["pnl_sol"] > 0]
         realized = sum(x["pnl_sol"] for x in cl)
         live_pos = [p for p in self.positions.values() if p.get("verified", True) and p["opened"] >= since]
@@ -605,4 +628,5 @@ class Lookalike:
                               for p in live_pos], key=lambda x: -x["mult"])[:60],
             recent=cl[-25:][::-1],
             events=self.events[-30:][::-1],
+            curve=curve, dist=dist,
         )
