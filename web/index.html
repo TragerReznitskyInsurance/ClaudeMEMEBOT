@@ -1352,7 +1352,7 @@ function watchTable(name, label) {
   return h + `<div class="tbl-wrap" data-ks="w-${name}-${label ? "ov" : "card"}" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
     ${coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
       <td class="r num">${c.mcap_usd != null ? usd(c.mcap_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.mcap)} SOL</span>` : Math.round(c.mcap) + " SOL"}</td>
-      <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : (c.age_min / 60).toFixed(1) + "h"}</td>
+      <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
 function renderReclaim() { renderOverview(); renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); }

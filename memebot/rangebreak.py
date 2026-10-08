@@ -194,13 +194,13 @@ class RangeBreak(Reclaim):
             if sideways and not over and age >= min_age:
                 why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL · buys above {top:.0f} SOL", 0
             elif sideways and age < min_age:
-                why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL, but too young (buys from {min_age:g} min)", 1
+                why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL, but too young ({age:.0f} min old, buys from {min_age:g} min)", 1
             elif sideways and over:
                 why, rank = f"Sideways {rg[0]:.0f}–{rg[1]:.0f} SOL, but {over}", 1
             elif over:
                 why, rank = over[0].upper() + over[1:], 3
             elif age < min_age:
-                why, rank = f"Too young (buys from {min_age:g} min)", 3
+                why, rank = f"Too young ({age:.0f} min old, buys from {min_age:g} min)", 3
             elif not rg:
                 why, rank = "Collecting price history", 3
             else:
