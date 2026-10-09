@@ -868,6 +868,7 @@ async def api_watching(request):
     usd = sol_price.usd
     for x in coins:
         x["mcap_usd"] = round(x["mcap"] * usd) if usd else None
+        x["ath_usd"] = round(x["ath"] * usd) if usd and x.get("ath") else None
     return web.json_response({"coins": coins, "total": len(got[0].cands)})
 
 

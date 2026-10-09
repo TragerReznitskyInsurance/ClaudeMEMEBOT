@@ -218,8 +218,9 @@ class RangeBreak(Reclaim):
                 why, rank = "Collecting price history", 3
             else:
                 why, rank = f"Too choppy ({w:.0f}% range, needs ≤{c.get('max_range_pct', 35):g}%)", 3
+            ath = max(cd.get("peak") or 0, mc)
             out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
-                            why=why, rank=rank))
+                            ath=round(ath, 1), pct_of_ath=round(mc / ath * 100) if ath else None, why=why, rank=rank))
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
         return out[:limit]
 

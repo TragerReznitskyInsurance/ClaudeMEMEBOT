@@ -110,8 +110,10 @@ class Reclaim(Lookalike):
                 why, rank = f"Pulled back to {low or mc:.0f} SOL, but too young (buys from {c.get('min_age_min', 30):g} min)", 1
             else:
                 why, rank = f"Pulled back to {low or mc:.0f} SOL · buys on a {bounce:g}% bounce (above {(low or mc) * (1 + bounce / 100):.0f} SOL)", 0
+            ath = max(peak, mc)
             out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
-                            peak=round(peak, 1), why=why, rank=rank))
+                            peak=round(peak, 1), ath=round(ath, 1), pct_of_ath=round(mc / ath * 100) if ath else None,
+                            why=why, rank=rank))
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
         return out[:limit]
 

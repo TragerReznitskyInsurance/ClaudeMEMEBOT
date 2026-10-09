@@ -1349,9 +1349,11 @@ function watchTable(name, label) {
   if (!W) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">Loading…</div></div>`;
   if (W.error) return h + `<div style="padding:10px 12px;font-size:12.5px;color:var(--warn)">${esc(W.error)}</div></div>`;
   if (!coins.length) return h + `<div class="faint" style="padding:10px 12px;font-size:12.5px">${!META?.running ? "The bot isn't running." : W.coins.length ? `No coin is setting up for a buy right now (${W.coins.length} followed, none in position yet).` : "Not following any coins right now."}</div></div>`;
-  return h + `<div class="tbl-wrap" data-ks="w-${name}-${label ? "ov" : "card"}" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
+  return h + `<div class="tbl-wrap" data-ks="w-${name}-${label ? "ov" : "card"}" style="max-height:360px;overflow:auto"><table><thead><tr><th>Coin</th><th class="r">Mcap</th><th class="r" title="Highest market cap this test has seen for the coin">ATH</th><th class="r" title="Market cap now as a % of the ATH. Green = within 20% of the ATH">% of ATH</th><th class="r">Age</th><th>Waiting for</th></tr></thead><tbody>
     ${coins.map(c => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(c.mint)}" target="_blank" rel="noopener"><b>${esc(c.symbol)}</b> <span class="ext">↗</span></a></td>
       <td class="r num">${c.mcap_usd != null ? usd(c.mcap_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.mcap)} SOL</span>` : Math.round(c.mcap) + " SOL"}</td>
+      <td class="r num">${c.ath == null ? "—" : c.ath_usd != null ? usd(c.ath_usd) + `<span class="faint" style="font-size:11px"> · ${Math.round(c.ath)} SOL</span>` : Math.round(c.ath) + " SOL"}</td>
+      <td class="r num ${c.pct_of_ath == null ? "faint" : c.pct_of_ath >= 80 ? "up" : c.pct_of_ath < 50 ? "down" : ""}">${c.pct_of_ath == null ? "—" : c.pct_of_ath + "%"}</td>
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
