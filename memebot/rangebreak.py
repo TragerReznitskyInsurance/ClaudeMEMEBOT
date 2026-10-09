@@ -68,11 +68,13 @@ class RangeBreak(Reclaim):
             age_at_entry_s=round(ts - cd["created"]), sol_in=size + prio, sol_out=0.0, tokens=tokens, tokens_bought=tokens,
             peak_mult=1.0, floor_mult=0.0, done=[], last_px=px, last_px_ts=ts, sells=[], verified=True,
             size_usd=round(size * usd, 2), range_lo=round(lo, 1), range_hi=round(hi, 1), trades_2m=trades_2m,
-            graduated=cd.get("src") == "jupiter")
+            graduated=cd.get("src") == "jupiter", prior_peak=round(max(cd.get("peak") or 0, mc), 1),
+            pct_of_ath=round(mc / max(cd.get("peak") or mc, mc) * 100, 1))
         rng = (hi / lo - 1) * 100
         self._csv(f"{self.NAME}_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
                   [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts)), cd["mint"], cd["symbol"], "BUY",
-                   f"breakout at {mc:.0f} SOL from a {lo:.0f}-{hi:.0f} SOL range ({rng:.0f}% wide)", "1.00",
+                   f"breakout at {mc:.0f} SOL from a {lo:.0f}-{hi:.0f} SOL range ({rng:.0f}% wide), "
+                   f"{mc / max(cd.get('peak') or mc, mc) * 100:.0f}% of ATH {max(cd.get('peak') or mc, mc):.0f}", "1.00",
                    round(size + prio, 6), round(tokens, 2)])
         self._event("buy", f"Paper buy {cd['symbol']} at {mc:.0f} SOL mcap - broke out of a {lo:.0f}-{hi:.0f} SOL range "
                            f"({rng:.0f}% wide, {c.get('consol_min', 20):g} min)"
@@ -129,6 +131,7 @@ class RangeBreak(Reclaim):
                     continue
             cd.pop("suspect", None)
             cd["last_mc"], cd["src"], cd["misses"] = mc, src, 0
+            cd["peak"] = max(cd.get("peak") or 0, mc)       # all-time high seen (for the % of ATH at our buy)
             if mc < float(c.get("dead_mcap_sol", 20)):
                 self.cands.pop(m, None)
                 continue
