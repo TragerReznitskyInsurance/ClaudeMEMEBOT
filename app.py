@@ -989,7 +989,8 @@ async def api_diagnostics(request):
                      "rangehold_state.json", "rangehold_trades.csv", "rangehold_fills.csv",
                      "rangehold_small_state.json", "rangehold_small_trades.csv", "rangehold_small_fills.csv",
                      "rangehold_v2_state.json", "rangehold_v2_trades.csv", "rangehold_v2_fills.csv",
-                     "rangehold_mix_state.json", "rangehold_mix_trades.csv", "rangehold_mix_fills.csv"):
+                     "rangehold_mix_state.json", "rangehold_mix_trades.csv", "rangehold_mix_fills.csv",
+                     "rangehold_small10_state.json", "rangehold_small10_trades.csv", "rangehold_small10_fills.csv"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
