@@ -861,7 +861,8 @@ def _strategies():
     """name -> (strategy object, config section its own settings are saved in)."""
     return {"reclaim": (runner.reclaim, "reclaim"),
             "calls": (runner.calls, "calls"),
-            "rangehold": (runner.rangehold, "rangehold"), "rangehold_small": (runner.rangehold_small, "rangehold_small"), "rangehold_v2": (runner.rangehold_v2, "rangehold_v2"), "rangehold_mix": (runner.rangehold_mix, runner.rangehold_small10, "rangehold_mix")}
+            "rangehold": (runner.rangehold, "rangehold"), "rangehold_small": (runner.rangehold_small, "rangehold_small"), "rangehold_v2": (runner.rangehold_v2, "rangehold_v2"), "rangehold_mix": (runner.rangehold_mix, "rangehold_mix"),
+            "rangehold_small10": (runner.rangehold_small10, "rangehold_small10")}
 
 
 async def api_watching(request):
