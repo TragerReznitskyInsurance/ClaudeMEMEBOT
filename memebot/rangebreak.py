@@ -364,3 +364,28 @@ class RangeHoldMix(RangeHoldSmall):
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldSmallThin(RangeHoldSmall):
+    """PAPER test (9 Oct): the under-$12K hold test, but it only needs `min_trades_2m` = 10 trades in the last
+    2 minutes at the breakout (instead of 20) - small coins have fewer traders. Uses rangebreak + rangehold +
+    rangehold_small settings plus the `rangehold_small10` section; never real money."""
+    NAME = "rangehold_small10"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.update(self._cfg().get("rangehold_small") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K with only "
+                     f"{c.get('min_trades_2m', 10)}+ trades in 2 min (others need 20), HOLD: sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        return s

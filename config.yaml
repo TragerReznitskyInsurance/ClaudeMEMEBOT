@@ -162,6 +162,11 @@ rangehold_mix:
   max_age_h: 3.2
   max_entry_mcap_usd: 12000
 
+# PAPER (9 Oct): under-$12K hold test, but only 10 trades / 2 min needed at the breakout (others need 20)
+rangehold_small10:
+  enabled: true
+  min_trades_2m: 10
+
 # Range breakout BUY settings (sideways for a while, then breaks out of the top of the range) - used by the
 # hold-to-bonding tests. The original range-breakout test itself was removed on 8 Oct.
 rangebreak:

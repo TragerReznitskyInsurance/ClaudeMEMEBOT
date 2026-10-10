@@ -32,7 +32,7 @@
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* chart series (fixed order, validated for CVD on the dark card surface) */
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -41,7 +41,7 @@
   --up: #0fae74; --up-soft: rgba(15,174,116,.11); --down: #e23a55; --down-soft: rgba(226,58,85,.1);
   --brand: #6a57f0; --brand-soft: rgba(106,87,240,.1); --warn: #c77a00; --warn-soft: rgba(199,122,0,.1);
   --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.05);
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -441,6 +441,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="rangeholdsmall"></section>
   <section id="rangeholdv2"></section>
   <section id="rangeholdmix"></section>
+  <section id="rangeholdsmall10"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
@@ -644,7 +645,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; RHT = j.rangehold_small10; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1115,9 +1116,9 @@ function renderLab() {
 
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
-let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
+let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
-const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, calls: true};
+const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, rangehold_small10: true, calls: true};
 function renderLkRules() {
   const el = $("#lkrules"), R = RC;
   if (!R) { el.innerHTML = ""; return; }
@@ -1199,7 +1200,7 @@ async function callBuy() {
 /* ── paper tests: overview + charts ───────── */
 const TESTS = [["reclaim", "Reclaim", () => RC, "--s1"], ["rangehold", "Hold to bond", () => RH, "--s2"],
   ["rangehold_v2", "Hold v2 · 80m–3h", () => RH2, "--s3"], ["rangehold_small", "Hold · under $12K", () => RHS, "--s4"],
-  ["rangehold_mix", "Hold mix", () => RHM, "--s5"]];
+  ["rangehold_mix", "Hold mix", () => RHM, "--s5"], ["rangehold_small10", "Hold <$12K · 10 trades", () => RHT, "--s6"]];
 const TCOLOR = Object.fromEntries(TESTS.map(t => [t[0], t[3]]));
 const money = (v, d = 0) => v == null ? "—" : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
 const totUsd = L => (L.realized_usd ?? ((L.curve || []).length ? L.curve[L.curve.length - 1][1] : 0)) + (L.open_pnl_usd || 0);
@@ -1357,7 +1358,7 @@ function watchTable(name, label) {
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
-function renderReclaim() { renderOverview(); renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); }
+function renderReclaim() { renderOverview(); renderStrat($("#reclaim"), RC, "🔁 Reclaim test"); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdmix"), RHM, "📦🧬 Hold to bonding mix · 80 min–3 h old + under $12K"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   const px = L.sol_usd, $u = sol => px && sol != null ? (sol < 0 ? "−$" : "$") + Math.abs(sol * px).toFixed(2) : "";
@@ -1365,10 +1366,10 @@ function renderStrat(el, L, title) {
   const status = !L.enabled ? `<span class="badge gray">OFF in Settings</span>` : !running ? `<span class="badge warn">Not running (Start live)</span>` : L.name === "calls" && L.real_money ? `<span class="badge down">● REAL + paper record</span>` : `<span class="badge brand">● PAPER</span>`;
   const tot = (L.realized || 0) + (L.open_pnl || 0);
   let h = `<div class="card strat" style="margin-top:14px;--sc:var(${TCOLOR[L.name] || "--line"})"><div class="rm-head"><h2>${title}</h2>${status}
-    <span class="faint" style="font-size:12px">${esc(L.desc || "")}${["reclaim", "reclaim_big", "reclaim_strong"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : L.name === "confirmed" ? ` · watching ${L.candidates} coins (${L.pulled} confirmed breakouts waiting for a retest)` : ["rangebreak", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} trading sideways now)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
-    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_strong", "skimmer", "lookalike", "calls", "rangebreak", "fastlaunch", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "confirmed"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}${L.candidates != null && L.name !== "calls" ? `<button class="btn" style="${WOPEN[L.name] ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="watchToggle('${L.name}')" title="The coins this test is following right now and what it's waiting for">👀 Watching (${L.candidates})</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
+    <span class="faint" style="font-size:12px">${esc(L.desc || "")}${["reclaim", "reclaim_big", "reclaim_strong"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} pulled back)` : L.name === "confirmed" ? ` · watching ${L.candidates} coins (${L.pulled} confirmed breakouts waiting for a retest)` : ["rangebreak", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "rangehold_small10"].includes(L.name) ? ` · watching ${L.candidates} coins (${L.pulled} trading sideways now)` : ""}${L.name === "skimmer" && L.closed ? ` · ${L.per_day} trades/day · avg win ${L.avg_win_pct ?? "—"}% · avg loss ${L.avg_loss_pct ?? "—"}%` : ""}</span>
+    <div class="rm-actions">${["reclaim", "reclaim_big", "reclaim_strong", "skimmer", "lookalike", "calls", "rangebreak", "fastlaunch", "rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "rangehold_small10", "confirmed"].includes(L.name) ? `<button class="btn" onclick="stratSettings('${L.name}')" title="Edit this test's numbers">⚙ Settings</button><button class="btn" onclick="stratReset('${L.name}')" title="Count results from now on (history files are kept)">Reset stats</button>` : ""}${L.candidates != null && L.name !== "calls" ? `<button class="btn" style="${WOPEN[L.name] ? "background:var(--brand-soft);color:var(--brand)" : ""}" onclick="watchToggle('${L.name}')" title="The coins this test is following right now and what it's waiting for">👀 Watching (${L.candidates})</button>` : ""}<button class="btn" onclick="stratOpen['${L.name}']=!stratOpen['${L.name}'];render()">${stratOpen[L.name] ? "Hide" : "Show"}</button></div></div>`;
   if (L.stats_since) h += `<div class="faint" style="font-size:12px;padding:6px 16px 0">Results since ${new Date(L.stats_since * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>`;
-  const isHold = ["rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix"].includes(L.name);
+  const isHold = ["rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "rangehold_small10"].includes(L.name);
   const T_ = (l, v, c = "") => `<div class="t"><div class="l">${l}</div><div class="v num ${c}">${v}</div></div>`;
   h += `<div class="card-b"><div class="stat-tiles">
     ${T_("Total", $u(tot) || signed(tot, 4), cls(tot))}${T_("Realized", $u(L.realized) || signed(L.realized, 4), cls(L.realized))}${T_("Open P&L", $u(L.open_pnl) || signed(L.open_pnl, 4), cls(L.open_pnl))}
@@ -1390,7 +1391,7 @@ function renderStrat(el, L, title) {
       : L.name === "skimmer" ? p => `sells at +20% / −5%`
       : L.name === "calls" ? callStage
       : L.name === "confirmed" ? p => (p.stages.includes("2x") ? `½ sold · trailing 20% below ${p.peak.toFixed(1)}x` : p.stages.includes("50") ? "¼ sold · stop at entry" : "stop under the retest low") + ` · now ${p.mult.toFixed(2)}x`
-      : ["rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix"].includes(L.name) ? p => `holding for 375 SOL · stop −50% · now ${p.mult.toFixed(2)}x`
+      : ["rangehold", "rangehold_small", "rangehold_v2", "rangehold_mix", "rangehold_small10"].includes(L.name) ? p => `holding for 375 SOL · stop −50% · now ${p.mult.toFixed(2)}x`
       : L.name === "fastlaunch" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "stop −25% / out if no move in 4 min") + (p.stages.includes("add") ? " · added" : "") + (p.stages.includes("tp1") ? " · ⅓ sold" : "")
       : L.name === "rangebreak" ? p => (p.peak >= 1.5 ? `trailing 30% below ${p.peak.toFixed(1)}x` : "sells if back inside the range / −25%") + (p.stages.includes("2x") ? " · ⅓ sold" : "")
       : p => p.stages.includes("10x") ? "past 10x" : p.stages.includes("6x") ? "past 6x · floor at entry" : p.stages.includes("2x") ? "initial out · free ride" : "stop at −30%";
