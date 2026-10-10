@@ -167,6 +167,12 @@ rangehold_small10:
   enabled: true
   min_trades_2m: 10
 
+# PAPER (10 Oct): hold-to-bonding + break-even floor - once a coin hits 2x, sell if it falls back to our buy price
+rangehold_floor:
+  enabled: true
+  floor_arm_mult: 2.0
+  floor_mult: 1.0
+
 # Range breakout BUY settings (sideways for a while, then breaks out of the top of the range) - used by the
 # hold-to-bonding tests. The original range-breakout test itself was removed on 8 Oct.
 rangebreak:

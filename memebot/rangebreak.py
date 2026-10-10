@@ -389,3 +389,38 @@ class RangeHoldSmallThin(RangeHoldSmall):
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldFloor(RangeHold):
+    """PAPER test (10 Oct): the original hold-to-bonding test, plus a break-even floor - once a coin has reached
+    `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult` (1.0x, our buy price). 127 hold trades so far:
+    13 coins doubled without bonding and 9 of them still ended at a loss. Uses rangebreak + rangehold settings plus
+    the `rangehold_floor` section; never real money."""
+    NAME = "rangehold_floor"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        mult = px / p["entry_px"]
+        peak = max(p["peak_mult"], mult)
+        arm, floor = float(c.get("floor_arm_mult", 2.0)), float(c.get("floor_mult", 1.0))
+        if peak >= arm and mult <= floor and px * SUPPLY < float(c.get("bond_exit_mcap_sol", 375)):
+            p["last_px"], p["last_px_ts"], p["peak_mult"] = px, ts, peak
+            return self._sell(p, 1.0, f"back to {floor:g}x after a {peak:.1f}x high (break-even floor)", px, ts)
+        return super().check(p, px, ts)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same buys as hold-to-bonding (under {c.get('max_entry_mcap_sol', 250):g} SOL); once a coin hits "
+                     f"{c.get('floor_arm_mult', 2.0):g}x it sells if it falls back to {c.get('floor_mult', 1.0):g}x · "
+                     f"otherwise sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop "
+                     f"−{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money")
+        return s

@@ -68,6 +68,7 @@ SCHEMA = [
         {"path": "rangehold_v2.enabled", "label": "Hold to bonding v2 · coins 80 min-3.2 h old", "type": "bool"},
         {"path": "rangehold_mix.enabled", "label": "Hold to bonding mix · 80 min-3.2 h old AND under $12K", "type": "bool"},
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
+        {"path": "rangehold_floor.enabled", "label": "Hold to bonding · break-even floor after 2x", "type": "bool"},
     ]},
     {"group": "Reclaim (paper test)", "items": [
         {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},
