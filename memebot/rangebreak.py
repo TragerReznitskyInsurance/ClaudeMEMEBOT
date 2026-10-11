@@ -269,13 +269,22 @@ class RangeHold(RangeBreak):
         p["last_px"], p["last_px_ts"] = px, ts
         mult = px / p["entry_px"]
         p["peak_mult"] = max(p["peak_mult"], mult)
+        p["low_mult"] = min(p.get("low_mult") or mult, mult)  # lowest point while held (research)
         mc = px * SUPPLY
         if mc >= float(c.get("bond_exit_mcap_sol", 375)) or getattr(self, "_src", {}).get(p["mint"]) == "jupiter":
             return self._sell(p, 1.0, f"bonding level ({mc:.0f} SOL) - sold everything", px, ts)
+        dead, usd = float(c.get("dead_mcap_usd", 0) or 0), self._usd()
+        if dead and usd and mc * usd <= dead:               # back down at launch level: the coin is dead
+            return self._sell(p, 1.0, f"fell under ${dead / 1000:g}K mcap (${mc * usd / 1000:.2f}K) - dead zone", px, ts)
         if mult <= 1 - float(c.get("stop_pct", 50)) / 100:
             return self._sell(p, 1.0, f"stop -{c.get('stop_pct', 50):g}%", px, ts)
         if ts - p["opened"] > float(c.get("max_hold_h", 6)) * 3600:
             return self._sell(p, 1.0, f"time limit {c.get('max_hold_h', 6):g}h", px, ts)
+
+    @staticmethod
+    def _dead_txt(c):
+        d = float(c.get("dead_mcap_usd", 0) or 0)
+        return f" or below ${d / 1000:g}K mcap" if d else ""
 
     def state(self):
         s = super().state()
@@ -284,7 +293,7 @@ class RangeHold(RangeBreak):
         s["bonded"] = sum(1 for x in self.closed if x["opened"] >= since and str(x.get("exit", "")).startswith("bonding level"))
         s.update(name=self.NAME, desc=(f"Range breakout buys (on the curve, under {c.get('max_entry_mcap_sol', 250):g} SOL), "
                                        f"but HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
-                                       f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money"))
+                                       f"stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money"))
         return s
 
 
@@ -314,7 +323,7 @@ class RangeHoldSmall(RangeHold):
         c = self.cfg()
         s["desc"] = (f"Range breakout buys under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K mcap, "
                      f"HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
-                     f"stop −{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money")
+                     f"stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
         return s
 
 
@@ -337,7 +346,7 @@ class RangeHoldV2(RangeHold):
         c = self.cfg()
         s["desc"] = (f"Range breakout buys of coins {c.get('min_age_min', 80):g} min-{c.get('max_age_h', 3.2):g} h old "
                      f"(on the curve, under {c.get('max_entry_mcap_sol', 250):g} SOL), HOLD: sell everything at "
-                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
 
@@ -361,7 +370,7 @@ class RangeHoldMix(RangeHoldSmall):
         c = self.cfg()
         s["desc"] = (f"Range breakout buys of coins {c.get('min_age_min', 80):g} min-{c.get('max_age_h', 3.2):g} h old AND "
                      f"under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K, HOLD: sell everything at "
-                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
 
@@ -386,7 +395,7 @@ class RangeHoldSmallThin(RangeHoldSmall):
         c = self.cfg()
         s["desc"] = (f"Range breakout buys under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K with only "
                      f"{c.get('min_trades_2m', 10)}+ trades in 2 min (others need 20), HOLD: sell everything at "
-                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%, "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
 
@@ -422,5 +431,47 @@ class RangeHoldFloor(RangeHold):
         s["desc"] = (f"Same buys as hold-to-bonding (under {c.get('max_entry_mcap_sol', 250):g} SOL); once a coin hits "
                      f"{c.get('floor_arm_mult', 2.0):g}x it sells if it falls back to {c.get('floor_mult', 1.0):g}x · "
                      f"otherwise sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop "
-                     f"−{c.get('stop_pct', 50):g}%, {c.get('max_hold_h', 6):g}h limit · no real money")
+                     f"−{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
+        return s
+
+
+class RangeHoldNearATH(RangeHold):
+    """PAPER test (11 Oct): the original hold-to-bonding test, but only buys when the breakout price is within
+    `max_below_ath_pct` (20%) of the coin's all-time high so far. 63 coins with the ATH recorded at the buy:
+    within 20% averaged +2%/trade, further below -22%/trade - better in all six hold tests. Uses rangebreak +
+    rangehold settings plus the `rangehold_ath` section; never real money."""
+    NAME = "rangehold_ath"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        mc = px * SUPPLY
+        ath = max(cd.get("peak") or 0, mc)
+        if mc < ath * (1 - float(c.get("max_below_ath_pct", 20)) / 100):
+            return                                          # too far under its high right now - may get closer later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def watching(self, limit=200):
+        out = super().watching(limit=10_000)
+        lim = 100 - float(self.cfg().get("max_below_ath_pct", 20))
+        for x in out:
+            if x.get("pct_of_ath") is not None and x["pct_of_ath"] < lim and x["rank"] == 0:
+                x["why"] += f" · but only {x['pct_of_ath']}% of ATH {x['ath']:.0f} (buys from {lim:g}%)"
+                x["rank"] = 1
+        out.sort(key=lambda x: (x["rank"], -x["mcap"]))
+        return out[:limit]
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same buys as hold-to-bonding, but only within {c.get('max_below_ath_pct', 20):g}% of the coin's "
+                     f"all-time high · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop "
+                     f"−{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
         return s

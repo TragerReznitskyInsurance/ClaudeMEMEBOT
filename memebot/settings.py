@@ -69,6 +69,8 @@ SCHEMA = [
         {"path": "rangehold_mix.enabled", "label": "Hold to bonding mix · 80 min-3.2 h old AND under $12K", "type": "bool"},
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
         {"path": "rangehold_floor.enabled", "label": "Hold to bonding · break-even floor after 2x", "type": "bool"},
+        {"path": "rangehold_ath.enabled", "label": "Hold to bonding · only within 20% of the all-time high", "type": "bool"},
+        {"path": "rangehold.dead_mcap_usd", "label": "Hold tests: sell everything if the market cap falls to", "unit": "$", "type": "float"},
     ]},
     {"group": "Reclaim (paper test)", "items": [
         {"path": "reclaim.enabled", "label": "Run the reclaim paper test", "type": "bool"},

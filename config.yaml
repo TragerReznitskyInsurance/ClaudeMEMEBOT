@@ -102,7 +102,7 @@ breakouts:
 # Second-wave entries: coins that made a first run, pulled back, and are bouncing with fresh trading.
 reclaim:
   stats_since: "2026-09-30"             # results on the dashboard count from this day (older trades stay in the files)
-  enabled: true
+  enabled: false                       # switched off 11 Oct (-$1,900 over 588 paper trades)
   run_mcap_sol: 80                     # a candidate must have reached this market cap while watched
   min_age_min: 30                      # only buy coins at least this old
   pullback_pct: 40                     # ...that fell at least this far from their peak
@@ -140,6 +140,7 @@ rangehold:
   enabled: true
   max_entry_mcap_sol: 250              # only coins still on the curve, well under the bonding level
   bond_exit_mcap_sol: 375              # sell everything here, or if it migrates
+  dead_mcap_usd: 4000                  # sell everything if the market cap falls to $4K (back at launch level: dead coin)
   stop_pct: 50                         # wide stop: these coins chop around inside their range
   max_hold_h: 6
 
@@ -172,6 +173,11 @@ rangehold_floor:
   enabled: true
   floor_arm_mult: 2.0
   floor_mult: 1.0
+
+# PAPER (11 Oct): hold-to-bonding, but only buys within 20% of the coin's all-time high at the breakout
+rangehold_ath:
+  enabled: true
+  max_below_ath_pct: 20
 
 # Range breakout BUY settings (sideways for a while, then breaks out of the top of the range) - used by the
 # hold-to-bonding tests. The original range-breakout test itself was removed on 8 Oct.
