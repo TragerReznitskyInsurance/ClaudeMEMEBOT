@@ -159,7 +159,7 @@ rangehold_v2:
 
 # PAPER (8 Oct): hybrid of v2 and under-$12K - coins 80 min - 3.2 h old AND under $12K at the breakout
 rangehold_mix:
-  enabled: true
+  enabled: false                       # switched off 11 Oct (edge faded; replaced by rangehold_small10t)
   min_age_min: 80
   max_age_h: 3.2
   max_entry_mcap_usd: 12000
@@ -168,6 +168,15 @@ rangehold_mix:
 rangehold_small10:
   enabled: true
   min_trades_2m: 10
+
+# PAPER (11 Oct): under-$12K / 10 trades, tuned on its first 51 trades - only 60+ SOL entries, only ranges 10%+ wide,
+# and a break-even floor once a coin has doubled
+rangehold_small10t:
+  enabled: true
+  entry_min_sol: 60
+  min_range_pct: 10
+  floor_arm_mult: 2.0
+  floor_mult: 1.0
 
 # PAPER (10 Oct): hold-to-bonding + break-even floor - once a coin hits 2x, sell if it falls back to our buy price
 rangehold_floor:
