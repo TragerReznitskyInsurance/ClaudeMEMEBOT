@@ -446,6 +446,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <div id="screenMain">
   <section id="realmoney"></section>
   <section id="overview"></section>
+  <section id="bondscore"></section>
   <section id="reclaim"></section>
   
   <section id="rangehold"></section>
@@ -660,7 +661,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; RHT = j.rangehold_small10; RHF = j.rangehold_floor; RHA = j.rangehold_ath; RHW = j.rangehold_sweet; RHU = j.rangehold_small10t; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; RHT = j.rangehold_small10; RHF = j.rangehold_floor; RHA = j.rangehold_ath; RHW = j.rangehold_sweet; RHU = j.rangehold_small10t; BS = j.bondscore; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1131,7 +1132,7 @@ function renderLab() {
 
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
-let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHA = null, RHW = null, RHU = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
+let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHA = null, RHW = null, RHU = null, BS = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
 const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, rangehold_small10: true, rangehold_floor: true, rangehold_ath: true, rangehold_sweet: true, rangehold_small10t: true, calls: true};
 function renderLkRules() {
@@ -1229,6 +1230,30 @@ function testPick(k) {
   if (TSEL) setTimeout(() => { const el = document.getElementById("strat-" + TSEL); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); }, 60);
 }
 let ovChartOpen = (() => { try { return localStorage.getItem("ovchart") !== "0"; } catch (e) { return true; } })();
+let bsOpen = false, bsSig = "";
+function renderBondScore() {
+  const el = $("#bondscore");
+  if (!BS) { el.innerHTML = ""; bsSig = ""; return; }
+  const sig = JSON.stringify([BS.resolved, BS.pending, bsOpen, BS.error]);
+  if (sig === bsSig) return;
+  bsSig = sig;
+  const sk = BS.skill_pct;
+  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2 style="color:var(--text)">🎯 Bond 6h score · how good are the predictions?</h2>
+    <span class="faint" style="font-size:12px">every coin the hold tests follow gets a predicted chance to bond within 6 h; 6 h later the bot checks on-chain and the table learns from it</span>
+    <div class="rm-actions"><button class="btn" onclick="bsOpen=!bsOpen;renderBondScore()">${bsOpen ? "Hide details" : "Details"}</button></div></div>
+    <div class="ov-tiles">
+      <div class="ov-tile"><div class="l">Predictions checked</div><div class="v num">${BS.resolved.toLocaleString()}</div><div class="s">${BS.pending.toLocaleString()} waiting for their 6 h</div></div>
+      <div class="ov-tile"><div class="l">Bonded</div><div class="v num">${BS.bonded}</div><div class="s">${BS.resolved ? (BS.bonded / BS.resolved * 100).toFixed(1) + "% of checked" : "—"}</div></div>
+      <div class="ov-tile"><div class="l">Skill vs guessing the average</div><div class="v num ${sk == null ? "" : sk > 0 ? "up" : "down"}">${sk == null ? "—" : (sk > 0 ? "+" : "") + sk + "%"}</div><div class="s">above 0 = the score adds real information</div></div>
+    </div>`;
+  if (BS.error) h += `<div class="faint" style="font-size:12px;padding:0 18px 8px;color:var(--warn)">${esc(BS.error)}</div>`;
+  if (bsOpen) {
+    h += `<div style="padding:0 18px 14px"><h3 style="font-size:13px;margin:8px 0 6px">Predicted vs what happened</h3>${BS.bands.length ? `<div class="tbl-wrap"><table><thead><tr><th>Predicted chance</th><th class="r">Coins</th><th class="r">Avg predicted</th><th class="r">Actually bonded</th></tr></thead><tbody>${BS.bands.map(b => `<tr><td>${b.band}</td><td class="r num">${b.n}</td><td class="r num">${b.predicted}%</td><td class="r num ${Math.abs(b.actual - b.predicted) <= Math.max(2, b.predicted * 0.3) ? "up" : "warn"}">${b.actual}%</td></tr>`).join("")}</tbody></table></div>` : `<div class="faint" style="font-size:12.5px">First results come in 6 hours after the bot starts.</div>`}
+      <h3 style="font-size:13px;margin:14px 0 6px">The table it uses now (started from 7 days of pump.fun data, learns from every result)</h3>
+      <div class="tbl-wrap"><table><thead><tr><th>Market cap (SOL)</th><th class="r">Coin 15m–2h old</th><th class="r">2–24h</th><th class="r">1 day+</th></tr></thead><tbody>${BS.table.map(r => `<tr><td>${r.mcap}</td>${r.cells.map(c => `<td class="r num">${c.now}%${c.n ? ` <span class="faint" style="font-size:11px">(was ${c.start}% · ${c.n} results)</span>` : ""}</td>`).join("")}</tr>`).join("")}</tbody></table></div></div>`;
+  }
+  el.innerHTML = h + `</div>`;
+}
 function renderOverview() {
   const el = $("#overview");
   const T = TESTS.map(([k, name, get, col]) => ({k, name, col, L: get()})).filter(t => t.L && (t.L.enabled || t.L.closed || t.L.open));
@@ -1390,7 +1415,7 @@ function watchTable(name, label) {
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
-function renderReclaim() { renderOverview(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdfloor"), RHF, "📦🛟 Hold to bonding · break-even floor after 2×"); renderStrat($("#rangeholdath"), RHA, "📦🏔 Hold to bonding · within 20% of ATH"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · tuned (60+ SOL, 10%+ range, floor after 2×)"); renderStrat($("#rangeholdsweet"), RHW, "📦🎯 Hold to bonding · sweet spot (100–200 SOL, 10–20% breakout)"); }
+function renderReclaim() { renderOverview(); renderBondScore(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdsmall"), RHS, "📦🐣 Hold to bonding · under $12K test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdfloor"), RHF, "📦🛟 Hold to bonding · break-even floor after 2×"); renderStrat($("#rangeholdath"), RHA, "📦🏔 Hold to bonding · within 20% of ATH"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · tuned (60+ SOL, 10%+ range, floor after 2×)"); renderStrat($("#rangeholdsweet"), RHW, "📦🎯 Hold to bonding · sweet spot (100–200 SOL, 10–20% breakout)"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   if (TCOLOR[L.name] && TSEL !== L.name) { el.innerHTML = ""; return; }   // tests open one at a time from the table

@@ -89,6 +89,11 @@ class Runner:
         self.rangehold_ath = RangeHoldNearATH(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_sweet = RangeHoldSweet(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_small10t = RangeHoldSmallTuned(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
+        from memebot import bondscore
+        self.bondscore = bondscore.BondTracker(os.path.join(HERE, "data"), lambda: [s for s in (
+            self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_small10, self.rangehold_floor,
+            self.rangehold_ath, self.rangehold_sweet, self.rangehold_small10t) if s.active], self.rangehold)
+        bondscore.TRACKER = self.bondscore                # watch lists use its learned table
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
         from memebot.explore import ExploreLog
         self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
@@ -392,7 +397,7 @@ class Runner:
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
                 "breakouts": self.breakouts.summary(),
-                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_small": self.rangehold_small.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_ath": self.rangehold_ath.state(), "rangehold_sweet": self.rangehold_sweet.state(), "rangehold_small10t": self.rangehold_small10t.state(),
+                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_small": self.rangehold_small.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_ath": self.rangehold_ath.state(), "rangehold_sweet": self.rangehold_sweet.state(), "rangehold_small10t": self.rangehold_small10t.state(), "bondscore": self.bondscore.state(),
                 "narratives": self.narr.state()}
 
 
@@ -556,6 +561,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.rangehold_ath.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_sweet.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_small10t.run(every=5)))
+    test_tasks.append(asyncio.create_task(runner.bondscore.run()))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.explore.run_fast(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
@@ -1059,7 +1065,8 @@ async def api_diagnostics(request):
                      "rangehold_floor_state.json", "rangehold_floor_trades.csv", "rangehold_floor_fills.csv",
                      "rangehold_ath_state.json", "rangehold_ath_trades.csv", "rangehold_ath_fills.csv",
                      "rangehold_sweet_state.json", "rangehold_sweet_trades.csv", "rangehold_sweet_fills.csv",
-                     "rangehold_small10t_state.json", "rangehold_small10t_trades.csv", "rangehold_small10t_fills.csv"):
+                     "rangehold_small10t_state.json", "rangehold_small10t_trades.csv", "rangehold_small10t_fills.csv",
+                     "bond_score.json", "bond_predictions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):
                 z.write(p, name)
