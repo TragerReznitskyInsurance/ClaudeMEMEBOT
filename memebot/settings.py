@@ -70,6 +70,7 @@ SCHEMA = [
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
         {"path": "rangehold_floor.enabled", "label": "Hold to bonding · break-even floor after 2x", "type": "bool"},
         {"path": "rangehold_ath.enabled", "label": "Hold to bonding · only within 20% of the all-time high", "type": "bool"},
+        {"path": "rangehold_sweet.enabled", "label": "Hold to bonding · sweet spot (100-200 SOL, 10-20% breakout)", "type": "bool"},
         {"path": "rangehold.late_risers", "label": "Hold tests: also follow late risers (coins that wake up 45+ min after launch)", "type": "bool"},
         {"path": "rangehold.dead_mcap_usd", "label": "Hold tests: sell everything if the market cap falls to", "unit": "$", "type": "float"},
     ]},

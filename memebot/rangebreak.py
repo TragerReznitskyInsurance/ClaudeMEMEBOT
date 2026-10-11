@@ -481,3 +481,46 @@ class RangeHoldNearATH(RangeHold):
                      f"all-time high · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop "
                      f"−{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldSweet(RangeHold):
+    """PAPER test (11 Oct): hold-to-bonding, but only the "sweet spot" from 164 hold coins - buy at
+    `entry_min_sol`-`entry_max_sol` (100-200 SOL) and only when the breakout is `break_pct`-`max_chase_pct`
+    (10-20%) above the top of the range. Past data: 21 coins, 7 bonded (33%), +$142 (+$95 without the best).
+    Uses rangebreak + rangehold settings plus the `rangehold_sweet` section; never real money."""
+    NAME = "rangehold_sweet"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        mc = px * SUPPLY
+        if not float(c.get("entry_min_sol", 100)) <= mc < float(c.get("entry_max_sol", 200)):
+            return                                          # outside 100-200 SOL right now - may still fit later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def watching(self, limit=200):
+        c = self.cfg()
+        lo, hi = float(c.get("entry_min_sol", 100)), float(c.get("entry_max_sol", 200))
+        out = super().watching(limit=10_000)
+        for x in out:
+            if x["rank"] == 0 and not lo <= x["mcap"] < hi:
+                x["why"] += f" · but buys only at {lo:g}-{hi:g} SOL"
+                x["rank"] = 1
+        out.sort(key=lambda x: (x["rank"], -x["mcap"]))
+        return out[:limit]
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys at {c.get('entry_min_sol', 100):g}-{c.get('entry_max_sol', 200):g} SOL, only when "
+                     f"{c.get('break_pct', 10):g}-{c.get('max_chase_pct', 20):g}% above the range top · sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        return s
