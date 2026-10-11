@@ -250,6 +250,8 @@ class Runner:
             self.rangehold_ath.active = True
             self.rangehold_ath.feed_price = feed_price
             eng.rangehold_ath = self.rangehold_ath
+            self.explore.listeners = [s.add_late for s in (self.rangehold, self.rangehold_small, self.rangehold_v2,
+                                      self.rangehold_mix, self.rangehold_small10, self.rangehold_floor, self.rangehold_ath)]
             self.calls.feed_price = feed_price
             eng.reclaim = self.reclaim
             eng.narr = self.narr
@@ -530,6 +532,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.rangehold_floor.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_ath.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
+    test_tasks.append(asyncio.create_task(runner.explore.run_fast(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
     nr_task = asyncio.create_task(runner.narr.run())
     why_task = asyncio.create_task(runner.why.run())
@@ -847,6 +850,7 @@ STRAT_LABELS = {
     "intake_mcap_sol": "Follow coins that reached (SOL mcap)", "min_of_peak_pct": "...and back to at least (% of old peak)", "settle_min": "Ignore launch spikes for (min)",
 }
 STRAT_LABELS["max_below_ath_pct"] = "Only buy within this % of the all-time high"
+STRAT_LABELS["late_risers"] = "Also follow late risers (coins that wake up 45+ min after launch)"
 STRAT_LABELS["dead_mcap_usd"] = "Sell everything if the market cap falls to ($)"
 STRAT_LABELS["floor_arm_mult"] = "Floor turns on once up (x of buy price)"
 STRAT_LABELS["floor_mult"] = "...then sell if it falls back to (x of buy price)"

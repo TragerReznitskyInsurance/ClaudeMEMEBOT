@@ -69,12 +69,13 @@ class RangeBreak(Reclaim):
             peak_mult=1.0, floor_mult=0.0, done=[], last_px=px, last_px_ts=ts, sells=[], verified=True,
             size_usd=round(size * usd, 2), range_lo=round(lo, 1), range_hi=round(hi, 1), trades_2m=trades_2m,
             graduated=cd.get("src") == "jupiter", prior_peak=round(max(cd.get("peak") or 0, mc), 1),
-            pct_of_ath=round(mc / max(cd.get("peak") or mc, mc) * 100, 1))
+            pct_of_ath=round(mc / max(cd.get("peak") or mc, mc) * 100, 1), late=bool(cd.get("late")))
         rng = (hi / lo - 1) * 100
         self._csv(f"{self.NAME}_fills.csv", "time_utc,mint,symbol,side,reason,mult,sol,tokens",
                   [time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(ts)), cd["mint"], cd["symbol"], "BUY",
                    f"breakout at {mc:.0f} SOL from a {lo:.0f}-{hi:.0f} SOL range ({rng:.0f}% wide), "
-                   f"{mc / max(cd.get('peak') or mc, mc) * 100:.0f}% of ATH {max(cd.get('peak') or mc, mc):.0f}", "1.00",
+                   f"{mc / max(cd.get('peak') or mc, mc) * 100:.0f}% of ATH {max(cd.get('peak') or mc, mc):.0f}"
+                   + (" · late riser" if cd.get("late") else ""), "1.00",
                    round(size + prio, 6), round(tokens, 2)])
         self._event("buy", f"Paper buy {cd['symbol']} at {mc:.0f} SOL mcap - broke out of a {lo:.0f}-{hi:.0f} SOL range "
                            f"({rng:.0f}% wide, {c.get('consol_min', 20):g} min)"
@@ -220,7 +221,8 @@ class RangeBreak(Reclaim):
                 why, rank = f"Too choppy ({w:.0f}% range, needs ≤{c.get('max_range_pct', 35):g}%)", 3
             ath = max(cd.get("peak") or 0, mc)
             out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
-                            ath=round(ath, 1), pct_of_ath=round(mc / ath * 100) if ath else None, why=why, rank=rank))
+                            ath=round(ath, 1), pct_of_ath=round(mc / ath * 100) if ath else None,
+                            why=why + (" · late riser" if cd.get("late") else ""), rank=rank, late=bool(cd.get("late"))))
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
         return out[:limit]
 
@@ -291,6 +293,10 @@ class RangeHold(RangeBreak):
         c = self.cfg()
         since = self.stats_from()
         s["bonded"] = sum(1 for x in self.closed if x["opened"] >= since and str(x.get("exit", "")).startswith("bonding level"))
+        lt = [x for x in self.closed if x["opened"] >= since and x.get("late")]
+        s["late"] = dict(closed=len(lt), bonded=sum(1 for x in lt if str(x.get("exit", "")).startswith("bonding level")),
+                         pnl_usd=round(sum(x.get("pnl_usd") or 0 for x in lt), 2),
+                         open=sum(1 for p in self.positions.values() if p.get("late")))
         s.update(name=self.NAME, desc=(f"Range breakout buys (on the curve, under {c.get('max_entry_mcap_sol', 250):g} SOL), "
                                        f"but HOLD: sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
                                        f"stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money"))

@@ -91,6 +91,34 @@ class Reclaim(Lookalike):
                 self.cands.pop(m)
         return False
 
+    def add_late(self, coins, now):
+        """Late risers (11 Oct): coins from pump.fun's Explore lists that are 45+ min old, still on the curve and at
+        `run_mcap_sol`+ but that the bot never followed (they woke up after the first ~45 min it watches every new
+        coin). They become candidates like any other, tagged late=True so results can be split."""
+        if not (self.active and self.enabled()):
+            return 0
+        c = self.cfg()
+        if not c.get("late_risers", True):
+            return 0
+        lo, n = float(c.get("run_mcap_sol", 80)), 0
+        for x in coins:
+            m, mc, age = x.get("mint"), x.get("mcap_sol"), x.get("age_min")
+            if not m or m in self.known or m in self.traded or m in self.positions or x.get("complete"):
+                continue
+            if not isinstance(mc, (int, float)) or not isinstance(age, (int, float)):
+                continue
+            if mc < lo or mc >= 400 or age < float(c.get("late_min_age_min", 45)) or age > float(c.get("max_age_h", 6)) * 60:
+                continue
+            self.known.add(m)
+            self.cands[m] = dict(mint=m, symbol=x.get("sym") or m[:5], name="", created=now - age * 60, added=now,
+                                 peak=mc, low=None, pulled=False, last_mc=mc, misses=0, late=True)
+            n += 1
+        cap = int(c.get("max_candidates", 400))
+        if n and len(self.cands) > cap:
+            for m in sorted(self.cands, key=lambda m: self.cands[m]["added"])[:len(self.cands) - cap]:
+                self.cands.pop(m)
+        return n
+
     def watching(self, limit=200):
         """The coins this test is following right now and what it's waiting for (dashboard 'Watching' list)."""
         c = self.cfg()

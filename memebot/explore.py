@@ -40,6 +40,8 @@ class ExploreLog:
         self.last_error = ""
         self.last_ok_ts = 0.0
         self.last_count = 0
+        self.listeners = []          # callables(coins, now): the hold tests pick up late risers from these lists
+        self.fast_ok = 0
 
     def cfg(self):
         return self._cfg().get("explore") or {}
@@ -57,7 +59,14 @@ class ExploreLog:
         except OSError as e:
             self.last_error = str(e)[:80]
 
-    async def _one(self, session, name, sort, limit, sol_usd):
+    def _tell(self, coins, now):
+        for fn in self.listeners:
+            try:
+                fn(coins, now)
+            except Exception as e:                         # a listener problem must never stop the research log
+                log.info("explore listener: %s", e)
+
+    async def _one(self, session, name, sort, limit, sol_usd, write=True):
         params = {"offset": "0", "limit": str(limit), "sort": sort, "order": "DESC", "includeNsfw": "false"}
         async with session.get(LIST_URL, params=params, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as r:
             if r.status != 200:
@@ -80,8 +89,31 @@ class ExploreLog:
                               age_min=round((now - created) / 60, 1) if isinstance(created, (int, float)) else None,
                               complete=bool(c.get("complete")), replies=c.get("reply_count"),
                               koth=bool(c.get("king_of_the_hill_timestamp"))))
-        self._write(dict(type="explore", list=name, ts=round(now, 1), coins=coins))
+        if write:
+            self._write(dict(type="explore", list=name, ts=round(now, 1), coins=coins))
+        self._tell(coins, now)
         return len(coins)
+
+    async def run_fast(self, sol_usd_getter):
+        """Late risers (11 Oct): poll the 'last traded' list every `fast_every_s` (30 s) - not saved to the file,
+        only handed to the hold tests so coins that wake up hours after launch get followed too."""
+        async with aiohttp.ClientSession() as session:
+            while True:
+                c = self.cfg()
+                every = float(c.get("fast_every_s", 30))
+                if not c.get("enabled", True) or not every or not self.listeners or not sol_usd_getter():
+                    await asyncio.sleep(60)
+                    continue
+                try:
+                    await self._one(session, "last_trade", LISTS["last_trade"], int(c.get("limit", 50)),
+                                    sol_usd_getter(), write=False)
+                    self.fast_ok += 1
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    log.debug("explore fast poll failed: %s", e)
+                    every = max(every, 120)
+                await asyncio.sleep(every)
 
     async def run(self, sol_usd_getter):
         async with aiohttp.ClientSession() as session:

@@ -141,6 +141,7 @@ rangehold:
   max_entry_mcap_sol: 250              # only coins still on the curve, well under the bonding level
   bond_exit_mcap_sol: 375              # sell everything here, or if it migrates
   dead_mcap_usd: 4000                  # sell everything if the market cap falls to $4K (back at launch level: dead coin)
+  late_risers: true                    # also follow coins that wake up 45+ min after launch (from pump.fun's lists)
   stop_pct: 50                         # wide stop: these coins chop around inside their range
   max_hold_h: 6
 

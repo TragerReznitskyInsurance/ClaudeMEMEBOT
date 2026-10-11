@@ -1405,6 +1405,7 @@ function renderStrat(el, L, title) {
     ${T_("Total", $u(tot) || signed(tot, 4), cls(tot))}${T_("Realized", $u(L.realized) || signed(L.realized, 4), cls(L.realized))}${T_("Open P&L", $u(L.open_pnl) || signed(L.open_pnl, 4), cls(L.open_pnl))}
     ${T_("Closed", L.closed)}${T_("Open", L.open)}${T_("Win rate", L.win_rate == null ? "—" : L.win_rate + "%")}${T_("Hit 2×", L.hit_2x)}
     ${isHold ? T_("Bonded", `${L.bonded ?? 0}${L.closed ? ` <span class="faint" style="font-size:12px">${Math.round((L.bonded ?? 0) / L.closed * 100)}%</span>` : ""}`) : T_("Hit 6×", L.hit_6x)}</div>
+    ${isHold && L.late ? `<div class="faint" style="font-size:12.5px;margin:2px 0 8px">🌙 Late risers (coins that woke up 45+ min after launch): <b>${L.late.closed}</b> closed · <b>${L.late.bonded}</b> bonded · <b class="${cls(L.late.pnl_usd)}">${money(L.late.pnl_usd)}</b>${L.late.open ? ` · ${L.late.open} open` : ""} <span class="faint">(included in the totals above)</span></div>` : ""}
     ${stratViz(L)}${WOPEN[L.name] ? watchTable(L.name) : ""}`;
   if (L.last_error) h += `<div class="faint" style="font-size:12px;color:var(--warn)">Price check error: ${esc(L.last_error)}</div>`;
   const RW = L.name === "lookalike_grad" ? (LIVE2?.per_wallet || {})["Lookalike·grad"] : (LIVE?.per_wallet || {})["Lookalike"];
