@@ -25,6 +25,7 @@ import logging
 import re
 import time
 
+from memebot.bondscore import bond_chance, breakeven_chance
 from memebot.lookalike import curve_buy
 from memebot.reclaim import Reclaim
 
@@ -221,7 +222,10 @@ class RangeBreak(Reclaim):
             else:
                 why, rank = f"Too choppy ({w:.0f}% range, needs ≤{c.get('max_range_pct', 35):g}%)", 3
             ath = max(cd.get("peak") or 0, mc)
+            bc, be = bond_chance(mc, age), breakeven_chance(mc)
             out.append(dict(mint=m, symbol=cd.get("symbol") or m[:5], age_min=round(age), mcap=round(mc, 1),
+                            bond_pct=round(bc * 100, 1) if bc is not None else None,
+                            breakeven_pct=round(be * 100, 1) if be is not None else None,
                             ath=round(ath, 1), pct_of_ath=round(mc / ath * 100) if ath else None,
                             why=why + (" · late riser" if cd.get("late") else ""), rank=rank, late=bool(cd.get("late"))))
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
