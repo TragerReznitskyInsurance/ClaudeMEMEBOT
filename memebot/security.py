@@ -6,8 +6,10 @@ RugCheckScreener  - live: asks RugCheck's free API about each new token before
 DemoScreener      - demo mode: simulated results on a virtual clock.
 """
 import asyncio
+import collections
 import logging
 import random
+import time
 
 import aiohttp
 
@@ -41,6 +43,7 @@ class RugCheckScreener:
         self.inflight = 0
         self.session: aiohttp.ClientSession | None = None
         self.stats = {"ok": 0, "fail": 0, "error": 0}
+        self.recent = collections.deque(maxlen=5000)       # (time, "ok" | "fail" | "error") - for the 'right now' warning
         self.last_error = ""
 
     def request(self, mint: str):
@@ -50,8 +53,15 @@ class RugCheckScreener:
         self.inflight += 1
         asyncio.get_running_loop().create_task(self._check(mint))
 
+    def recent_counts(self, window_s=1800):
+        """(errors, checks) in the last `window_s` seconds."""
+        cut = time.time() - window_s
+        r = [k for ts, k in self.recent if ts >= cut]
+        return sum(1 for k in r if k == "error"), len(r)
+
     def _error(self, mint, why):
         self.stats["error"] += 1
+        self.recent.append((time.time(), "error"))
         self.last_error = why
         allow = self._sec().get("rugcheck_on_error", "skip") == "allow"
         self._engine().on_screen_result(mint, allow, "rugcheck unavailable" if allow else f"rugcheck unavailable ({why})")
@@ -82,6 +92,7 @@ class RugCheckScreener:
                                 data = await r.json(content_type=None)
                                 ok, reason = judge(data or {}, self._sec())
                                 self.stats["ok" if ok else "fail"] += 1
+                                self.recent.append((time.time(), "ok" if ok else "fail"))
                                 self._engine().on_screen_result(mint, ok, reason)
                                 return
                             why = {400: "not indexed in time", 404: "not indexed in time",

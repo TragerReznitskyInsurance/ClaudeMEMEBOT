@@ -145,8 +145,11 @@ class Runner:
                     key_hint=(key[:4] + "…" + key[-4:]) if len(key) > 10 else ("set" if key else ""),
                     universe=self.cfg["universe"],
                     rugcheck_on_error=self.cfg["security"].get("rugcheck_on_error", "skip"),
-                    rugcheck_errors=getattr(self.screener, "stats", {}).get("error", 0),
-                    rugcheck_checks=sum(getattr(self.screener, "stats", {}).values()),
+                    rugcheck_errors=(self.screener.recent_counts()[0] if hasattr(self.screener, "recent_counts")
+                                     else getattr(self.screener, "stats", {}).get("error", 0)),
+                    rugcheck_checks=(self.screener.recent_counts()[1] if hasattr(self.screener, "recent_counts")
+                                     else sum(getattr(self.screener, "stats", {}).values())),
+                    rugcheck_errors_total=getattr(self.screener, "stats", {}).get("error", 0),
                     rugcheck_last_error=getattr(self.screener, "last_error", ""),
                     trade_feed_silent_s=self.trade_feed_silent(), update=self.updater.state(), boot=BOOT_ID,
                     notify=self.notifier.state(), explore=self.explore.state())

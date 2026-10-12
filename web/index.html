@@ -716,7 +716,7 @@ function renderBody() {
   if (META?.running && META.mode === "demo")
     n = `<div class="notice" style="background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)"><span>◇</span><div><b style="color:var(--brand)">Demo mode.</b> Every token here is synthetic. Use it to learn the dashboard, not to judge the strategy.</div></div>`;
   if (META?.running && META.mode === "live" && META.rugcheck_errors >= 5 && META.rugcheck_errors / Math.max(1, META.rugcheck_checks) > 0.3 && S?.stats?.rugcheck)
-    n += `<div class="notice"><span>🛡</span><div><b>RugCheck isn't responding reliably</b> (${META.rugcheck_errors} of ${META.rugcheck_checks} checks failed${META.rugcheck_last_error ? ", last: " + esc(META.rugcheck_last_error) : ""}). ${META.rugcheck_on_error === "allow" ? "Tokens it can't check are being watched without it." : "Tokens it can't check are being skipped, so you may see very few trades."}</div><button class="btn" onclick="openDrawer()">Settings</button></div>`;
+    n += `<div class="notice"><span>🛡</span><div><b>RugCheck isn't responding reliably</b> (${META.rugcheck_errors} of ${META.rugcheck_checks} checks in the last 30 min failed${META.rugcheck_last_error ? ", last: " + esc(META.rugcheck_last_error) : ""}). ${META.rugcheck_on_error === "allow" ? "Tokens it can't check are being watched without it." : "The paper tests keep following coins it can't check; they just can't be real-money buys until RugCheck passes them."}</div><button class="btn" onclick="openDrawer()">Settings</button></div>`;
   const C = S?.copy;
   if (C && C.wallets && C.wallets.length && META?.running) {
     const ws = C.wallets.map(w => w.slice(0, 4) + "…" + w.slice(-4)).join(", ");

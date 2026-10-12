@@ -433,6 +433,13 @@ class Engine:
             t.sec_state = "passed"
             t.security_note = reason
             self.security_passed += 1
+        elif reason.startswith("rugcheck unavailable") and not self._momentum_on():
+            # RugCheck couldn't answer (outage / slow indexing) - NOT a failed check. In research mode (paper tests
+            # only) keep following the coin instead of dropping it; it can never be a real momentum buy (not passed).
+            # 12 Oct: a 6 h outage dropped 3,285 coins, 89 of which went on to bond.
+            t.sec_state = "unchecked"
+            t.security_note = "RugCheck unavailable - not checked"
+            self.security_unchecked = getattr(self, "security_unchecked", 0) + 1
         else:
             t.sec_state = "failed"
             self.security_failed += 1
