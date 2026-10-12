@@ -590,3 +590,57 @@ class RangeHoldSmallTuned(RangeHoldSmallThin):
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldV2Mid(RangeHoldV2):
+    """PAPER test (12 Oct): hold-to-bonding v2 (coins `min_age_min`-`max_age_h` old), but only buys at
+    `entry_min_sol`-`entry_max_sol` (85-130 SOL), plus a break-even floor once a coin has reached `floor_arm_mult`
+    (2x). v2's first 61 trades: under 85 SOL 0 of 17 bonded (-$124); 85-130 SOL 5 of 24 bonded, +$146, positive in
+    both halves; above 130 SOL bonds paid too little (-$113). Uses rangebreak + rangehold + rangehold_v2 settings
+    plus the `rangehold_v2mid` section; never real money."""
+    NAME = "rangehold_v2mid"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        for sec in ("rangehold", "rangehold_v2"):
+            c.update(self._cfg().get(sec) or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        if not float(c.get("entry_min_sol", 85)) <= px * SUPPLY < float(c.get("entry_max_sol", 130)):
+            return                                          # outside 85-130 SOL right now - may still fit later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def check(self, p, px, ts):
+        c = self.cfg()
+        mult = px / p["entry_px"]
+        peak = max(p["peak_mult"], mult)
+        arm, floor = float(c.get("floor_arm_mult", 2.0)), float(c.get("floor_mult", 1.0))
+        if peak >= arm and mult <= floor and px * SUPPLY < float(c.get("bond_exit_mcap_sol", 375)):
+            p["last_px"], p["last_px_ts"], p["peak_mult"] = px, ts, peak
+            return self._sell(p, 1.0, f"back to {floor:g}x after a {peak:.1f}x high (break-even floor)", px, ts)
+        return super().check(p, px, ts)
+
+    def watching(self, limit=200):
+        c = self.cfg()
+        lo, hi = float(c.get("entry_min_sol", 85)), float(c.get("entry_max_sol", 130))
+        out = super().watching(limit=10_000)
+        for x in out:
+            if x["rank"] == 0 and not lo <= x["mcap"] < hi:
+                x["why"] += f" · but buys only at {lo:g}-{hi:g} SOL"
+                x["rank"] = 1
+        out.sort(key=lambda x: (x["rank"], -x["mcap"]))
+        return out[:limit]
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Range breakout buys of coins {c.get('min_age_min', 80):g} min-{c.get('max_age_h', 3.2):g} h old, only at "
+                     f"{c.get('entry_min_sol', 85):g}-{c.get('entry_max_sol', 130):g} SOL · break-even floor after "
+                     f"{c.get('floor_arm_mult', 2.0):g}x · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
+                     f"stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
+        return s

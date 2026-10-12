@@ -231,13 +231,13 @@ class Engine:
         self.reclaim = None                        # Reclaim paper strategy, live mode only
         self.reclaim_big = None                  # Reclaim, big coins only (paper)
         self.rangehold = None                      # range breakout buys, hold for the bonding level (paper)
-        self.rangehold_small = None                # same, only coins under $12K (paper)
         self.rangehold_v2 = None                   # same, only coins 80 min - 3.2 h old (paper)
         self.rangehold_mix = None                  # v2 age window + under $12K (paper)
         self.rangehold_small10 = None              # under $12K, only 10 trades / 2 min needed (paper)
         self.rangehold_floor = None                # hold to bonding + break-even floor after 2x (paper)
         self.rangehold_ath = None                  # hold to bonding, only within 20% of the all-time high (paper)
         self.rangehold_small10t = None             # under-$12K/10 trades, tuned: 60+ SOL, 10%+ ranges, BE floor (paper)
+        self.rangehold_v2mid = None                # hold to bonding v2, 85-130 SOL only + BE floor (paper)
         self.rangehold_sweet = None                # hold to bonding, 100-200 SOL + 10-20% breakout only (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
@@ -542,8 +542,6 @@ class Engine:
             self.reclaim_big.maybe_enter(t, prev_mcap, ts)
         if self.rangehold is not None and t.creator:
             self.rangehold.maybe_enter(t, prev_mcap, ts)
-        if self.rangehold_small is not None and t.creator:
-            self.rangehold_small.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_v2 is not None and t.creator:
             self.rangehold_v2.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_mix is not None and t.creator:
@@ -558,6 +556,8 @@ class Engine:
             self.rangehold_sweet.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_small10t is not None and t.creator:
             self.rangehold_small10t.maybe_enter(t, prev_mcap, ts)
+        if self.rangehold_v2mid is not None and t.creator:
+            self.rangehold_v2mid.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
             self.survivor.maybe_enter(t, prev_mcap, ts)
         if self.skimmer is not None and t.creator and prev_mcap:
@@ -894,8 +894,8 @@ class Engine:
             lk_done = all(s is None or not s.enabled() or t.mint in s.traded for s in (self.lookalike, self.lookalike_grad, *self.tests, *([self.skimmer] if self.skimmer else [])))
             # keep watching until every candidate-collecting paper test (Reclaim + the hold tests) knows this coin
             rc_done = not any(s is not None and s.wants_watch(t.mint) for s in (
-                self.reclaim, self.rangehold, self.rangehold_small, self.rangehold_v2, self.rangehold_mix,
-                self.rangehold_small10, self.rangehold_floor, self.rangehold_ath, self.rangehold_sweet, self.rangehold_small10t))
+                self.reclaim, self.rangehold, self.rangehold_v2, self.rangehold_mix,
+                self.rangehold_small10, self.rangehold_floor, self.rangehold_ath, self.rangehold_sweet, self.rangehold_small10t, self.rangehold_v2mid))
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return

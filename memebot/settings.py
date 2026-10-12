@@ -64,8 +64,8 @@ SCHEMA = [
     ]},
     {"group": "Paper tests", "items": [
         {"path": "rangehold.enabled", "label": "Range breakout · hold to bonding", "type": "bool"},
-        {"path": "rangehold_small.enabled", "label": "Hold to bonding · under $12K only", "type": "bool"},
         {"path": "rangehold_v2.enabled", "label": "Hold to bonding v2 · coins 80 min-3.2 h old", "type": "bool"},
+        {"path": "rangehold_v2mid.enabled", "label": "Hold to bonding v2 · 85-130 SOL only + break-even floor after 2x", "type": "bool"},
         {"path": "rangehold_mix.enabled", "label": "Hold to bonding mix · 80 min-3.2 h old AND under $12K", "type": "bool"},
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
         {"path": "rangehold_small10t.enabled", "label": "Hold to bonding · under $12K, 10+ trades, tuned (60+ SOL, 10%+ range, floor after 2x)", "type": "bool"},

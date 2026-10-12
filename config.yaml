@@ -146,8 +146,8 @@ rangehold:
   max_hold_h: 6
 
 # PAPER (6 Oct): same as rangehold, but only coins under $12K market cap (bonding level ~4x+ away)
-rangehold_small:
-  enabled: true
+rangehold_small:                       # the under-$12K test itself was removed 12 Oct; this cap is still used by
+  enabled: false                       # the under-$12K / 10-trade tests (rangehold_small10, rangehold_small10t)
   max_entry_mcap_usd: 12000
 
 # PAPER (6 Oct): same as rangehold, but only coins 80 min - 3.2 h old at the breakout (first 39 trades: 85-190 min
@@ -156,6 +156,14 @@ rangehold_v2:
   enabled: true
   min_age_min: 80
   max_age_h: 3.2
+
+# PAPER (12 Oct): v2 (coins 80 min-3.2 h old), only buys at 85-130 SOL, break-even floor once a coin has doubled
+rangehold_v2mid:
+  enabled: true
+  entry_min_sol: 85
+  entry_max_sol: 130
+  floor_arm_mult: 2.0
+  floor_mult: 1.0
 
 # PAPER (8 Oct): hybrid of v2 and under-$12K - coins 80 min - 3.2 h old AND under $12K at the breakout
 rangehold_mix:
