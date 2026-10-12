@@ -240,7 +240,7 @@ rangebreak:
 # address in them, in the real (lookalike) wallet. No safety / bundle checks - owner's choice (30 Sep).
 calls:
   enabled: true
-  real_money: true                     # false = track the calls on paper only
+  real_money: false                    # false = track the calls on paper only (switched off 12 Oct, owner's request)
   read_notifications: true             # read Discord notifications on this computer (Windows)
   apps: ["discord", "telegram"]                 # which apps' notifications count (add "chrome" if you use Discord in a browser)
   channel: ""                          # ONLY buy from this channel: text in the pop-up's title, e.g. "calls" or "alpha-calls"

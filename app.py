@@ -484,6 +484,20 @@ def _settings_fix_1011b():
         log.warning("settings fix 1011b skipped: %s", e)
 
 
+def _settings_fix_1012():
+    """One-time (12 Oct): Discord call buys switched to paper only (owner's request). Calls are still tracked on paper."""
+    mark = os.path.join(HERE, "data", "settings_fix_1012.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"calls.real_money": False}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: Discord call real buys switched off (one-time update)")
+    except Exception as e:
+        log.warning("settings fix 1012 skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -511,6 +525,7 @@ _settings_fix_1002()
 _settings_fix_1006()
 _settings_fix_1011()
 _settings_fix_1011b()
+_settings_fix_1012()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
