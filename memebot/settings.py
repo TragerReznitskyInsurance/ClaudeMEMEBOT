@@ -56,11 +56,15 @@ SCHEMA = [
         {"path": "live.sell_slippage_pct", "label": "Sell slippage", "unit": "%", "type": "float"},
         {"path": "live.priority_fee_sol", "label": "Priority fee per tx", "unit": "SOL", "type": "float"},
     ]},
-    {"group": "Real wallet (Reclaim + Discord/Telegram calls)", "items": [
+    {"group": "Real wallet (Discord calls + Hold <$12K · 10 trades)", "items": [
         {"path": "lookalike_grad.real_enabled", "label": "REAL MONEY: the real wallet trades the Reclaim strategy", "type": "bool"},
         {"path": "lookalike_grad.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
         {"path": "lookalike_grad.real_max_open", "label": "Max real coins open", "type": "int"},
         {"path": "lookalike_grad.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
+        {"path": "rangehold_small10.real_enabled", "label": "REAL MONEY: buy the 'Hold <$12K · 10 trades' test for real (RugCheck before every buy)", "type": "bool"},
+        {"path": "rangehold_small10.real_size_usd", "label": "...real size per coin", "unit": "$", "type": "float"},
+        {"path": "rangehold_small10.real_max_open", "label": "...max real coins open", "type": "int"},
+        {"path": "rangehold_small10.real_daily_loss_usd", "label": "...stop real buys after losing (per day)", "unit": "$", "type": "float"},
     ]},
     {"group": "Paper tests", "items": [
         {"path": "rangehold.enabled", "label": "Range breakout · hold to bonding", "type": "bool"},

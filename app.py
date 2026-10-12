@@ -263,6 +263,7 @@ class Runner:
             self.rangehold_small10t.active = True
             self.rangehold_small10t.feed_price = feed_price
             eng.rangehold_small10t = self.rangehold_small10t
+            self.rangehold_small10.live = self.live2          # real money (if switched on in Settings) uses the real wallet
             self.rangehold_v2mid.active = True
             self.rangehold_v2mid.feed_price = feed_price
             eng.rangehold_v2mid = self.rangehold_v2mid

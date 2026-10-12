@@ -21,13 +21,17 @@ Never real money.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 
+import aiohttp
+
 from memebot.bondscore import bond_chance, breakeven_chance
 from memebot.lookalike import curve_buy
 from memebot.reclaim import Reclaim
+from memebot.security import RUGCHECK_URL, judge
 
 log = logging.getLogger("memebot")
 SUPPLY = 1_000_000_000
@@ -389,17 +393,76 @@ class RangeHoldMix(RangeHoldSmall):
 class RangeHoldSmallThin(RangeHoldSmall):
     """PAPER test (9 Oct): the under-$12K hold test, but it only needs `min_trades_2m` = 10 trades in the last
     2 minutes at the breakout (instead of 20) - small coins have fewer traders. Uses rangebreak + rangehold +
-    rangehold_small settings plus the `rangehold_small10` section; never real money."""
+    rangehold_small settings plus the `rangehold_small10` section.
+    REAL MONEY (12 Oct, owner's request, off by default): with `real_enabled` on, every paper buy is also bought for
+    real in the real wallet - `real_size_usd` ($10) each, at most `real_max_open` (15) open, no new buys after
+    `real_daily_loss_usd` ($40) lost today. Each real buy first gets a fresh RugCheck (late risers / coins RugCheck
+    couldn't check never had one) and is skipped if it fails or RugCheck doesn't answer. Real sells follow the
+    paper exits."""
     NAME = "rangehold_small10"
+    REAL_KEYS = ("real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd")
 
     def cfg(self):
         c = dict(self._cfg().get("rangebreak") or {})
         c.update(self._cfg().get("rangehold") or {})
         c.update(self._cfg().get("rangehold_small") or {})
         c.pop("stats_since", None)
+        for k in self.REAL_KEYS:                            # real-money settings only ever come from this test's own section
+            c.pop(k, None)
         c.update(self._cfg().get(self.NAME) or {})
-        c["real_enabled"] = False
+        c["real_enabled"] = bool(c.get("real_enabled")) and self.NAME == "rangehold_small10"
         return c
+
+    # ------------------------------------------------------------------ real money
+    def _enter(self, cd, px, ts, trades_2m):
+        had = cd["mint"] in self.positions
+        super()._enter(cd, px, ts, trades_2m)
+        c = self.cfg()
+        if had or cd["mint"] not in self.positions or not c.get("real_enabled") or getattr(self, "live", None) is None:
+            return
+        try:
+            asyncio.get_running_loop().create_task(self._real_buy(cd["mint"], cd["symbol"]))
+        except RuntimeError:
+            pass
+
+    async def _rugcheck(self, mint):
+        """(ok, reason) from a fresh RugCheck report; not ok if it can't be read."""
+        sec = self._cfg().get("security") or {}
+        why = "RugCheck didn't answer"
+        for attempt in range(3):
+            try:
+                async with aiohttp.ClientSession(headers={"User-Agent": "momentum-paper-bot"}) as s:
+                    async with s.get(RUGCHECK_URL.format(mint=mint), timeout=aiohttp.ClientTimeout(total=8)) as r:
+                        if r.status == 200:
+                            return judge(await r.json(content_type=None) or {}, sec)
+                        why = f"RugCheck HTTP {r.status}"
+            except Exception as e:
+                why = f"RugCheck {type(e).__name__}"
+            await asyncio.sleep(3)
+        return False, why
+
+    async def _real_buy(self, mint, symbol):
+        c = self.cfg()
+        ok, why = await self._rugcheck(mint)
+        p = self.positions.get(mint)
+        if p is None:
+            return                                          # paper already sold while we checked
+        if not ok:
+            p["real_skip"] = why
+            return self._event("skip", f"{symbol}: no real buy - {why}", mint=mint)
+        if p.get("last_px") and p["last_px"] / p["entry_px"] > 1.15:
+            p["real_skip"] = "price ran 15%+ while checking"
+            return self._event("skip", f"{symbol}: no real buy - price ran 15%+ while RugCheck was checking", mint=mint)
+        why = self.live.open_strategy(self.NAME, mint, symbol, float(c.get("real_size_usd", 10)),
+                                      int(c.get("real_max_open", 15)), float(c.get("real_daily_loss_usd", 40)))
+        if why is None:
+            p["real"] = True
+            self._event("buy", f"{symbol}: REAL buy placed (${float(c.get('real_size_usd', 10)):g}) · RugCheck passed", mint=mint)
+            log.info("SMALL10 REAL buy %s", symbol)
+        else:
+            p["real_skip"] = why
+            self._event("skip", f"{symbol}: no real buy - {why}", mint=mint)
+        self._save()
 
     def state(self):
         s = super().state()
@@ -407,7 +470,11 @@ class RangeHoldSmallThin(RangeHoldSmall):
         s["desc"] = (f"Range breakout buys under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K with only "
                      f"{c.get('min_trades_2m', 10)}+ trades in 2 min (others need 20), HOLD: sell everything at "
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
-                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+                     f"{c.get('max_hold_h', 6):g}h limit · "
+                     + (f"REAL MONEY ON: ${float(c.get('real_size_usd', 10)):g} per buy, max {int(c.get('real_max_open', 15))} open, "
+                        f"stops after -${float(c.get('real_daily_loss_usd', 40)):g} a day, RugCheck before every real buy"
+                        if c.get("real_enabled") else "no real money"))
+        s["real_enabled"] = bool(c.get("real_enabled"))
         return s
 
 
