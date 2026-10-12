@@ -93,6 +93,7 @@ SCHEMA = [
     ]},
     {"group": "Phone alerts", "items": [
         {"path": "notify.enabled", "label": "Push every real buy / sell to the ntfy app on my phone", "type": "bool"},
+        {"path": "notify.paper_summary_every_min", "label": "Paper test P&L summary to my phone every (0 = off)", "unit": "min", "type": "float"},
     ]},
     {"group": "Copy trading", "items": [
         {"path": "copy_trade.enabled", "label": "Copy a wallet", "type": "bool", "restart": True},

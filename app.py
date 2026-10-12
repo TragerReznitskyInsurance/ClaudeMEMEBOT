@@ -562,6 +562,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.rangehold_small10t.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_v2mid.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.bondscore.run()))
+    test_tasks.append(asyncio.create_task(paper_summary_loop()))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.explore.run_fast(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))
@@ -922,6 +923,56 @@ STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss
 
 
 STRAT_HIDE = {}
+
+
+PAPER_LABELS = [("rangehold_ath", "Near ATH"), ("rangehold", "Hold to bond"), ("rangehold_v2", "V2 80m-3h"),
+                ("rangehold_v2mid", "V2 85-130 SOL"), ("rangehold_small10t", "<$12K 10tr tuned"),
+                ("rangehold_small10", "<$12K 10 trades"), ("rangehold_floor", "BE floor 2x"), ("rangehold_sweet", "Sweet spot")]
+
+
+def paper_summary_text(prev=None):
+    """(title, body, totals) for the hourly paper-test push. P&L = realized + open, since each test's last reset."""
+    lines, tot, tot_open, totals = [], 0.0, 0, {}
+    for key, label in PAPER_LABELS:
+        strat = getattr(runner, key, None)
+        if strat is None:
+            continue
+        st = strat.state()
+        if not (st.get("enabled") or st.get("closed") or st.get("open")):
+            continue
+        cv = st.get("curve") or []
+        real = st.get("realized_usd")
+        pnl = (real if real is not None else (cv[-1][1] if cv else 0)) + (st.get("open_pnl_usd") or 0)
+        totals[key] = pnl
+        tot += pnl
+        tot_open += st.get("open") or 0
+        d = pnl - prev[key] if prev and key in prev else None
+        lines.append(f"{label}: {'+' if pnl >= 0 else '-'}${abs(pnl):.0f}"
+                     + (f" ({'+' if d >= 0 else '-'}${abs(d):.0f} 1h)" if d is not None and abs(d) >= 0.5 else "")
+                     + f" | {st.get('closed') or 0} closed, {st.get('bonded') or 0} bonded, {st.get('open') or 0} open")
+    d = tot - sum(prev.values()) if prev else None
+    title = (f"Paper tests {'+' if tot >= 0 else '-'}${abs(tot):.0f}"
+             + (f" ({'+' if d >= 0 else '-'}${abs(d):.0f} last hour)" if d is not None else ""))
+    return title, "\n".join(lines) + f"\n{tot_open} open now", totals
+
+
+async def paper_summary_loop():
+    """Phone push (ntfy) with every paper test's P&L every `notify.paper_summary_every_min` (60) minutes - quiet
+    priority, no sound. 0 = off."""
+    prev = None
+    await asyncio.sleep(120)
+    while True:
+        every = float((runner.notifier.cfg() or {}).get("paper_summary_every_min", 60) or 0)
+        if not every:
+            await asyncio.sleep(300)
+            continue
+        try:
+            if runner.running and runner.mode == "live" and runner.notifier.enabled():
+                title, body, prev = paper_summary_text(prev)
+                runner.notifier.send(title, body, tags="bar_chart", priority=2)
+        except Exception as e:
+            log.info("paper summary push: %s", e)
+        await asyncio.sleep(every * 60)
 
 
 def _strategies():

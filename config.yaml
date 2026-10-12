@@ -375,3 +375,4 @@ auto_update:
 notify:
   enabled: true
   server: "https://ntfy.sh"
+  paper_summary_every_min: 60          # hourly push with every paper test's P&L (quiet, no sound); 0 = off
