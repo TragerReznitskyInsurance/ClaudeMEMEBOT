@@ -177,7 +177,7 @@ rangehold_small10:
   enabled: true
   min_trades_2m: 10
   real_enabled: false                  # REAL MONEY: also buy every paper buy for real in the real wallet (12 Oct)
-  real_size_usd: 10                    # ...this much per coin
+  real_size_usd: 25                    # ...this much per coin ($10 until 13 Oct)
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 40              # ...no new real buys after losing this much today
 
