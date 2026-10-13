@@ -235,10 +235,8 @@ class Engine:
         self.rangehold_mix = None                  # v2 age window + under $12K (paper)
         self.rangehold_small10 = None              # under $12K, only 10 trades / 2 min needed (paper)
         self.rangehold_floor = None                # hold to bonding + break-even floor after 2x (paper)
-        self.rangehold_ath = None                  # hold to bonding, only within 20% of the all-time high (paper)
         self.rangehold_small10t = None             # under-$12K/10 trades, tuned: 60+ SOL, 10%+ ranges, BE floor (paper)
         self.rangehold_v2mid = None                # hold to bonding v2, 85-130 SOL only + BE floor (paper)
-        self.rangehold_sweet = None                # hold to bonding, 100-200 SOL + 10-20% breakout only (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
@@ -557,10 +555,6 @@ class Engine:
             self.rangehold_small10.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_floor is not None and t.creator:
             self.rangehold_floor.maybe_enter(t, prev_mcap, ts)
-        if self.rangehold_ath is not None and t.creator:
-            self.rangehold_ath.maybe_enter(t, prev_mcap, ts)
-        if self.rangehold_sweet is not None and t.creator:
-            self.rangehold_sweet.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_small10t is not None and t.creator:
             self.rangehold_small10t.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_v2mid is not None and t.creator:
@@ -902,7 +896,7 @@ class Engine:
             # keep watching until every candidate-collecting paper test (Reclaim + the hold tests) knows this coin
             rc_done = not any(s is not None and s.wants_watch(t.mint) for s in (
                 self.reclaim, self.rangehold, self.rangehold_v2, self.rangehold_mix,
-                self.rangehold_small10, self.rangehold_floor, self.rangehold_ath, self.rangehold_sweet, self.rangehold_small10t, self.rangehold_v2mid))
+                self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid))
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return

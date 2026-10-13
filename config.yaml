@@ -196,19 +196,6 @@ rangehold_floor:
   floor_arm_mult: 2.0
   floor_mult: 1.0
 
-# PAPER (11 Oct): hold-to-bonding, but only buys within 20% of the coin's all-time high at the breakout
-rangehold_ath:
-  enabled: true
-  max_below_ath_pct: 20
-
-# PAPER (11 Oct): hold-to-bonding "sweet spot" - buys only at 100-200 SOL, breakout 10-20% above the range top
-rangehold_sweet:
-  enabled: true
-  entry_min_sol: 100
-  entry_max_sol: 200
-  break_pct: 10
-  max_chase_pct: 20
-
 # Range breakout BUY settings (sideways for a while, then breaks out of the top of the range) - used by the
 # hold-to-bonding tests. The original range-breakout test itself was removed on 8 Oct.
 rangebreak:
