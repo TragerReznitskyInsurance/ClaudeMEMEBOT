@@ -1564,6 +1564,10 @@ function entryMcapCell(e, n, px) {
 }
 const callStage = q => !q ? "—" : (CL && !CL.auto_take_profit) ? (CL.auto_sell_on === false ? `you sell · auto-sell OFF · now ${q.mult.toFixed(2)}x` : `you sell · auto-stop at −40% · now ${q.mult.toFixed(2)}x`) : q.stages.includes("10x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("5x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `¼ sold at 3× · trailing 50% below ${q.peak.toFixed(1)}x` : `stop at −40% · now ${q.mult.toFixed(2)}x`;
 const DUSTSHOW = {};
+async function realSmall10(on) {
+  if (on && !confirm("Turn REAL MONEY on for 'Hold <$12K · 10 trades'?\n\nEvery paper buy is also bought for real: $" + (RHT?.real_size_usd ?? 10) + " each, max " + (RHT?.real_max_open ?? 15) + " open, stops after -$" + (RHT?.real_daily_loss_usd ?? 40) + " in a day, RugCheck before every buy.")) return;
+  try { await api("/api/real/small10", {on}); toast(on ? "Real money ON for Hold <$12K · 10 trades" : "Real money OFF - paper only"); } catch (e) { toast("Couldn't switch: " + e); }
+}
 function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
   if (!L || (!lk && !L.enabled && !L.has_wallet && !L.positions.length)) { el.innerHTML = ""; return; }
@@ -1587,7 +1591,10 @@ function renderLiveFor(L, el, which) {
       <span class="rm-bal num">${L.balance == null ? "balance —" : `<b>${L.balance.toFixed(4)} SOL</b> <span class="faint">${$u(L.balance)}</span>`}</span>
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
-  if (L.has_wallet && lk) h += `<button class="btn" onclick="openDrawer()" title="Settings → 'Real wallet' has the real-money switch and limits">⚙ Real-money settings</button>`;
+  if (L.has_wallet && lk) h += `<button class="btn" onclick="openDrawer()" title="Settings → 'Real wallet' has the limits ($ per coin, max open, daily loss)">⚙ Real-money settings</button>`;
+  if (L.has_wallet && lk && RHT) h += RHT.real_enabled
+    ? `<button class="btn danger" onclick="realSmall10(false)" title="Stop real buys for this test (open real coins still sell normally)">■ Real money ON · turn off</button>`
+    : `<button class="btn primary" onclick="realSmall10(true)" title="Also buy every 'Hold <$12K · 10 trades' paper buy for real">▶ Turn real money ON</button>`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="pnlReset('${which}')" title="Start the profit / loss count from now (trade history is kept)">↺ Reset P&L</button>`;
   if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
       <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>

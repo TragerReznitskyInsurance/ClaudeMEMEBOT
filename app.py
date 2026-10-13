@@ -498,6 +498,21 @@ def _settings_fix_1012():
         log.warning("settings fix 1012 skipped: %s", e)
 
 
+def _settings_fix_1012b():
+    """One-time (12 Oct 20:21): real money ON for 'Hold <$12K · 10 trades' - owner asked to switch it on for him.
+    After this it's the on/off button on the real wallet card."""
+    mark = os.path.join(HERE, "data", "settings_fix_1012b.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold_small10.real_enabled": True}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: real money ON for Hold <$12K · 10 trades (one-time update, owner's request)")
+    except Exception as e:
+        log.warning("settings fix 1012b skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -526,6 +541,7 @@ _settings_fix_1006()
 _settings_fix_1011()
 _settings_fix_1011b()
 _settings_fix_1012()
+_settings_fix_1012b()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
@@ -1066,6 +1082,20 @@ async def api_strategy_settings(request):
     return web.json_response({"ok": True, "saved": len(values)})
 
 
+async def api_real_small10(request):
+    """On/off switch for real money on the 'Hold <$12K · 10 trades' test (button on the real wallet card)."""
+    body = await request.json()
+    on = bool(body.get("on"))
+    S.save_overrides({"rangehold_small10.real_enabled": on}, config_path=CONFIG)
+    runner.cfg = S.load_config(CONFIG)
+    if runner.engine and runner.running:
+        runner.engine.cfg.setdefault("rangehold_small10", {})["real_enabled"] = on
+    runner.live2._event("info", "Hold <$12K · 10 trades: real money ON - every paper buy is also bought for real"
+                        if on else "Hold <$12K · 10 trades: real money OFF - paper only (open real coins still sell normally)")
+    log.info("real money for rangehold_small10 switched %s", "ON" if on else "OFF")
+    return web.json_response({"on": on})
+
+
 async def api_strategy_reset(request):
     """Start a strategy's results over from now (its trade history files are kept)."""
     body = await request.json()
@@ -1176,6 +1206,7 @@ def make_app():
     app.router.add_post("/api/live/create_wallet", api_live_create)
     app.router.add_post("/api/live/refresh", api_live_refresh)
     app.router.add_post("/api/live/pause", api_live_pause)
+    app.router.add_post("/api/real/small10", api_real_small10)
     app.router.add_post("/api/live/sell", api_live_sell)
     app.router.add_post("/api/live/withdraw", api_live_withdraw)
     app.router.add_post("/api/live/fix", api_live_fix)
