@@ -1018,6 +1018,15 @@ class LiveTrader:
             feed = None
         return feed or (own[0] if own else None)
 
+    def px_checked(self, p):
+        """px() for a position, or None when the price is implausible: more than 100x what we paid. Jupiter can
+        return nonsense for dead / thin pools of graduated coins (12 Oct: FIRE showed as $2,905 on a $3 buy,
+        "$13M mcap") - such a value is shown as unverified and not counted in the totals."""
+        px = self.px(p["mint"])
+        if not px or not p.get("tokens_bought") or not p.get("sol_in"):
+            return px
+        return None if px > 100 * (p["sol_in"] / p["tokens_bought"]) else px
+
     async def refresh_prices(self):
         mints = [m for m, p in self.positions.items() if p["status"] not in ("buying", "waiting")]
         if not mints or not self._hkey():
@@ -1170,8 +1179,8 @@ class LiveTrader:
         per = {}
         for w in wallets:
             op, cl, deployed, realized = self.per_wallet(w)
-            priced = [p for p in op if p["status"] not in ("buying", "waiting") and self.px(p["mint"])]
-            val = sum(p["tokens"] * self.px(p["mint"]) for p in priced) if priced else None
+            priced = [p for p in op if p["status"] not in ("buying", "waiting") and self.px_checked(p)]
+            val = sum(p["tokens"] * self.px_checked(p) for p in priced) if priced else None
             per[_short(w)] = dict(open=len(op), closed=len(cl), wins=sum(1 for x in cl if x["pnl_sol"] > 0),
                                   deployed=round(deployed, 4), realized=round(realized, 5),
                                   realized_usd=round(realized * px, 2) if px else None,
@@ -1185,12 +1194,13 @@ class LiveTrader:
             positions=[dict(mint=p["mint"], symbol=p["symbol"], name=p.get("name", ""), wallet=_short(p["wallet"]), status=p["status"],
                             sol_in=round(p["sol_in"] or p["size"], 5), sol_out=round(p["sol_out"], 5),
                             left_pct=round(p["tokens"] / p["tokens_bought"] * 100) if p.get("tokens_bought") else None,
-                            value=round(p["tokens"] * self.px(p["mint"]), 5)
-                            if p["status"] not in ("buying", "waiting") and self.px(p["mint"]) else None,
+                            value=round(p["tokens"] * self.px_checked(p), 5)
+                            if p["status"] not in ("buying", "waiting") and self.px_checked(p) else None,
+                            price_unverified=bool(self.px(p["mint"]) and not self.px_checked(p)),
                             # market cap we actually got in at (SOL spent incl. fees / tokens received), and now
                             entry_mcap=round(p["sol_in"] / p["tokens_bought"] * 1e9, 1)
                             if p.get("sol_in") and (p.get("tokens_bought") or 0) > 1 else None,
-                            now_mcap=round(self.px(p["mint"]) * 1e9, 1) if self.px(p["mint"]) else None,
+                            now_mcap=round(self.px_checked(p) * 1e9, 1) if self.px_checked(p) else None,
                             age_s=round(time.time() - p["opened"]), last_sig=(p["sigs"] or [None])[-1])
                        for p in self.positions.values()],
             closed=self.closed[-30:][::-1],
@@ -1224,7 +1234,7 @@ class LiveTrader:
             return dict(sol=round(sol, 4), usd=round(sol * px, 2) if px else None, trades=len(cl),
                         wins=sum(1 for x in cl if x["pnl_sol"] > 0))
         cost = sum((p["sol_in"] or 0) - (p["sol_out"] or 0) for p in self.positions.values())
-        val = sum(p["tokens"] * (self.px(p["mint"]) or 0) for p in self.positions.values()
+        val = sum(p["tokens"] * (self.px_checked(p) or 0) for p in self.positions.values()
                   if p["status"] not in ("buying", "waiting"))
         return dict(today=tot([x for x in self.closed if x["closed"] >= day0]),
                     week=tot([x for x in self.closed if x["closed"] >= now - 7 * 86400]),

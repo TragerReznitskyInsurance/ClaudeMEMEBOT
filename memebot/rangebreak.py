@@ -475,6 +475,11 @@ class RangeHoldSmallThin(RangeHoldSmall):
                         f"stops after -${float(c.get('real_daily_loss_usd', 40)):g} a day, RugCheck before every real buy"
                         if c.get("real_enabled") else "no real money"))
         s["real_enabled"] = bool(c.get("real_enabled"))
+        s.update(real_size_usd=float(c.get("real_size_usd", 10)), real_max_open=int(c.get("real_max_open", 15)),
+                 real_daily_loss_usd=float(c.get("real_daily_loss_usd", 40)),
+                 real_open=sum(1 for p in self.positions.values() if p.get("real")),
+                 real_today_usd=(round(self.live.realized_today_usd(self.NAME), 2)
+                                 if getattr(self, "live", None) is not None else None))
         return s
 
 

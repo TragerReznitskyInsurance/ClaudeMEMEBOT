@@ -426,7 +426,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
 </header>
 <nav class="screens" id="screens">
   <button data-screen="main" onclick="showScreen('main')">📊 Dashboard</button>
-  <button data-screen="lk" onclick="showScreen('lk')">💵 Real wallet · Reclaim <span class="badge" id="lkTabBadge" style="display:none"></span></button>
+  <button data-screen="lk" onclick="showScreen('lk')">💵 Real wallet <span class="badge" id="lkTabBadge" style="display:none"></span></button>
 </nav>
 
 <main>
@@ -1135,13 +1135,25 @@ function renderLab() {
 let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHA = null, RHW = null, RHU = null, RHV = null, BS = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
 const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, rangehold_small10: true, rangehold_floor: true, rangehold_ath: true, rangehold_sweet: true, rangehold_small10t: true, rangehold_v2mid: true, calls: true};
+function realBuyers() {
+  const on = [];
+  if (RHT && RHT.real_enabled) on.push("Hold <$12K · 10 trades");
+  if (CL && CL.real_money) on.push("Discord calls");
+  return on.length ? "buying: " + on.join(" + ") : "not buying anything";
+}
+function realBuyLine() {
+  const m = v => v == null ? "—" : (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(2);
+  const a = RHT ? (RHT.real_enabled
+    ? `<b>Hold &lt;$12K · 10 trades: ON</b> · $${RHT.real_size_usd} per coin · max ${RHT.real_max_open} open (${RHT.real_open} now) · stops buying after −$${RHT.real_daily_loss_usd} in a day · today ${m(RHT.real_today_usd)} · RugCheck before every buy`
+    : `Hold &lt;$12K · 10 trades: <b>OFF</b> (turn on in Settings → Real wallet)`) : "";
+  const b = CL ? `Discord calls: <b>${CL.real_money ? "ON" : "paper only"}</b>` : "";
+  return [a, b].filter(Boolean).join(" · ");
+}
 function renderLkRules() {
-  const el = $("#lkrules"), R = RC;
-  if (!R) { el.innerHTML = ""; return; }
-  const hrs = (R.real_hours_start != null && R.real_hours_end != null) ? `${R.real_hours_start}:00-${R.real_hours_end}:00` : "";
-  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>How this wallet trades · Reclaim</h2><div class="rm-actions"><button class="btn" onclick="stratSettings('reclaim')">⚙ Reclaim settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    <b>Real money:</b> ${R.real_enabled ? `<b>$${R.real_size_usd}</b> per coin` : "OFF"}${hrs ? ` · real buys only ${hrs}` : ""} · limits: max ${R.real_max_open ?? "—"} open, stops after −$${R.real_daily_loss_usd ?? "—"} in a day · ⏸ pauses new buys.
-    <div class="faint" style="margin-top:6px">${esc(R.desc || "")}</div>
+  const el = $("#lkrules");
+  el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>What this wallet buys</h2><div class="rm-actions"><button class="btn" onclick="openDrawer()">⚙ Settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
+    ${realBuyLine()}<div class="faint" style="margin-top:6px">${esc(RHT?.desc || "")}</div>
+    <div class="faint" style="margin-top:6px">⏸ Pause buys stops all new real buys (sells still happen). Reclaim is switched off.</div>
   </div></div>`;
 }
 function renderCalls() {
@@ -1569,12 +1581,12 @@ function renderLiveFor(L, el, which) {
     : !L.has_helius ? `<span class="badge down">Needs Helius key</span>`
     : !running ? `<span class="badge warn">Not running (Start live)</span>`
     : L.paused ? `<span class="badge warn">PAUSED</span>` : `<span class="badge up">● LIVE</span>`;
-  let h = `<div class="card" ${lk ? 'style="margin-top:14px"' : ""}><div class="rm-head"><h2>${lk ? "🎓💵 Lookalike wallet (real money)" : "💵 Real money · copy trading"}</h2>${status}`;
+  let h = `<div class="card" ${lk ? 'style="margin-top:14px"' : ""}><div class="rm-head"><h2>${lk ? `💵 Real wallet · ${realBuyers()}` : "💵 Real money · copy trading"}</h2>${status}`;
   if (L.has_wallet) h += `<span class="rm-addr" title="Click to copy. Send SOL here to fund it." onclick="navigator.clipboard.writeText('${L.address}');toast('Address copied')">${L.address.slice(0, 6)}…${L.address.slice(-6)} ⧉</span>
       <span class="rm-bal num">${L.balance == null ? "balance —" : `<b>${L.balance.toFixed(4)} SOL</b> <span class="faint">${$u(L.balance)}</span>`}</span>
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
-  if (L.has_wallet && lk) h += `<button class="btn" onclick="stratSettings('reclaim')" title="Edit the Reclaim strategy this wallet trades">⚙ Reclaim settings</button>`;
+  if (L.has_wallet && lk) h += `<button class="btn" onclick="stratSettings('rangehold_small10')" title="Real-money settings are in Settings → Real wallet">⚙ Hold <$12K · 10 trades settings</button>`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="pnlReset('${which}')" title="Start the profit / loss count from now (trade history is kept)">↺ Reset P&L</button>`;
   if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
       <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>
@@ -1583,13 +1595,13 @@ function renderLiveFor(L, el, which) {
   h += `</div></div><div class="card-b">`;
   if (!L.has_wallet) {
     h += lk
-      ? `<p class="muted" style="margin:0 0 10px;font-size:13px">The lookalike (graduation exit) trades from <b>its own wallet</b>, separate from copy trading, so its money and results never mix. Its key is saved only on this computer (data/lookalike_wallet/trading_wallet.json). Fund it only with what you're willing to lose, then turn on "REAL MONEY" in Settings → Lookalike · graduation exit.</p>
+      ? `<p class="muted" style="margin:0 0 10px;font-size:13px">Real-money buys come from <b>their own wallet</b>, separate from copy trading, so its money and results never mix. Its key is saved only on this computer (data/lookalike_wallet/trading_wallet.json). Fund it only with what you're willing to lose, then turn on "REAL MONEY" in Settings → Real wallet.</p>
       <button class="btn primary" onclick="liveCreate('lookalike')">Create lookalike wallet</button>`
       : `<p class="muted" style="margin:0 0 10px;font-size:13px">Copy trades use a <b>separate wallet created just for this bot</b>. Its key is saved only on this computer (data/trading_wallet.json). Never use your main wallet. Fund it only with what you're willing to lose.</p>
       <button class="btn primary" onclick="liveCreate('copy')">Create trading wallet</button>`;
   } else {
     if (L.positions.length && !running) h += `<div class="lab-err" style="margin:0 0 10px">⚠ You hold ${L.positions.length} real position(s) but the bot isn't running, so ${lk ? "the exit plan is NOT being applied" : "the followed wallets' sells are NOT being copied"}. Start live, or sell them.</div>`;
-    if (lk && RC) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">${RC.real_enabled ? `<b>Reclaim strategy</b> · buys <b>$${RC.real_size_usd}</b> per coin · max ${RC.real_max_open} open · stops buying after −$${RC.real_daily_loss_usd} in a day · today ${RC.real_today_usd != null ? (RC.real_today_usd < 0 ? "−$" : "$") + Math.abs(RC.real_today_usd).toFixed(2) : "—"} · watching ${RC.candidates} coins (${RC.pulled} pulled back)` : `Real trading is <b>OFF</b>. Turn on "REAL MONEY" in Settings → Lookalike · graduation exit.`}</div>`;
+    if (lk) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">${realBuyLine()}</div>`;
     if (lk && META && META.notify) h += `<div class="faint" style="font-size:12.5px;margin:0 0 8px">🔔 <b>Phone alerts</b> ${META.notify.enabled ? "" : "(OFF in Settings) "}· install the free <b>ntfy</b> app, tap <b>+</b> and subscribe to <b class="num" style="cursor:pointer" title="Click to copy" onclick="navigator.clipboard.writeText('${META.notify.topic}');toast('Topic copied')">${META.notify.topic} ⧉</b> · every real buy and sell pops up on your phone · <a href="#" onclick="notifyTest();return false">Send a test</a>${META.notify.error ? ` <span style="color:var(--warn)">(${esc(META.notify.error)})</span>` : ""}</div>`;
     const PW = L.per_wallet || {};
     const P = L.pnl;
@@ -1604,7 +1616,7 @@ function renderLiveFor(L, el, which) {
     if (L.positions.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Stage" : "Copying"}</th><th class="r" title="Market cap we actually bought in at (all-in, fees included), and where it is now">Entry mcap</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
       ${L.positions.map(p => `<tr><td><a class="tklink" href="https://pump.fun/coin/${encodeURIComponent(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b> <span class="ext">↗</span></a>${p.name && p.name !== p.symbol ? `<div class="faint" style="font-size:11.5px">${esc(p.name)}</div>` : ""}</td>
         <td class="num">${lk ? `<span class="badge ${(rcPos[p.mint] || svPos[p.mint] || lgPos[p.mint] || clPos[p.mint]) && (rcPos[p.mint] || svPos[p.mint] || lgPos[p.mint] || clPos[p.mint]).stages.length ? "up" : "gray"}">${esc(p.wallet === "Reclaim" ? rcStage(rcPos[p.mint]) : p.wallet === "Survivor" ? svStage(svPos[p.mint]) : p.wallet === "Discord calls" ? "📣 " + callStage(clPos[p.mint]) : lgStage(lgPos[p.mint]))}</span>` : esc(p.wallet)}</td><td class="r num">${entryMcapCell(p.entry_mcap, p.now_mcap, px)}</td><td class="r num" title="${p.sol_in.toFixed(4)} SOL">${$u(p.sol_in) || p.sol_in.toFixed(4) + " SOL"}</td>
-        <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}" title="${p.value != null ? p.value.toFixed(4) + " SOL" : "price not available yet"}">${p.value != null ? `${$u(p.value) || p.value.toFixed(4) + " SOL"}${p.sol_in ? ` <span style="font-size:11.5px">(${pct((p.value + p.sol_out) / p.sol_in * 100 - 100, 0)})</span>` : ""}` : "—"}</td>
+        <td class="r num ${p.value != null ? cls(p.value + p.sol_out - p.sol_in) : "faint"}" title="${p.value != null ? p.value.toFixed(4) + " SOL" : "price not available yet"}">${p.value != null ? `${$u(p.value) || p.value.toFixed(4) + " SOL"}${p.sol_in ? ` <span style="font-size:11.5px">(${pct((p.value + p.sol_out) / p.sol_in * 100 - 100, 0)})</span>` : ""}` : p.price_unverified ? `<span class="badge warn" title="The price source gave an impossible number (over 100× what we paid). Check the coin on Solscan / DexScreener before trusting it.">price unverified</span>` : "—"}</td>
         <td class="r num">${p.left_pct != null ? p.left_pct + "%" : "—"}</td>
         <td>${p.status === "open" ? `<span class="badge up">open</span>` : `<span class="badge warn">${esc(p.status)}…</span>`} ${p.last_sig ? `<a class="faint" style="font-size:11px" href="https://solscan.io/tx/${p.last_sig}" target="_blank" rel="noopener">tx ↗</a>` : ""}</td>
         <td class="r" style="white-space:nowrap">${[[1, "Sell all"], [0.5, "½"], [1 / 3, "⅓"], [0.25, "¼"]].map(([f, t]) => `<button class="btn" style="padding:4px 8px;font-size:12px;margin-left:2px" title="Sell ${t === "Sell all" ? "everything" : t}" onclick="liveSell('${p.mint}','${which}',${f})" ${p.status === "open" ? "" : "disabled"}>${t}</button>`).join("")}</td></tr>`).join("")}</tbody></table></div>`;
