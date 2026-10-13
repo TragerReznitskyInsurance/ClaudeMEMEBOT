@@ -1233,11 +1233,13 @@ class LiveTrader:
             sol = sum(x["pnl_sol"] for x in cl)
             return dict(sol=round(sol, 4), usd=round(sol * px, 2) if px else None, trades=len(cl),
                         wins=sum(1 for x in cl if x["pnl_sol"] > 0))
-        cost = sum((p["sol_in"] or 0) - (p["sol_out"] or 0) for p in self.positions.values())
-        val = sum(p["tokens"] * (self.px_checked(p) or 0) for p in self.positions.values()
-                  if p["status"] not in ("buying", "waiting"))
-        return dict(today=tot([x for x in self.closed if x["closed"] >= day0]),
-                    week=tot([x for x in self.closed if x["closed"] >= now - 7 * 86400]),
+        # "Reset P&L" (12 Oct) zeroes every box: today / 7 days count from the reset too, and coins bought before
+        # the reset are left out of the unrealized total (still listed, and still sellable)
+        cur = [p for p in self.positions.values() if p.get("opened", 0) >= since]
+        cost = sum((p["sol_in"] or 0) - (p["sol_out"] or 0) for p in cur)
+        val = sum(p["tokens"] * (self.px_checked(p) or 0) for p in cur if p["status"] not in ("buying", "waiting"))
+        return dict(today=tot([x for x in self.closed if x["closed"] >= max(day0, since)]),
+                    week=tot([x for x in self.closed if x["closed"] >= max(now - 7 * 86400, since)]),
                     since=tot([x for x in self.closed if x["closed"] >= since]), since_ts=since or None,
-                    all=tot(self.closed), open_n=len(self.positions),
-                    open_unreal_usd=round((val - cost) * px, 2) if px and self.positions else 0.0)
+                    all=tot(self.closed), open_n=len(cur), open_old=len(self.positions) - len(cur),
+                    open_unreal_usd=round((val - cost) * px, 2) if px and cur else 0.0)
