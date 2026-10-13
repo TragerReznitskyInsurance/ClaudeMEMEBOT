@@ -1614,7 +1614,8 @@ function renderLiveFor(L, el, which) {
       ${Object.entries(PW).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="r num">${v.open}/${lk && RC ? RC.real_max_open : L.max_open}</td><td class="r num">${$u(v.deployed) || v.deployed}${lk ? "" : ` / $${L.budget_usd}`}</td>
         <td class="r num">${v.closed}${v.closed ? ` <span class="faint">(${v.wins}W)</span>` : ""}</td><td class="r num ${cls(v.realized)}">${signed(v.realized, 4)} SOL <span class="faint">${v.realized_usd != null ? "$" + v.realized_usd.toFixed(2) : ""}</span></td>
         <td class="r num">${v.open && v.open_value != null ? ($u(v.open_value) || v.open_value.toFixed(4) + " SOL") : "—"}</td></tr>`).join("")}</table>`;
-    const isDust = p => p.status === "open" && ((p.value != null && p.value < 0.01) || p.price_unverified);
+    const isDust = p => p.status === "open" && ((p.value != null && p.value < 0.01) || p.price_unverified
+      || (p.value == null && (p.age_s || 0) > 600));      // no price at all for 10+ min: dead / unpriceable coin
     const dust = L.positions.filter(isDust), PL = DUSTSHOW[which] ? L.positions : L.positions.filter(p => !isDust(p));
     if (dust.length) h += `<div class="faint" style="font-size:12px;margin:0 0 6px">${DUSTSHOW[which] ? "Showing" : "Hiding"} ${dust.length} dust coin${dust.length > 1 ? "s" : ""} (worth under ~$1 or no real price) · <a href="#" onclick="DUSTSHOW['${which}']=!DUSTSHOW['${which}'];render();return false">${DUSTSHOW[which] ? "hide" : "show"}</a></div>`;
     if (PL.length) h += `<div class="tbl-wrap"><table><thead><tr><th>Token</th><th>${lk ? "Stage" : "Copying"}</th><th class="r" title="Market cap we actually bought in at (all-in, fees included), and where it is now">Entry mcap</th><th class="r">Cost</th><th class="r">Now worth</th><th class="r">Held</th><th>Status</th><th></th></tr></thead><tbody>
