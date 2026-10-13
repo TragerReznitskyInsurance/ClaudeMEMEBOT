@@ -449,9 +449,11 @@ class RangeHoldSmallThin(RangeHoldSmall):
             return                                          # paper already sold while we checked
         if not ok:
             p["real_skip"] = why
+            log.info("SMALL10 no real buy %s: %s", symbol, why)
             return self._event("skip", f"{symbol}: no real buy - {why}", mint=mint)
         if p.get("last_px") and p["last_px"] / p["entry_px"] > 1.15:
             p["real_skip"] = "price ran 15%+ while checking"
+            log.info("SMALL10 no real buy %s: price ran 15%%+ while checking", symbol)
             return self._event("skip", f"{symbol}: no real buy - price ran 15%+ while RugCheck was checking", mint=mint)
         why = self.live.open_strategy(self.NAME, mint, symbol, float(c.get("real_size_usd", 10)),
                                       int(c.get("real_max_open", 15)), float(c.get("real_daily_loss_usd", 40)))
@@ -461,6 +463,7 @@ class RangeHoldSmallThin(RangeHoldSmall):
             log.info("SMALL10 REAL buy %s", symbol)
         else:
             p["real_skip"] = why
+            log.info("SMALL10 no real buy %s: %s", symbol, why)
             self._event("skip", f"{symbol}: no real buy - {why}", mint=mint)
         self._save()
 
