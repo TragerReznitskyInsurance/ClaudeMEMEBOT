@@ -179,7 +179,7 @@ rangehold_small10:
   real_enabled: false                  # REAL MONEY: also buy every paper buy for real in the real wallet (12 Oct)
   real_size_usd: 25                    # ...this much per coin ($10 until 13 Oct)
   real_max_open: 15                    # ...at most this many open at once
-  real_daily_loss_usd: 40              # ...no new real buys after losing this much today
+  real_daily_loss_usd: 100             # ...no new real buys after losing this much today ($40 until 13 Oct)
 
 # PAPER (11 Oct): under-$12K / 10 trades, tuned on its first 51 trades - only 60+ SOL entries, only ranges 10%+ wide,
 # and a break-even floor once a coin has doubled

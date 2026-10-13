@@ -527,6 +527,20 @@ def _settings_fix_1013():
         log.warning("settings fix 1013 skipped: %s", e)
 
 
+def _settings_fix_1013b():
+    """One-time (13 Oct): daily loss stop for 'Hold <$12K · 10 trades' real buys raised to $100 (owner's request)."""
+    mark = os.path.join(HERE, "data", "settings_fix_1013b.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold_small10.real_daily_loss_usd": 100}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: Hold <$12K · 10 trades daily loss stop now $100 (one-time update)")
+    except Exception as e:
+        log.warning("settings fix 1013b skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -557,6 +571,7 @@ _settings_fix_1011b()
 _settings_fix_1012()
 _settings_fix_1012b()
 _settings_fix_1013()
+_settings_fix_1013b()
 runner = Runner()
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
