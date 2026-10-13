@@ -565,6 +565,14 @@ _settings_fix_1012b()
 _settings_fix_1013()
 _settings_fix_1013b()
 runner = Runner()
+if not os.path.exists(os.path.join(HERE, "data", "settings_fix_1013c.done")):
+    # one-time (13 Oct): the tuned test has new rules - count its results from now (old trades stay in its files)
+    try:
+        runner.rangehold_small10t.reset_stats()
+        with open(os.path.join(HERE, "data", "settings_fix_1013c.done"), "w") as fh:
+            fh.write(str(time.time()))
+    except Exception as e:
+        log.warning("tuned test reset skipped: %s", e)
 sol_price = SolPrice()
 clients: set[web.WebSocketResponse] = set()
 
@@ -938,7 +946,7 @@ STRAT_LABELS = {
 }
 STRAT_LABELS["entry_min_sol"] = "Buy only from this market cap (SOL)"
 STRAT_LABELS["entry_max_sol"] = "...up to this market cap (SOL)"
-STRAT_LABELS["min_range_pct"] = "Range at least this wide (%)"
+STRAT_LABELS["max_pct_of_ath"] = "Only buy under this % of the all-time high"
 STRAT_LABELS["late_risers"] = "Also follow late risers (coins that wake up 45+ min after launch)"
 STRAT_LABELS["dead_mcap_usd"] = "Sell everything if the market cap falls to ($)"
 STRAT_LABELS["floor_arm_mult"] = "Floor turns on once up (x of buy price)"
@@ -980,7 +988,7 @@ STRAT_HIDE = {}
 
 
 PAPER_LABELS = [("rangehold", "Hold to bond"), ("rangehold_v2", "V2 80m-3h"),
-                ("rangehold_v2mid", "V2 85-130 SOL"), ("rangehold_small10t", "<$12K 10tr tuned"),
+                ("rangehold_v2mid", "V2 85-130 SOL"), ("rangehold_small10t", "<$12K 2h+ <80% ATH"),
                 ("rangehold_small10", "<$12K 10 trades"), ("rangehold_floor", "BE floor 2x")]
 
 

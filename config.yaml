@@ -181,12 +181,12 @@ rangehold_small10:
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 100             # ...no new real buys after losing this much today ($40 until 13 Oct)
 
-# PAPER (11 Oct): under-$12K / 10 trades, tuned on its first 51 trades - only 60+ SOL entries, only ranges 10%+ wide,
-# and a break-even floor once a coin has doubled
+# PAPER (re-tuned 13 Oct on 192 trades): under-$12K / 10 trades, but only coins 2h+ old and under 80% of their
+# all-time high at the breakout, plus a break-even floor once a coin has doubled
 rangehold_small10t:
   enabled: true
-  entry_min_sol: 60
-  min_range_pct: 10
+  min_age_min: 120
+  max_pct_of_ath: 80
   floor_arm_mult: 2.0
   floor_mult: 1.0
 

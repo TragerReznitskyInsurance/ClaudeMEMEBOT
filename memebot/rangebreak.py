@@ -522,11 +522,14 @@ class RangeHoldFloor(RangeHold):
 
 
 class RangeHoldSmallTuned(RangeHoldSmallThin):
-    """PAPER test (11 Oct): the under-$12K / 10-trade test, tuned on its first 51 trades - buys only at
-    `entry_min_sol` (60) SOL or more, only out of ranges at least `min_range_pct` (10%) wide, and once a coin has
-    reached `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult` (1.0x). Past data: 13 of 51 trades
-    fit, 3 bonded, +$242 (+$121 without the best). Uses rangebreak + rangehold + rangehold_small + rangehold_small10
-    settings plus the `rangehold_small10t` section; never real money."""
+    """PAPER test (re-tuned 13 Oct on 192 trades of the under-$12K / 10-trade test): same buys, but only coins at least
+    `min_age_min` (120) minutes old AND trading under `max_pct_of_ath` (80%) of their all-time high at the breakout,
+    plus a break-even floor - once a coin has reached `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult`
+    (1.0x). Past data: 67 of 192 trades fit, 11 bonded, +$887 (all 192: +$818), positive in both halves; coins under
+    2 h lost in both halves, coins at 80%+ of their ATH lost in both halves. The floor sold 12 coins across the tests,
+    none of which went on to bond. (11-13 Oct version: 60+ SOL and 10%+ wide ranges - reversed on new data.)
+    Uses rangebreak + rangehold + rangehold_small + rangehold_small10 settings plus the `rangehold_small10t` section;
+    never real money."""
     NAME = "rangehold_small10t"
 
     def cfg(self):
@@ -540,9 +543,10 @@ class RangeHoldSmallTuned(RangeHoldSmallThin):
 
     def _enter(self, cd, px, ts, trades_2m):
         c = self.cfg()
-        lo, hi = cd["range"]
-        if px * SUPPLY < float(c.get("entry_min_sol", 60)) or (hi / lo - 1) * 100 < float(c.get("min_range_pct", 10)):
-            return                                          # too small / too tight right now - may still fit later
+        mc = px * SUPPLY
+        ath = max(cd.get("peak") or 0, mc)
+        if mc >= ath * float(c.get("max_pct_of_ath", 80)) / 100:
+            return                                          # too close to its high right now - may still fit later
         return super()._enter(cd, px, ts, trades_2m)
 
     def check(self, p, px, ts):
@@ -556,18 +560,12 @@ class RangeHoldSmallTuned(RangeHoldSmallThin):
         return super().check(p, px, ts)
 
     def watching(self, limit=200):
-        c = self.cfg()
-        mn, rw = float(c.get("entry_min_sol", 60)), float(c.get("min_range_pct", 10))
+        lim = float(self.cfg().get("max_pct_of_ath", 80))
         out = super().watching(limit=10_000)
         for x in out:
-            if x["rank"] == 0 and x["mcap"] < mn:
-                x["why"] += f" · but buys only from {mn:g} SOL"
+            if x["rank"] == 0 and x.get("pct_of_ath") is not None and x["pct_of_ath"] >= lim:
+                x["why"] += f" · but at {x['pct_of_ath']}% of its ATH (buys only under {lim:g}%)"
                 x["rank"] = 1
-            elif x["rank"] == 0 and x["why"].startswith("Sideways"):
-                g = re.match(r"Sideways (\d+)–(\d+)", x["why"])
-                if g and float(g.group(1)) and (float(g.group(2)) / float(g.group(1)) - 1) * 100 < rw:
-                    x["why"] += f" · but range under {rw:g}% wide"
-                    x["rank"] = 1
         out.sort(key=lambda x: (x["rank"], -x["mcap"]))
         return out[:limit]
 
@@ -575,10 +573,11 @@ class RangeHoldSmallTuned(RangeHoldSmallThin):
         s = super().state()
         c = self.cfg()
         s["desc"] = (f"Under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K with {c.get('min_trades_2m', 10)}+ trades, "
-                     f"but only from {c.get('entry_min_sol', 60):g} SOL and out of ranges {c.get('min_range_pct', 10):g}%+ wide · "
-                     f"break-even floor after {c.get('floor_arm_mult', 2.0):g}x · sell everything at "
+                     f"but only coins {float(c.get('min_age_min', 120)) / 60:g}h+ old and under {c.get('max_pct_of_ath', 80):g}% of "
+                     f"their ATH · break-even floor after {c.get('floor_arm_mult', 2.0):g}x · sell everything at "
                      f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        s["real_enabled"] = False
         return s
 
 
