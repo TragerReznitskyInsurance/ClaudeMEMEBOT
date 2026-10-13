@@ -1587,7 +1587,7 @@ function renderLiveFor(L, el, which) {
       <span class="rm-bal num">${L.balance == null ? "balance —" : `<b>${L.balance.toFixed(4)} SOL</b> <span class="faint">${$u(L.balance)}</span>`}</span>
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
-  if (L.has_wallet && lk) h += `<button class="btn" onclick="stratSettings('rangehold_small10')" title="Real-money settings are in Settings → Real wallet">⚙ Hold <$12K · 10 trades settings</button>`;
+  if (L.has_wallet && lk) h += `<button class="btn" onclick="openDrawer()" title="Settings → 'Real wallet' has the real-money switch and limits">⚙ Real-money settings</button>`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="pnlReset('${which}')" title="Start the profit / loss count from now (trade history is kept)">↺ Reset P&L</button>`;
   if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
       <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>

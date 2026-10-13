@@ -287,7 +287,7 @@ class Runner:
                         self.live2.refresh_balance(force=True)):
                 self.tasks.append(asyncio.create_task(job))
             if self.live2.kp and (self.cfg.get("lookalike_grad") or {}).get("real_enabled"):
-                self.live2._event("info", "Real-money wallet (Reclaim + calls) is ON for this session")
+                self.live2._event("info", "Real wallet is ready (it buys only what's switched on in Settings → Real wallet)")
             if self.live.enabled():
                 self.live._event("info", "Real-money copy trading is ON for this session")
         else:
