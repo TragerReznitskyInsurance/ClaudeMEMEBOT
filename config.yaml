@@ -181,6 +181,12 @@ rangehold_small10:
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 150             # ...no new real buys after losing this much today ($40 until 13 Oct, $100 until 14 Oct)
 
+# PAPER (14 Oct): hold-to-bonding, but only when the bond score (6h chance for its mcap + age) is under 0.6x of the
+# chance a buy at that price needs to break even - on past trades the low-score buys made the money
+rangehold_lowscore:
+  enabled: true
+  max_score_ratio: 0.6
+
 # PAPER (13 Oct): the under-$12K / 10-trade test, but only coins under $8K at the breakout (lower threshold?)
 rangehold_small8:
   enabled: true

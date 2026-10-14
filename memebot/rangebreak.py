@@ -663,3 +663,52 @@ class RangeHoldSmall8(RangeHoldSmallThin):
                      f"{c.get('max_hold_h', 6):g}h limit · no real money")
         s["real_enabled"] = False
         return s
+
+
+class RangeHoldLowScore(RangeHold):
+    """PAPER test (14 Oct): hold-to-bonding, but only buys when the coin's bond score (chance to bond within 6 h for
+    its market cap + age, see bondscore.py) is under `max_score_ratio` (0.6) of the chance a buy at that price needs
+    to break even. On past trades the score ran backwards for us: coins it rated well below break-even (cheap / older -
+    where our breakout signal adds the edge) made +$476 in Hold to bond (160 trades), the rest lost -$528 (198);
+    same pattern in v2 and the 10-trade test, in both halves. Uses rangebreak + rangehold settings plus the
+    `rangehold_lowscore` section; never real money."""
+    NAME = "rangehold_lowscore"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        c.update(self._cfg().get("rangehold") or {})
+        c.pop("stats_since", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _score_ratio(self, mc, age_min):
+        p, be = bond_chance(mc, age_min), breakeven_chance(mc)
+        return (p / be) if p is not None and be else None
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        r = self._score_ratio(px * SUPPLY, (ts - cd["created"]) / 60)
+        if r is None or r >= float(c.get("max_score_ratio", 0.6)):
+            return                                          # the plain odds look too good here - may change later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def watching(self, limit=200):
+        lim = float(self.cfg().get("max_score_ratio", 0.6))
+        out = super().watching(limit=10_000)
+        for x in out:
+            if x["rank"] == 0 and x.get("bond_pct") is not None and x.get("breakeven_pct"):
+                if x["bond_pct"] / x["breakeven_pct"] >= lim:
+                    x["why"] += f" · but bond score {x['bond_pct']:.0f}% is too close to break-even ({x['breakeven_pct']:.0f}%)"
+                    x["rank"] = 1
+        out.sort(key=lambda x: (x["rank"], -x["mcap"]))
+        return out[:limit]
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same buys as hold-to-bonding, but only when the bond score is under {c.get('max_score_ratio', 0.6):g}x "
+                     f"of what a buy at that price needs to break even (cheap / older coins) · sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        return s
