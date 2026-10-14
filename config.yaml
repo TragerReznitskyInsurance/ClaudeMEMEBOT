@@ -181,6 +181,11 @@ rangehold_small10:
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 100             # ...no new real buys after losing this much today ($40 until 13 Oct)
 
+# PAPER (13 Oct): the under-$12K / 10-trade test, but only coins under $8K at the breakout (lower threshold?)
+rangehold_small8:
+  enabled: true
+  max_entry_mcap_usd: 8000
+
 # PAPER (re-tuned 13 Oct on 192 trades): under-$12K / 10 trades, but only coins 2h+ old and under 80% of their
 # all-time high at the breakout, plus a break-even floor once a coin has doubled
 rangehold_small10t:

@@ -72,6 +72,7 @@ SCHEMA = [
         {"path": "rangehold_v2mid.enabled", "label": "Hold to bonding v2 · 85-130 SOL only + break-even floor after 2x", "type": "bool"},
         {"path": "rangehold_mix.enabled", "label": "Hold to bonding mix · 80 min-3.2 h old AND under $12K", "type": "bool"},
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
+        {"path": "rangehold_small8.enabled", "label": "Hold to bonding · under $8K, 10+ trades / 2 min", "type": "bool"},
         {"path": "rangehold_small10t.enabled", "label": "Hold to bonding · under $12K, 10+ trades, tuned (2h+ old, under 80% of ATH, floor after 2x)", "type": "bool"},
         {"path": "rangehold_floor.enabled", "label": "Hold to bonding · break-even floor after 2x", "type": "bool"},
         {"path": "rangehold.late_risers", "label": "Hold tests: also follow late risers (coins that wake up 45+ min after launch)", "type": "bool"},

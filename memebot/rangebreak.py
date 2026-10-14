@@ -633,3 +633,33 @@ class RangeHoldV2Mid(RangeHoldV2):
                      f"{c.get('floor_arm_mult', 2.0):g}x · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / migration, "
                      f"stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
         return s
+
+
+class RangeHoldSmall8(RangeHoldSmallThin):
+    """PAPER test (13 Oct, owner's request): the under-$12K / 10-trade test with a lower cap - only coins under
+    `max_entry_mcap_usd` ($8K) at the breakout - to see whether lowering the threshold pays. On the 10-trade test's
+    first 192 trades: under $8K 110 trades, 9 bonded, +$555 but -$134 / +$689 by half; $8-12K 82 trades, 10 bonded,
+    +$263, positive in both halves. Same rules otherwise; uses rangebreak + rangehold + rangehold_small +
+    rangehold_small10 settings plus the `rangehold_small8` section; never real money."""
+    NAME = "rangehold_small8"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        for sec in ("rangehold", "rangehold_small", "rangehold_small10"):
+            c.update(self._cfg().get(sec) or {})
+        c.pop("stats_since", None)
+        for k in self.REAL_KEYS:
+            c.pop(k, None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same as Hold <$12K · 10 trades, but only coins under ${float(c.get('max_entry_mcap_usd', 8000)) / 1000:g}K "
+                     f"at the breakout ({c.get('min_trades_2m', 10)}+ trades in 2 min) · sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, "
+                     f"{c.get('max_hold_h', 6):g}h limit · no real money")
+        s["real_enabled"] = False
+        return s
