@@ -179,7 +179,7 @@ rangehold_small10:
   real_enabled: false                  # REAL MONEY: also buy every paper buy for real in the real wallet (12 Oct)
   real_size_usd: 25                    # ...this much per coin ($10 until 13 Oct)
   real_max_open: 15                    # ...at most this many open at once
-  real_daily_loss_usd: 100             # ...no new real buys after losing this much today ($40 until 13 Oct)
+  real_daily_loss_usd: 150             # ...no new real buys after losing this much today ($40 until 13 Oct, $100 until 14 Oct)
 
 # PAPER (13 Oct): the under-$12K / 10-trade test, but only coins under $8K at the breakout (lower threshold?)
 rangehold_small8:
