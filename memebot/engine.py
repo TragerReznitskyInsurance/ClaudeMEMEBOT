@@ -467,10 +467,19 @@ class Engine:
     def _rc_on(self):
         return self.reclaim is not None and self.reclaim.enabled()
 
+    HOLD_TESTS = ("rangehold", "rangehold_v2", "rangehold_mix", "rangehold_small10", "rangehold_floor",
+                  "rangehold_small10t", "rangehold_v2mid", "rangehold_small8")
+
+    def _hold_on(self):
+        """Any hold-to-bonding paper test switched on - they need new launches watched to find candidates."""
+        return any((s := getattr(self, n, None)) is not None and s.enabled() for n in self.HOLD_TESTS)
+
     def _research_only(self):
-        """Momentum strategy off, but snapshots / lookalike on: watch new tokens without momentum buys."""
+        """Momentum strategy off, but snapshots / lookalike / Reclaim / the hold tests on: watch new tokens without
+        momentum buys. (14 Oct fix: the hold tests were missing here, so with Reclaim and copy trading both off -
+        no snapshot recorder - every new launch was ignored from 12 Oct ~8 PM; only late risers were bought.)"""
         return not self._momentum_on() and ((self.snaps is not None and self.snaps.enabled()) or self._lk_on()
-                                            or self._rc_on())
+                                            or self._rc_on() or self._hold_on())
 
     def _drop(self, t: TokenState, reason: str):
         """Stop watching quietly (research-only mode): no funnel counts, no feed entries."""

@@ -197,16 +197,17 @@ class Runner:
             self.engine = Engine(self.cfg, feed, self.journal, screener=self.screener,
                                  blocklist_path=os.path.join(HERE, out, "creator_blocklist.txt"))
             feed.accounts = self.engine.copy_wallets()
+            hk = S.helius_key(CONFIG)
             if feed.accounts:
                 self.copy_log = open(os.path.join(HERE, out, f"copy_log_{tag}.jsonl"), "a", encoding="utf-8", errors="replace")
                 self.engine.copy_log = self.copy_log
-                hk = S.helius_key(CONFIG)
                 if hk:
                     self.chain = ChainBackup(lambda: self.engine, hk)
                     self.engine.chain = self.chain
-                    self.snaps = SnapshotRecorder(os.path.join(HERE, out, "snapshots.jsonl"), hk,
-                                                  lambda: self.engine.cfg, lambda: sol_price.usd)
-                    self.engine.snaps = self.snaps
+            if hk:                                        # research snapshots no longer depend on copy trading being on
+                self.snaps = SnapshotRecorder(os.path.join(HERE, out, "snapshots.jsonl"), hk,
+                                              lambda: self.engine.cfg, lambda: sol_price.usd)
+                self.engine.snaps = self.snaps
             if self.cfg["output"]["record_raw_events"]:
                 self.recorder = open(os.path.join(HERE, out, f"events_{tag}.jsonl"), "a", encoding="utf-8", errors="replace")
             url = self.cfg["feed"]["url"] + (f"?api-key={key}" if key else "")
