@@ -1247,7 +1247,7 @@ let bsOpen = false, bsSig = "";
 function renderBondScore() {
   const el = $("#bondscore");
   if (!BS) { el.innerHTML = ""; bsSig = ""; return; }
-  const sig = JSON.stringify([BS.resolved, BS.pending, bsOpen, BS.error]);
+  const sig = JSON.stringify([BS.resolved, BS.pending, bsOpen, BS.error, BS.heat]);
   if (sig === bsSig) return;
   bsSig = sig;
   const sk = BS.skill_pct;
@@ -1259,6 +1259,8 @@ function renderBondScore() {
       <div class="ov-tile"><div class="l">Bonded</div><div class="v num">${BS.bonded}</div><div class="s">${BS.resolved ? (BS.bonded / BS.resolved * 100).toFixed(1) + "% of checked" : "—"}</div></div>
       <div class="ov-tile"><div class="l">Skill vs guessing the average</div><div class="v num ${sk == null ? "" : sk > 0 ? "up" : "down"}">${sk == null ? "—" : (sk > 0 ? "+" : "") + sk + "%"}</div><div class="s">above 0 = the score adds real information</div></div>
     </div>`;
+  if (BS.heat) { const H = BS.heat;
+    h += `<div class="faint" style="font-size:12.5px;padding:0 18px 10px">🔔 Bond alerts · Hold &lt;$12K · 10 trades: <b>${H.bonds_6h} bonds</b> last 6 h, <b>${H.bonds_24h} bonds</b> / <b class="${cls(H.pnl_24h)}">${money(H.pnl_24h)}</b> last 24 h · ${H.restart_ready ? `<b class="up">restart signal met</b>` : `restart signal at ${H.restart}+ bonds and green over 24 h`} · your phone gets a push when bonds come back</div>`; }
   if (BS.error) h += `<div class="faint" style="font-size:12px;padding:0 18px 8px;color:var(--warn)">${esc(BS.error)}</div>`;
   if (bsOpen) {
     h += `<div style="padding:0 18px 14px"><h3 style="font-size:13px;margin:8px 0 6px">Predicted vs what happened</h3>${BS.bands.length ? `<div class="tbl-wrap"><table><thead><tr><th>Predicted chance</th><th class="r">Coins</th><th class="r">Avg predicted</th><th class="r">Actually bonded</th></tr></thead><tbody>${BS.bands.map(b => `<tr><td>${b.band}</td><td class="r num">${b.n}</td><td class="r num">${b.predicted}%</td><td class="r num ${Math.abs(b.actual - b.predicted) <= Math.max(2, b.predicted * 0.3) ? "up" : "warn"}">${b.actual}%</td></tr>`).join("")}</tbody></table></div>` : `<div class="faint" style="font-size:12.5px">First results come in 6 hours after the bot starts.</div>`}

@@ -96,6 +96,7 @@ SCHEMA = [
     ]},
     {"group": "Phone alerts", "items": [
         {"path": "notify.enabled", "label": "Push every real buy / sell to the ntfy app on my phone", "type": "bool"},
+        {"path": "heat.enabled", "label": "Push me when bonds come back (heads-up + restart signal for real money)", "type": "bool"},
         {"path": "notify.paper_summary_every_min", "label": "Paper test P&L summary to my phone every (0 = off)", "unit": "min", "type": "float"},
     ]},
     {"group": "Copy trading", "items": [

@@ -94,6 +94,8 @@ class Runner:
             self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore) if s.active], self.rangehold)
         bondscore.TRACKER = self.bondscore                # watch lists use its learned table
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
+        from memebot.heat import MarketHeat
+        self.heat = MarketHeat(os.path.join(HERE, "data"), cur, self.notifier, lambda: self.rangehold_small10)
         from memebot.explore import ExploreLog
         self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
         self.live2.notifier, self.live2.notify_label = self.notifier, "Real wallet"
@@ -398,7 +400,7 @@ class Runner:
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
                 "breakouts": self.breakouts.summary(),
-                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_small10t": self.rangehold_small10t.state(), "rangehold_v2mid": self.rangehold_v2mid.state(), "rangehold_lowscore": self.rangehold_lowscore.state(), "bondscore": self.bondscore.state(),
+                "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_small10t": self.rangehold_small10t.state(), "rangehold_v2mid": self.rangehold_v2mid.state(), "rangehold_lowscore": self.rangehold_lowscore.state(), "bondscore": dict(self.bondscore.state(), heat=self.heat.state()),
                 "narratives": self.narr.state()}
 
 
@@ -695,6 +697,7 @@ async def broadcaster(app):
     test_tasks.append(asyncio.create_task(runner.rangehold_lowscore.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.bondscore.run()))
     test_tasks.append(asyncio.create_task(paper_summary_loop()))
+    test_tasks.append(asyncio.create_task(runner.heat.run()))
     test_tasks.append(asyncio.create_task(runner.explore.run(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.explore.run_fast(lambda: sol_price.usd)))
     test_tasks.append(asyncio.create_task(runner.notify.run()))

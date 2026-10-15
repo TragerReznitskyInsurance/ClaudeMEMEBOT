@@ -369,6 +369,13 @@ auto_update:
 # ── Phone alerts (ntfy, free) ───────────────────────────────────
 # Every REAL buy / sell / close is pushed to the ntfy app. Topic is created once (data/notify_topic.txt) and shown
 # on the real wallet card.
+# Bond alerts (15 Oct): phone push when bonds come back for 'Hold <$12K · 10 trades' (the real-money strategy)
+heat:
+  enabled: true
+  early_bonds_6h: 2                    # heads-up: this many bonds in the last 6 h
+  restart_bonds_24h: 3                 # restart signal: this many bonds in 24 h AND green over those 24 h
+  cooldown_h: 12
+
 notify:
   enabled: true
   server: "https://ntfy.sh"
