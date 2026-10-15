@@ -571,6 +571,21 @@ def _settings_fix_1015():
         log.warning("settings fix 1015 skipped: %s", e)
 
 
+def _settings_fix_1015b():
+    """One-time (15 Oct): real buys for 'Hold <$12K · 10 trades' back to $10 each while the market is cold (owner's
+    request - 'until we get a few to bond'; was $25)."""
+    mark = os.path.join(HERE, "data", "settings_fix_1015b.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold_small10.real_size_usd": 10}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: Hold <$12K · 10 trades real buys now $10 each (one-time update)")
+    except Exception as e:
+        log.warning("settings fix 1015b skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -604,6 +619,7 @@ _settings_fix_1013()
 _settings_fix_1013b()
 _settings_fix_1014()
 _settings_fix_1015()
+_settings_fix_1015b()
 runner = Runner()
 if not os.path.exists(os.path.join(HERE, "data", "settings_fix_1013c.done")):
     # one-time (13 Oct): the tuned test has new rules - count its results from now (old trades stay in its files)
