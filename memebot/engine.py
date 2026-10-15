@@ -237,7 +237,6 @@ class Engine:
         self.rangehold_floor = None                # hold to bonding + break-even floor after 2x (paper)
         self.rangehold_small10t = None             # under-$12K/10 trades, tuned: 60+ SOL, 10%+ ranges, BE floor (paper)
         self.rangehold_lowscore = None             # hold to bonding, only when the bond score is well below break-even (paper)
-        self.rangehold_small8 = None               # the 10-trade test, but only coins under $8K (paper)
         self.rangehold_v2mid = None                # hold to bonding v2, 85-130 SOL only + BE floor (paper)
         self.lookalike_grad = None                 # Lookalike with the graduation exit (paper), live mode only
         self.tests = []                            # paper test variants of the graduation lookalike
@@ -469,7 +468,7 @@ class Engine:
         return self.reclaim is not None and self.reclaim.enabled()
 
     HOLD_TESTS = ("rangehold", "rangehold_v2", "rangehold_mix", "rangehold_small10", "rangehold_floor",
-                  "rangehold_small10t", "rangehold_v2mid", "rangehold_small8", "rangehold_lowscore")
+                  "rangehold_small10t", "rangehold_v2mid", "rangehold_lowscore")
 
     def _hold_on(self):
         """Any hold-to-bonding paper test switched on - they need new launches watched to find candidates."""
@@ -570,8 +569,6 @@ class Engine:
             self.rangehold_small10t.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_v2mid is not None and t.creator:
             self.rangehold_v2mid.maybe_enter(t, prev_mcap, ts)
-        if self.rangehold_small8 is not None and t.creator:
-            self.rangehold_small8.maybe_enter(t, prev_mcap, ts)
         if self.rangehold_lowscore is not None and t.creator:
             self.rangehold_lowscore.maybe_enter(t, prev_mcap, ts)
         if self.survivor is not None and t.creator:
@@ -911,7 +908,7 @@ class Engine:
             # keep watching until every candidate-collecting paper test (Reclaim + the hold tests) knows this coin
             rc_done = not any(s is not None and s.wants_watch(t.mint) for s in (
                 self.reclaim, self.rangehold, self.rangehold_v2, self.rangehold_mix,
-                self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_small8, self.rangehold_lowscore))
+                self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore))
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return
