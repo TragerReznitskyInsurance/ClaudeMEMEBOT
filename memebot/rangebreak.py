@@ -400,7 +400,8 @@ class RangeHoldSmallThin(RangeHoldSmall):
     couldn't check never had one) and is skipped if it fails or RugCheck doesn't answer. Real sells follow the
     paper exits."""
     NAME = "rangehold_small10"
-    REAL_KEYS = ("real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd")
+    REAL_KEYS = ("real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd",
+                 "real_auto", "real_auto_bonds_24h", "real_auto_need_green")
 
     def cfg(self):
         c = dict(self._cfg().get("rangebreak") or {})
@@ -414,12 +415,31 @@ class RangeHoldSmallThin(RangeHoldSmall):
         return c
 
     # ------------------------------------------------------------------ real money
+    def auto_status(self, now=None, c=None):
+        """AUTO ON/OFF (16 Oct, owner's request): real buys only while this test's own paper trades show the market is
+        bonding - >= `real_auto_bonds_24h` (2) bonds among trades closed in the last 24 h (and green over them if
+        `real_auto_need_green`). Returns (hot, bonds_24h, pnl_24h)."""
+        now = now or time.time()
+        c = c or self.cfg()
+        cl = [x for x in self.closed if 0 <= now - x.get("closed", 0) <= 24 * 3600]
+        bonds = sum(1 for x in cl if str(x.get("exit", "")).startswith("bonding"))
+        pnl = round(sum(x.get("pnl_usd") or 0 for x in cl), 2)
+        hot = bonds >= int(c.get("real_auto_bonds_24h", 2)) and (pnl > 0 or not c.get("real_auto_need_green"))
+        return hot, bonds, pnl
+
     def _enter(self, cd, px, ts, trades_2m):
         had = cd["mint"] in self.positions
         super()._enter(cd, px, ts, trades_2m)
         c = self.cfg()
         if had or cd["mint"] not in self.positions or not c.get("real_enabled") or getattr(self, "live", None) is None:
             return
+        if c.get("real_auto"):
+            hot, b24, _ = self.auto_status(c=c)
+            if not hot:
+                why = f"auto: market cold ({b24} bonds in 24h, needs {int(c.get('real_auto_bonds_24h', 2))})"
+                self.positions[cd["mint"]]["real_skip"] = why
+                log.info("SMALL10 no real buy %s: %s", cd["symbol"], why)
+                return
         try:
             asyncio.get_running_loop().create_task(self._real_buy(cd["mint"], cd["symbol"]))
         except RuntimeError:
@@ -476,11 +496,16 @@ class RangeHoldSmallThin(RangeHoldSmall):
                      f"{c.get('max_hold_h', 6):g}h limit · "
                      + (f"REAL MONEY ON: ${float(c.get('real_size_usd', 10)):g} per buy, max {int(c.get('real_max_open', 15))} open, "
                         f"stops after -${float(c.get('real_daily_loss_usd', 40)):g} a day, RugCheck before every real buy"
+                        + (f", AUTO: only buys while this test had {int(c.get('real_auto_bonds_24h', 2))}+ bonds in the last 24h"
+                           + (" and is green" if c.get("real_auto_need_green") else "") if c.get("real_auto") else "")
                         if c.get("real_enabled") else "no real money"))
         s["real_enabled"] = bool(c.get("real_enabled"))
         s.update(real_size_usd=float(c.get("real_size_usd", 10)), real_max_open=int(c.get("real_max_open", 15)),
                  real_daily_loss_usd=float(c.get("real_daily_loss_usd", 40)),
                  real_open=sum(1 for p in self.positions.values() if p.get("real")),
+                 real_auto=bool(c.get("real_auto")), real_auto_bonds_24h=int(c.get("real_auto_bonds_24h", 2)),
+                 real_auto_need_green=bool(c.get("real_auto_need_green")),
+                 **dict(zip(("real_auto_hot", "real_auto_bonds", "real_auto_pnl"), self.auto_status(c=c))),
                  real_today_usd=(round(self.live.realized_today_usd(self.NAME), 2)
                                  if getattr(self, "live", None) is not None else None))
         return s

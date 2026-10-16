@@ -180,6 +180,9 @@ rangehold_small10:
   real_size_usd: 10                    # ...this much per coin ($25 13-15 Oct; back to $10 while the market is cold)
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 150             # ...no new real buys after losing this much today ($40 until 13 Oct, $100 until 14 Oct)
+  real_auto: true                      # AUTO ON/OFF (16 Oct): with real money on, only buy for real while the market is bonding:
+  real_auto_bonds_24h: 2               # ...this test had at least this many bonds among trades closed in the last 24 h
+  real_auto_need_green: false          # ...and (if true) was green over those 24 h
 
 # PAPER (14 Oct): hold-to-bonding, but only when the bond score (6h chance for its mcap + age) is under 0.6x of the
 # chance a buy at that price needs to break even - on past trades the low-score buys made the money

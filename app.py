@@ -614,6 +614,23 @@ def _settings_fix_1016():
         log.warning("settings fix 1016 skipped: %s", e)
 
 
+def _settings_fix_1016b():
+    """One-time (16 Oct, later): AUTO mode for real money on 'Hold <$12K · 10 trades' (owner's request) - it only buys
+    for real while the test had 2+ bonds in the last 24 h. The master button on the real wallet card stays as the
+    owner left it (OFF since earlier today) - auto only acts once he switches it on."""
+    mark = os.path.join(HERE, "data", "settings_fix_1016b.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold_small10.real_auto": True,
+                          "rangehold_small10.real_auto_bonds_24h": 2}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: real money AUTO mode for Hold <$12K · 10 trades (one-time update 16 Oct)")
+    except Exception as e:
+        log.warning("settings fix 1016b skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -650,6 +667,7 @@ _settings_fix_1015()
 _settings_fix_1015b()
 _settings_fix_1015c()
 _settings_fix_1016()
+_settings_fix_1016b()
 runner = Runner()
 if not os.path.exists(os.path.join(HERE, "data", "settings_fix_1013c.done")):
     # one-time (13 Oct): the tuned test has new rules - count its results from now (old trades stay in its files)
@@ -1069,7 +1087,7 @@ STRAT_LABELS.update({
     "recent_s": "Range ends this long before now (s)", "sample_s": "Price sample every (s)",
     "trail_arm_mult": "Trailing stop starts at (x)", "tp_mult": "Take profit at (x)", "tp_frac_pct": "Take-profit sells (%)",
 })
-STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd", "stats_since", "hot_from_pct",
+STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss_usd", "real_auto", "real_auto_bonds_24h", "real_auto_need_green", "stats_since", "hot_from_pct",
               "cold_every_s", "old_after_h", "old_every_s", "dead_every_s", "check_every_s", "grad_floor_mcap_sol"}
 
 
