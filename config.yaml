@@ -184,6 +184,11 @@ rangehold_small10:
   real_auto_bonds_24h: 2               # ...this test had at least this many bonds among trades closed in the last 24 h
   real_auto_need_green: false          # ...and (if true) was green over those 24 h
 
+# PAPER (16 Oct): the under-$12K / 10-trade test with a 24 h hold instead of 6 h (late bonds vs slow bleed)
+rangehold_small10l:
+  enabled: true
+  max_hold_h: 24
+
 # PAPER (14 Oct): hold-to-bonding, but only when the bond score (6h chance for its mcap + age) is under 0.6x of the
 # chance a buy at that price needs to break even - on past trades the low-score buys made the money
 rangehold_lowscore:

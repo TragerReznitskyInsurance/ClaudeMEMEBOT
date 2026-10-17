@@ -511,6 +511,35 @@ class RangeHoldSmallThin(RangeHoldSmall):
         return s
 
 
+class RangeHoldSmallLong(RangeHoldSmallThin):
+    """PAPER test (16 Oct): the under-$12K / 10-trade test exactly, but with a `max_hold_h` (24h) time limit instead of
+    6h. Replay of 12-16 Oct: 5 coins the 6h limit sold went on to bond within 24h of our buy (+~$250), while holding the
+    rest longer cost ~-$80 - but a third of those coins had no price data after our sale, so this runs to settle it.
+    Uses rangebreak + rangehold + rangehold_small + rangehold_small10 settings plus the `rangehold_small10l` section;
+    never real money."""
+    NAME = "rangehold_small10l"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        for sec in ("rangehold", "rangehold_small", "rangehold_small10"):
+            c.update(self._cfg().get(sec) or {})
+        c.pop("stats_since", None)
+        for k in self.REAL_KEYS:
+            c.pop(k, None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same as 'under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K · {c.get('min_trades_2m', 10)}+ trades', "
+                     f"but holds up to {c.get('max_hold_h', 24):g}h instead of 6h · sell everything at "
+                     f"{c.get('bond_exit_mcap_sol', 375):g} SOL / migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)} · no real money")
+        s["real_enabled"] = False
+        return s
+
+
 class RangeHoldFloor(RangeHold):
     """PAPER test (10 Oct): the original hold-to-bonding test, plus a break-even floor - once a coin has reached
     `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult` (1.0x, our buy price). 127 hold trades so far:
