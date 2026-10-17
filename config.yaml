@@ -190,6 +190,10 @@ rangehold_small10d:                    # PAPER (16 Oct): the 10-trade test, only
   max_pct_of_ath: 60
   max_chase_pct: 25
 
+rangehold_small10dl:                   # PAPER (16 Oct): the under-60%-of-ATH test with a 24 h hold (both ideas together)
+  enabled: true
+  max_hold_h: 24
+
 rangehold_small10l:
   enabled: true
   max_hold_h: 24

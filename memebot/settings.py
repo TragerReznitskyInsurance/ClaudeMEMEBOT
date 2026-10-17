@@ -73,6 +73,7 @@ SCHEMA = [
         {"path": "rangehold_mix.enabled", "label": "Hold to bonding mix · 80 min-3.2 h old AND under $12K", "type": "bool"},
         {"path": "rangehold_small10.enabled", "label": "Hold to bonding · under $12K, 10+ trades / 2 min", "type": "bool"},
         {"path": "rangehold_lowscore.enabled", "label": "Hold to bonding · only when the bond score is well below break-even", "type": "bool"},
+        {"path": "rangehold_small10dl.enabled", "label": "Hold to bonding · under $12K, 10+ trades, under 60% of ATH AND 24h hold", "type": "bool"},
         {"path": "rangehold_small10d.enabled", "label": "Hold to bonding · under $12K, 10+ trades, only under 60% of ATH, max 25% above the range", "type": "bool"},
         {"path": "rangehold_small10l.enabled", "label": "Hold to bonding · under $12K, 10+ trades, 24h hold instead of 6h", "type": "bool"},
         {"path": "rangehold_small10t.enabled", "label": "Hold to bonding · under $12K, 10+ trades, tuned (2h+ old, under 80% of ATH, floor after 2x)", "type": "bool"},

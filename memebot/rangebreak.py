@@ -591,6 +591,25 @@ class RangeHoldSmallDip(RangeHoldSmallThin):
         return s
 
 
+class RangeHoldSmallDipLong(RangeHoldSmallDip):
+    """PAPER test (16 Oct, owner's request): both new ideas together - the 'under 60% of ATH, max 25% above the range'
+    buys AND the 24h hold. Uses everything RangeHoldSmallDip uses plus the `rangehold_small10d` section, then the
+    `rangehold_small10dl` section; never real money."""
+    NAME = "rangehold_small10dl"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        for sec in ("rangehold", "rangehold_small", "rangehold_small10", "rangehold_small10d"):
+            c.update(self._cfg().get(sec) or {})
+        c.pop("stats_since", None)
+        for k in self.REAL_KEYS:
+            c.pop(k, None)
+        c.pop("enabled", None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+
 class RangeHoldFloor(RangeHold):
     """PAPER test (10 Oct): the original hold-to-bonding test, plus a break-even floor - once a coin has reached
     `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult` (1.0x, our buy price). 127 hold trades so far:
