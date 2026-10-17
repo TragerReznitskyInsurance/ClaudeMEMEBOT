@@ -646,6 +646,22 @@ def _settings_fix_1016b():
         log.warning("settings fix 1016b skipped: %s", e)
 
 
+def _settings_fix_1016c():
+    """One-time (16 Oct): switch off the v2, break-even floor and low bond score paper tests (owner's request - weak
+    results; v2mid / tuned / the new under-60%-of-ATH tests carry their ideas). Trade files are kept."""
+    mark = os.path.join(HERE, "data", "settings_fix_1016c.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold_v2.enabled": False, "rangehold_floor.enabled": False,
+                          "rangehold_lowscore.enabled": False}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: v2 / floor / low-score paper tests switched off (one-time update 16 Oct)")
+    except Exception as e:
+        log.warning("settings fix 1016c skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -683,6 +699,7 @@ _settings_fix_1015b()
 _settings_fix_1015c()
 _settings_fix_1016()
 _settings_fix_1016b()
+_settings_fix_1016c()
 runner = Runner()
 if not os.path.exists(os.path.join(HERE, "data", "settings_fix_1013c.done")):
     # one-time (13 Oct): the tuned test has new rules - count its results from now (old trades stay in its files)
@@ -1112,9 +1129,9 @@ STRAT_SKIP = {"real_enabled", "real_size_usd", "real_max_open", "real_daily_loss
 STRAT_HIDE = {}
 
 
-PAPER_LABELS = [("rangehold", "Hold to bond"), ("rangehold_lowscore", "Hold low score"), ("rangehold_v2", "V2 80m-3h"),
+PAPER_LABELS = [("rangehold", "Hold to bond"), 
                 ("rangehold_v2mid", "V2 85-130 SOL"), ("rangehold_small10t", "<$12K 2h+ <80% ATH"),
-                ("rangehold_small10", "<$12K 10 trades"), ("rangehold_small10l", "<$12K 10tr 24h"), ("rangehold_small10d", "<$12K 10tr <60% ATH"), ("rangehold_small10dl", "<60% ATH + 24h"), ("rangehold_floor", "BE floor 2x")]
+                ("rangehold_small10", "<$12K 10 trades"), ("rangehold_small10l", "<$12K 10tr 24h"), ("rangehold_small10d", "<$12K 10tr <60% ATH"), ("rangehold_small10dl", "<60% ATH + 24h")]
 
 
 def paper_summary_text(prev=None):

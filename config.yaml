@@ -153,7 +153,7 @@ rangehold_small:                       # the under-$12K test itself was removed 
 # PAPER (6 Oct): same as rangehold, but only coins 80 min - 3.2 h old at the breakout (first 39 trades: 85-190 min
 # old -> 7 of 21 bonded; younger/older -> 1 of 18)
 rangehold_v2:
-  enabled: true
+  enabled: false                       # switched off 16 Oct (owner: remove - weak results; kept for its settings)
   min_age_min: 80
   max_age_h: 3.2
 
@@ -201,7 +201,7 @@ rangehold_small10l:
 # PAPER (14 Oct): hold-to-bonding, but only when the bond score (6h chance for its mcap + age) is under 0.6x of the
 # chance a buy at that price needs to break even - on past trades the low-score buys made the money
 rangehold_lowscore:
-  enabled: true
+  enabled: false                       # switched off 16 Oct (owner: remove - weak results; kept for its settings)
   max_score_ratio: 0.6
 
 # PAPER (re-tuned 13 Oct on 192 trades): under-$12K / 10 trades, but only coins 2h+ old and under 80% of their
@@ -215,7 +215,7 @@ rangehold_small10t:
 
 # PAPER (10 Oct): hold-to-bonding + break-even floor - once a coin hits 2x, sell if it falls back to our buy price
 rangehold_floor:
-  enabled: true
+  enabled: false                       # switched off 16 Oct (owner: remove - weak results; kept for its settings)
   floor_arm_mult: 2.0
   floor_mult: 1.0
 

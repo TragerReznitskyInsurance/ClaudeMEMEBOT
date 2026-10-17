@@ -1233,13 +1233,13 @@ async function callBuy() {
 }
 
 /* ── paper tests: overview + charts ───────── */
-const TESTS = [["rangehold", "Hold to bond", () => RH, "--s2"], ["rangehold_lowscore", "Hold · low bond score", () => RHL, "--s8"],
-  ["rangehold_v2", "Hold v2 · 80m–3h", () => RH2, "--s3"], ["rangehold_v2mid", "Hold v2 · 85–130 SOL", () => RHV, "--s4"],
+const TESTS = [["rangehold", "Hold to bond", () => RH, "--s2"], 
+  ["rangehold_v2mid", "Hold v2 · 85–130 SOL", () => RHV, "--s4"],
   ["rangehold_small10t", "Hold <$12K · 2h+ · under 80% ATH", () => RHU, "--s5"], ["rangehold_small10", "Hold <$12K · 10 trades", () => RHT, "--s6"],
   ["rangehold_small10l", "Hold <$12K · 10 trades · 24h", () => RHX, "--s1"],
   ["rangehold_small10d", "Hold <$12K · 10 trades · under 60% ATH", () => RHD, "--s9"],
   ["rangehold_small10dl", "Hold <$12K · under 60% ATH · 24h", () => RHDL, "--s10"],
-  ["rangehold_floor", "Hold · BE floor after 2×", () => RHF, "--s7"]];
+];
 const TCOLOR = Object.fromEntries(TESTS.map(t => [t[0], t[3]]));
 const money = (v, d = 0) => v == null ? "—" : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
 const totUsd = L => (L.realized_usd ?? ((L.curve || []).length ? L.curve[L.curve.length - 1][1] : 0)) + (L.open_pnl_usd || 0);
@@ -1439,7 +1439,7 @@ function watchTable(name, label) {
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
-function renderReclaim() { renderOverview(); renderBondScore(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdv2"), RH2, "📦⏳² Hold to bonding v2 · coins 80 min–3 h old"); renderStrat($("#rangeholdv2mid"), RHV, "📦⏳² Hold to bonding v2 · 85–130 SOL + floor after 2×"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdlowscore"), RHL, "📦🎯 Hold to bonding · only when the bond score is well below break-even"); renderStrat($("#rangeholdfloor"), RHF, "📦🛟 Hold to bonding · break-even floor after 2×"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · 2h+ old, under 80% of ATH, floor after 2×"); renderStrat($("#rangeholdsmall10l"), RHX, "📦🐣⏰ Hold to bonding · under $12K · 10+ trades · 24h hold"); renderStrat($("#rangeholdsmall10d"), RHD, "📦🐣📉 Hold to bonding · under $12K · 10+ trades · under 60% of ATH"); renderStrat($("#rangeholdsmall10dl"), RHDL, "📦🐣📉⏰ Hold to bonding · under $12K · 10+ trades · under 60% of ATH · 24h hold"); }
+function renderReclaim() { renderOverview(); renderBondScore(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdv2mid"), RHV, "📦⏳² Hold to bonding v2 · 85–130 SOL + floor after 2×"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · 2h+ old, under 80% of ATH, floor after 2×"); renderStrat($("#rangeholdsmall10l"), RHX, "📦🐣⏰ Hold to bonding · under $12K · 10+ trades · 24h hold"); renderStrat($("#rangeholdsmall10d"), RHD, "📦🐣📉 Hold to bonding · under $12K · 10+ trades · under 60% of ATH"); renderStrat($("#rangeholdsmall10dl"), RHDL, "📦🐣📉⏰ Hold to bonding · under $12K · 10+ trades · under 60% of ATH · 24h hold"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   if (TCOLOR[L.name] && TSEL !== L.name) { el.innerHTML = ""; return; }   // tests open one at a time from the table
