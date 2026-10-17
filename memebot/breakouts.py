@@ -135,6 +135,43 @@ class BreakoutLog:
         self._write(rec)
         self.pending[cid] = dict(mint=mint, ts=ts, due=list(CHECKS_MIN))
 
+    def on_test_buy(self, mint, ts, cb):
+        """16 Oct: rate the launch (clean / moderate / heavy bundle / sniped hard) of every coin a hold test buys, so
+        results can be split by launch type. One check per coin (shared by all tests); `cb(info)` gets the result."""
+        if not self.enabled() or not self._key():
+            return
+        cache = self.__dict__.setdefault("_buy_launch", {})
+        waiting = self.__dict__.setdefault("_buy_wait", {})
+        if mint in cache:
+            try:
+                cb(cache[mint])
+            except Exception:
+                pass
+            return
+        if mint in waiting:
+            waiting[mint].append(cb)
+            return
+        day = time.strftime("%Y-%m-%d")
+        if self.__dict__.get("_buy_day") != day:
+            self._buy_day, self._buy_checks = day, 0
+        if self._buy_checks >= int(self.cfg().get("buy_launch_checks_per_day", 800)):
+            return
+        self._buy_checks += 1
+        waiting[mint] = [cb]
+        self._put(("launch", f"buy:{mint}:{int(ts)}", mint, "buy"))
+
+    def _buy_result(self, mint, info):
+        cache = self.__dict__.setdefault("_buy_launch", {})
+        cache[mint] = info
+        if len(cache) > 5000:
+            for m in list(cache)[:1000]:
+                cache.pop(m, None)
+        for cb in self.__dict__.setdefault("_buy_wait", {}).pop(mint, []):
+            try:
+                cb(info)
+            except Exception as e:
+                log.info("launch callback: %s", e)
+
     def on_w1_buy(self, wallet, mint, ts, sol, mcap, sig):
         if not self.enabled():
             return
@@ -208,11 +245,22 @@ class BreakoutLog:
         self._write(rec)
         self.stats["holders"] += 1
 
-    async def _launch(self, cid, mint):
+    async def _launch(self, cid, mint, who=None):
         from memebot import launchcheck
-        r = await launchcheck.check(await self._sess(), self._key(), mint)
+        try:
+            r = await launchcheck.check(await self._sess(), self._key(), mint)
+        except Exception:
+            if who == "buy":
+                self.__dict__.setdefault("_buy_wait", {}).pop(mint, None)
+            raise
         if r.get("error"):
+            if who == "buy":
+                self.__dict__.setdefault("_buy_wait", {}).pop(mint, None)
             return
+        if who == "buy":
+            pct = lambda g: (g or {}).get("supply_pct")
+            self._buy_result(mint, dict(verdict=r.get("verdict"), bundle_pct=pct(r.get("bundle")),
+                                        snipers_pct=pct(r.get("snipers")), creator_pct=pct(r.get("creator_buy"))))
         self._write(dict(type="launch", id=cid, mint=mint, verdict=r.get("verdict"),
                          mcap_after_block=r.get("mcap_after_block_sol"),
                          creator_buy=r.get("creator_buy"), bundle=r.get("bundle"), snipers=r.get("snipers"),
@@ -251,7 +299,7 @@ class BreakoutLog:
                     await asyncio.sleep(2)
                     await self._holders(a, b, c)
                 elif kind == "launch":
-                    await self._launch(a, b)
+                    await self._launch(a, b, c)
                 elif kind == "leaders":
                     await self._leaders(a, b, c)
             except asyncio.CancelledError:

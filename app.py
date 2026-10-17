@@ -93,6 +93,9 @@ class Runner:
         self.bondscore = bondscore.BondTracker(os.path.join(HERE, "data"), lambda: [s for s in (
             self.rangehold, self.rangehold_v2, self.rangehold_small10, self.rangehold_floor,
             self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l) if s.active], self.rangehold)
+        for _t in (self.rangehold, self.rangehold_v2, self.rangehold_mix, self.rangehold_small10, self.rangehold_floor,
+                   self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l):
+            _t.launch_log = self.breakouts                   # 16 Oct: launch type of every hold-test buy (research)
         bondscore.TRACKER = self.bondscore                # watch lists use its learned table
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
         from memebot.heat import MarketHeat

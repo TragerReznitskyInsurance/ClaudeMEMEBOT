@@ -87,6 +87,17 @@ class RangeBreak(Reclaim):
                            f"({rng:.0f}% wide, {c.get('consol_min', 20):g} min)"
                            + (f", {trades_2m} trades in 2 min" if trades_2m is not None else ", graduated"), mint=cd["mint"])
         log.info("RANGEBREAK buy %s at mcap %.0f (range %.0f-%.0f)", cd["symbol"], mc, lo, hi)
+        ll = getattr(self, "launch_log", None)                 # 16 Oct: rate this coin's launch (research)
+        if ll is not None:
+            ll.on_test_buy(cd["mint"], ts, lambda info, m=cd["mint"]: self._set_launch(m, info))
+
+    def _set_launch(self, mint, info):
+        p = self.positions.get(mint)
+        if p is None:                                          # already sold: put it on the closed record
+            p = next((x for x in reversed(self.closed) if x.get("mint") == mint), None)
+        if p is not None:
+            p["launch"] = info.get("verdict")
+            p["launch_info"] = info
 
     # ------------------------------------------------------------------ exits
     def check(self, p, px, ts):

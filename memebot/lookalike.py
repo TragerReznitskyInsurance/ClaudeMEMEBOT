@@ -328,6 +328,7 @@ class Lookalike:
         rec = dict(mint=p["mint"], symbol=p["symbol"], opened=p["opened"], closed=ts, entry_mcap=p["entry_mcap"],
                    age_at_entry_s=p.get("age_at_entry_s"), prior_peak=p.get("prior_peak"),
                    low_mult=round(p["low_mult"], 2) if p.get("low_mult") else None, late=bool(p.get("late")), real=bool(p.get("real")), real_skip=p.get("real_skip"),
+                   launch=p.get("launch"), launch_info=p.get("launch_info"),
                    sol_in=round(p["sol_in"], 6), sol_out=round(p["sol_out"], 6), pnl_sol=round(pnl, 6),
                    pnl_pct=round(pnl / p["sol_in"] * 100, 1), pnl_usd=round(pnl * usd, 2),
                    peak_mult=round(p["peak_mult"], 2), stages=",".join(p["done"]),
