@@ -1671,9 +1671,11 @@ async function liveSell(m, which = "copy", frac = 1) {
 }
 async function liveSellAll(which = "copy") { if (!confirm(`Sell ALL real ${which === "lookalike" ? "lookalike" : "copy-trading"} positions now?`)) return; try { await api("/api/live/sell", { all: true, which }); toast("Selling everything…"); } catch (e) { toast(e.message); } }
 async function liveWithdraw(which = "copy") {
-  const a = prompt(`Send the whole ${which === "lookalike" ? "lookalike" : "trading"}-wallet balance to which Solana address?\n(All positions must be sold first.)`);
+  const a = prompt(`Send the whole ${which === "lookalike" ? "real" : "trading"}-wallet SOL balance to which Solana address?\n(Coins still open stay in the wallet; 0.01 SOL is kept so they can still be sold.)`);
   if (!a) return;
-  try { const r = await api("/api/live/withdraw", { address: a.trim(), which }); toast("Withdrawal sent"); } catch (e) { toast(e.message); }
+  const ad = a.trim();
+  if (!confirm(`CHECK THE ADDRESS before sending (malware can swap a pasted address):\n\n${ad}\n\nFirst 6: ${ad.slice(0, 6)}   Last 6: ${ad.slice(-6)}\n\nDoes this match your NEW wallet exactly?`)) return;
+  try { const r = await api("/api/live/withdraw", { address: ad, which }); toast("Withdrawal sent"); } catch (e) { toast(e.message); }
 }
 
 let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2800); }

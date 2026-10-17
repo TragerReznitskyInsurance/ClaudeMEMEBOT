@@ -1149,11 +1149,12 @@ class LiveTrader:
         self._save()
 
     async def withdraw(self, dest):
-        if self.positions:
-            raise ValueError("Sell or close all live positions first")
+        # 16 Oct: allowed with coins still open (dust / unsellable coins used to block it). Their tokens stay in the
+        # wallet; 0.01 SOL is left behind so they can still be sold.
         to = Pubkey.from_string(dest)
         bal = await self.refresh_balance(force=True)
-        lamports = int((bal or 0) * LAMPORTS) - 5000
+        keep = 0.01 if self.positions else 0.0
+        lamports = int(((bal or 0) - keep) * LAMPORTS) - 5000
         if lamports <= 0:
             raise ValueError("Nothing to withdraw")
         bh = await self.rpc("getLatestBlockhash", [{"commitment": "confirmed"}])
