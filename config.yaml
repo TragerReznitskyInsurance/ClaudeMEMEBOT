@@ -185,6 +185,11 @@ rangehold_small10:
   real_auto_need_green: false          # ...and (if true) was green over those 24 h
 
 # PAPER (16 Oct): the under-$12K / 10-trade test with a 24 h hold instead of 6 h (late bonds vs slow bleed)
+rangehold_small10d:                    # PAPER (16 Oct): the 10-trade test, only coins under 60% of their ATH, no chasing past 25%
+  enabled: true
+  max_pct_of_ath: 60
+  max_chase_pct: 25
+
 rangehold_small10l:
   enabled: true
   max_hold_h: 24

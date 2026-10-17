@@ -551,6 +551,46 @@ class RangeHoldSmallLong(RangeHoldSmallThin):
         return s
 
 
+class RangeHoldSmallDip(RangeHoldSmallThin):
+    """PAPER test (16 Oct): the under-$12K / 10-trade test, but only coins trading under `max_pct_of_ath` (60%) of
+    their all-time high at the breakout, and no chasing more than `max_chase_pct` (25%) above the range top.
+    9-16 Oct, all three main hold tests: buys under 60% of ATH made money (10-trade +$959 on 123, main +$607 on 100,
+    v2 +$217 on 38) while buys at 80%+ of ATH lost in all three (green 1 day in 8) - and the split held on the cold
+    14-16 Oct days too. With the 25% chase cap: +$912 on 103 (13% bonded) vs +$27 for the plain test. Cut-offs were
+    chosen after seeing that data, so this runs to confirm. Uses rangebreak + rangehold + rangehold_small +
+    rangehold_small10 settings plus the `rangehold_small10d` section; never real money."""
+    NAME = "rangehold_small10d"
+
+    def cfg(self):
+        c = dict(self._cfg().get("rangebreak") or {})
+        for sec in ("rangehold", "rangehold_small", "rangehold_small10"):
+            c.update(self._cfg().get(sec) or {})
+        c.pop("stats_since", None)
+        for k in self.REAL_KEYS:
+            c.pop(k, None)
+        c.update(self._cfg().get(self.NAME) or {})
+        c["real_enabled"] = False
+        return c
+
+    def _enter(self, cd, px, ts, trades_2m):
+        c = self.cfg()
+        mc = px * SUPPLY
+        ath = max(cd.get("peak") or 0, mc)
+        if mc >= ath * float(c.get("max_pct_of_ath", 60)) / 100:
+            return                                          # too close to its high right now - may still fit later
+        return super()._enter(cd, px, ts, trades_2m)
+
+    def state(self):
+        s = super().state()
+        c = self.cfg()
+        s["desc"] = (f"Same as 'under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K · {c.get('min_trades_2m', 10)}+ trades', "
+                     f"but only coins under {c.get('max_pct_of_ath', 60):g}% of their ATH, and not more than "
+                     f"{c.get('max_chase_pct', 25):g}% above the range · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / "
+                     f"migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
+        s["real_enabled"] = False
+        return s
+
+
 class RangeHoldFloor(RangeHold):
     """PAPER test (10 Oct): the original hold-to-bonding test, plus a break-even floor - once a coin has reached
     `floor_arm_mult` (2x) it is sold if it falls back to `floor_mult` (1.0x, our buy price). 127 hold trades so far:
