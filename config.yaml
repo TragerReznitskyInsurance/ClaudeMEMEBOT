@@ -142,7 +142,7 @@ rangehold:
   bond_exit_mcap_sol: 375              # sell everything here, or if it migrates
   dead_mcap_usd: 4000                  # sell everything if the market cap falls to $4K (back at launch level: dead coin)
   late_risers: true                    # also follow coins that wake up 45+ min after launch (from pump.fun's lists)
-  stop_pct: 50                         # wide stop: these coins chop around inside their range
+  stop_pct: 40                         # 18 Oct: was 50 - of ~640 hold trades that fell to -40%, only 5 still bonded
   max_hold_h: 6
 
 # PAPER (6 Oct): same as rangehold, but only coins under $12K market cap (bonding level ~4x+ away)
