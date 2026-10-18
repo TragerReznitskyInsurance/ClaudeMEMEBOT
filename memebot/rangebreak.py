@@ -422,17 +422,31 @@ class RangeHoldSmallThin(RangeHoldSmall):
         for k in self.REAL_KEYS:                            # real-money settings only ever come from this test's own section
             c.pop(k, None)
         c.update(self._cfg().get(self.NAME) or {})
-        c["real_enabled"] = bool(c.get("real_enabled")) and self.NAME == "rangehold_small10"
-        return c
+        return self._real_overlay(c)
 
     # ------------------------------------------------------------------ real money
+    REAL_LABELS = {"rangehold_small10": "Hold <$12K · 10 trades", "rangehold_small10d": "Hold <$12K · under 60% of ATH"}
+
+    def _real_overlay(self, c):
+        """Real-money settings live in the `rangehold_small10` section (the wallet card's switch and limits) and apply
+        to ONE test: `real_test` (18 Oct: rangehold_small10d, owner's choice - was rangehold_small10)."""
+        sec = self._cfg().get("rangehold_small10") or {}
+        for k in self.REAL_KEYS:
+            if k in sec:
+                c[k] = sec[k]
+        rt = sec.get("real_test") or "rangehold_small10"
+        c["is_real_test"] = self.NAME == rt
+        c["real_enabled"] = bool(c.get("real_enabled")) and c["is_real_test"]
+        return c
+
     def auto_status(self, now=None, c=None):
         """AUTO ON/OFF (16 Oct, owner's request): real buys only while this test's own paper trades show the market is
         bonding - >= `real_auto_bonds_24h` (2) bonds among trades closed in the last 24 h (and green over them if
         `real_auto_need_green`). Returns (hot, bonds_24h, pnl_24h)."""
         now = now or time.time()
         c = c or self.cfg()
-        cl = [x for x in self.closed if 0 <= now - x.get("closed", 0) <= 24 * 3600]
+        src = getattr(self, "heat_source", None) or self          # the market thermometer: the plain 10-trade test
+        cl = [x for x in src.closed if 0 <= now - x.get("closed", 0) <= 24 * 3600]
         bonds = sum(1 for x in cl if str(x.get("exit", "")).startswith("bonding"))
         pnl = round(sum(x.get("pnl_usd") or 0 for x in cl), 2)
         hot = bonds >= int(c.get("real_auto_bonds_24h", 2)) and (pnl > 0 or not c.get("real_auto_need_green"))
@@ -511,6 +525,8 @@ class RangeHoldSmallThin(RangeHoldSmall):
                            + (" and is green" if c.get("real_auto_need_green") else "") if c.get("real_auto") else "")
                         if c.get("real_enabled") else "no real money"))
         s["real_enabled"] = bool(c.get("real_enabled"))
+        s["is_real_test"] = bool(c.get("is_real_test"))
+        s["real_label"] = self.REAL_LABELS.get(self.NAME, self.NAME)
         s.update(real_size_usd=float(c.get("real_size_usd", 10)), real_max_open=int(c.get("real_max_open", 15)),
                  real_daily_loss_usd=float(c.get("real_daily_loss_usd", 40)),
                  real_open=sum(1 for p in self.positions.values() if p.get("real")),
@@ -569,8 +585,7 @@ class RangeHoldSmallDip(RangeHoldSmallThin):
         for k in self.REAL_KEYS:
             c.pop(k, None)
         c.update(self._cfg().get(self.NAME) or {})
-        c["real_enabled"] = False
-        return c
+        return self._real_overlay(c)
 
     def _enter(self, cd, px, ts, trades_2m):
         c = self.cfg()
@@ -586,8 +601,12 @@ class RangeHoldSmallDip(RangeHoldSmallThin):
         s["desc"] = (f"Same as 'under ${float(c.get('max_entry_mcap_usd', 12000)) / 1000:g}K · {c.get('min_trades_2m', 10)}+ trades', "
                      f"but only coins under {c.get('max_pct_of_ath', 60):g}% of their ATH, and not more than "
                      f"{c.get('max_chase_pct', 25):g}% above the range · sell everything at {c.get('bond_exit_mcap_sol', 375):g} SOL / "
-                     f"migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · no real money")
-        s["real_enabled"] = False
+                     f"migration, stop −{c.get('stop_pct', 50):g}%{self._dead_txt(c)}, {c.get('max_hold_h', 6):g}h limit · "
+                     + (f"REAL MONEY ON: ${float(c.get('real_size_usd', 10)):g} per buy, max {int(c.get('real_max_open', 15))} open, "
+                        f"stops after -${float(c.get('real_daily_loss_usd', 40)):g} a day, RugCheck before every real buy"
+                        + (f", AUTO: only while the 10-trade test had {int(c.get('real_auto_bonds_24h', 2))}+ bonds in the last 24h"
+                           if c.get("real_auto") else "") if c.get("real_enabled") else
+                        ("real-money test (switched off)" if c.get("is_real_test") else "no real money")))
         return s
 
 

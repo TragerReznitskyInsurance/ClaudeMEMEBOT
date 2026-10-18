@@ -61,7 +61,7 @@ SCHEMA = [
         {"path": "lookalike_grad.real_size_usd", "label": "Real buy per coin", "unit": "$", "type": "float"},
         {"path": "lookalike_grad.real_max_open", "label": "Max real coins open", "type": "int"},
         {"path": "lookalike_grad.real_daily_loss_usd", "label": "Stop real buys after losing (per day)", "unit": "$", "type": "float"},
-        {"path": "rangehold_small10.real_enabled", "label": "REAL MONEY: buy the 'Hold <$12K · 10 trades' test for real (RugCheck before every buy)", "type": "bool"},
+        {"path": "rangehold_small10.real_enabled", "label": "REAL MONEY: buy the real-money test for real ('Hold <$12K · under 60% of ATH' since 18 Oct; RugCheck before every buy)", "type": "bool"},
         {"path": "rangehold_small10.real_size_usd", "label": "...real size per coin", "unit": "$", "type": "float"},
         {"path": "rangehold_small10.real_max_open", "label": "...max real coins open", "type": "int"},
         {"path": "rangehold_small10.real_daily_loss_usd", "label": "...stop real buys after losing (per day)", "unit": "$", "type": "float"},

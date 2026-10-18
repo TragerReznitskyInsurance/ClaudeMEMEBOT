@@ -1139,27 +1139,30 @@ function renderLab() {
 let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHU = null, RHV = null, RHL = null, RHX = null, RHD = null, RHDL = null, BS = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
 const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, rangehold_small10: true, rangehold_floor: true, rangehold_small10t: true, rangehold_v2mid: true, rangehold_lowscore: true, rangehold_small10l: true, rangehold_small10d: true, rangehold_small10dl: true, calls: true};
+function RT() { return [RHD, RHT].find(x => x && x.is_real_test) || RHT; }   // the test real money follows (18 Oct: under 60% of ATH)
 function realBuyers() {
   const on = [];
-  if (RHT && RHT.real_enabled) on.push("Hold <$12K · 10 trades" + (RHT.real_auto ? (RHT.real_auto_hot ? " (auto: on)" : " (auto: waiting)") : ""));
+  const R = RT();
+  if (R && R.real_enabled) on.push(R.real_label + (R.real_auto ? (R.real_auto_hot ? " (auto: on)" : " (auto: waiting)") : ""));
   if (CL && CL.real_money) on.push("Discord calls");
   return on.length ? "buying: " + on.join(" + ") : "not buying anything";
 }
 function realBuyLine() {
+  const RHT = RT();
   const m = v => v == null ? "—" : (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(2);
   const a = RHT ? (RHT.real_enabled
     ? (RHT.real_auto ? (RHT.real_auto_hot
         ? `<b style="color:var(--up)">AUTO: buying</b> (${RHT.real_auto_bonds} bonds in last 24h, needs ${RHT.real_auto_bonds_24h}) · `
         : `<b style="color:var(--warn)">AUTO: waiting - market cold</b> (${RHT.real_auto_bonds} bond${RHT.real_auto_bonds === 1 ? "" : "s"} in last 24h, needs ${RHT.real_auto_bonds_24h}) · `) : "")
-      + `<b>Hold &lt;$12K · 10 trades: ON</b> · $${RHT.real_size_usd} per coin · max ${RHT.real_max_open} open (${RHT.real_open} now) · stops buying after −$${RHT.real_daily_loss_usd} in a day · today ${m(RHT.real_today_usd)} · RugCheck before every buy`
-    : `Hold &lt;$12K · 10 trades: <b>OFF</b> (turn on in Settings → Real wallet)`) : "";
+      + `<b>${esc(RHT.real_label)}: ON</b> · $${RHT.real_size_usd} per coin · max ${RHT.real_max_open} open (${RHT.real_open} now) · stops buying after −$${RHT.real_daily_loss_usd} in a day · today ${m(RHT.real_today_usd)} · RugCheck before every buy`
+    : `${esc(RHT.real_label)}: <b>OFF</b> (turn on with the button on this card)`) : "";
   const b = CL ? `Discord calls: <b>${CL.real_money ? "ON" : "paper only"}</b>` : "";
   return [a, b].filter(Boolean).join(" · ");
 }
 function renderLkRules() {
   const el = $("#lkrules");
   el.innerHTML = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>What this wallet buys</h2><div class="rm-actions"><button class="btn" onclick="openDrawer()">⚙ Settings</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
-    ${realBuyLine()}<div class="faint" style="margin-top:6px">${esc(RHT?.desc || "")}</div>
+    ${realBuyLine()}<div class="faint" style="margin-top:6px">${esc(RT()?.desc || "")}</div>
     <div class="faint" style="margin-top:6px">⏸ Pause buys stops all new real buys (sells still happen). Reclaim is switched off.</div>
   </div></div>`;
 }
@@ -1577,8 +1580,9 @@ function entryMcapCell(e, n, px) {
 const callStage = q => !q ? "—" : (CL && !CL.auto_take_profit) ? (CL.auto_sell_on === false ? `you sell · auto-sell OFF · now ${q.mult.toFixed(2)}x` : `you sell · auto-stop at −40% · now ${q.mult.toFixed(2)}x`) : q.stages.includes("10x") ? `¾ sold · last ¼ trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("5x") ? `½ sold · trailing (${q.peak.toFixed(1)}x high)` : q.stages.includes("3x") ? `¼ sold at 3× · trailing 50% below ${q.peak.toFixed(1)}x` : `stop at −40% · now ${q.mult.toFixed(2)}x`;
 const DUSTSHOW = {};
 async function realSmall10(on) {
-  if (on && !confirm("Turn REAL MONEY on for 'Hold <$12K · 10 trades'?\n\nEvery paper buy is also bought for real: $" + (RHT?.real_size_usd ?? 10) + " each, max " + (RHT?.real_max_open ?? 15) + " open, stops after -$" + (RHT?.real_daily_loss_usd ?? 40) + " in a day, RugCheck before every buy.")) return;
-  try { await api("/api/real/small10", {on}); toast(on ? "Real money ON for Hold <$12K · 10 trades" : "Real money OFF - paper only"); } catch (e) { toast("Couldn't switch: " + e); }
+  const RHT = RT(), lab = RHT?.real_label || "real-money test";
+  if (on && !confirm("Turn REAL MONEY on for '" + lab + "'?\n\nEvery paper buy is also bought for real: $" + (RHT?.real_size_usd ?? 10) + " each, max " + (RHT?.real_max_open ?? 15) + " open, stops after -$" + (RHT?.real_daily_loss_usd ?? 40) + " in a day, RugCheck before every buy.")) return;
+  try { await api("/api/real/small10", {on}); toast(on ? "Real money ON for " + lab : "Real money OFF - paper only"); } catch (e) { toast("Couldn't switch: " + e); }
 }
 function renderLiveFor(L, el, which) {
   const lk = which === "lookalike";
@@ -1604,9 +1608,10 @@ function renderLiveFor(L, el, which) {
       <a class="faint" style="font-size:12px" href="https://solscan.io/account/${L.address}" target="_blank" rel="noopener">Solscan ↗</a>`;
   h += `<div class="rm-actions">`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="openDrawer()" title="Settings → 'Real wallet' has the limits ($ per coin, max open, daily loss)">⚙ Real-money settings</button>`;
-  if (L.has_wallet && lk && RHT) h += RHT.real_enabled
-    ? `<button class="btn danger" onclick="realSmall10(false)" title="Master switch: stop all real buys for this test, auto included (open real coins still sell normally)">${RHT.real_auto ? "■ Real money AUTO · turn off" : "■ Real money ON · turn off"}</button>`
-    : `<button class="btn primary" onclick="realSmall10(true)" title="Also buy every 'Hold <$12K · 10 trades' paper buy for real${RHT.real_auto ? " - AUTO: only while the market is bonding" : ""}">${RHT.real_auto ? "▶ Turn real money ON (auto)" : "▶ Turn real money ON"}</button>`;
+  const RHTx = RT();
+  if (L.has_wallet && lk && RHTx) h += RHTx.real_enabled
+    ? `<button class="btn danger" onclick="realSmall10(false)" title="Master switch: stop all real buys for this test, auto included (open real coins still sell normally)">${RHTx.real_auto ? "■ Real money AUTO · turn off" : "■ Real money ON · turn off"}</button>`
+    : `<button class="btn primary" onclick="realSmall10(true)" title="Also buy every '${RHTx.real_label}' paper buy for real${RHTx.real_auto ? " - AUTO: only while the market is bonding" : ""}">${RHTx.real_auto ? "▶ Turn real money ON (auto)" : "▶ Turn real money ON"}</button>`;
   if (L.has_wallet && lk) h += `<button class="btn" onclick="pnlReset('${which}')" title="Start the profit / loss count from now (trade history is kept)">↺ Reset P&L</button>`;
   if (L.has_wallet) h += `<button class="btn" onclick="api('/api/live/refresh',{which:'${which}'})">↻</button>
       <button class="btn" onclick="livePause(${!L.paused},'${which}')">${L.paused ? "▶ Resume" : "⏸ Pause buys"}</button>

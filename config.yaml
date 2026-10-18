@@ -180,6 +180,7 @@ rangehold_small10:
   real_size_usd: 10                    # ...this much per coin ($25 13-15 Oct; back to $10 while the market is cold)
   real_max_open: 15                    # ...at most this many open at once
   real_daily_loss_usd: 150             # ...no new real buys after losing this much today ($40 until 13 Oct, $100 until 14 Oct)
+  real_test: rangehold_small10d        # 18 Oct (owner): real money follows the 'under 60% of ATH' test (was this one)
   real_auto: true                      # AUTO ON/OFF (16 Oct): with real money on, only buy for real while the market is bonding:
   real_auto_bonds_24h: 2               # ...this test had at least this many bonds among trades closed in the last 24 h
   real_auto_need_green: false          # ...and (if true) was green over those 24 h

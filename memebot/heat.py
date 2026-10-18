@@ -58,7 +58,7 @@ class MarketHeat:
 
     def check_auto(self, now=None):
         """Push when auto real buying flips on/off (only while real money is on in auto mode)."""
-        t = self.test()
+        t = (getattr(self, "real_getter", None) or self.test)()
         if t is None or not hasattr(t, "auto_status"):
             return
         tc = t.cfg()
@@ -70,9 +70,9 @@ class MarketHeat:
             need = int(tc.get("real_auto_bonds_24h", 2))
             if hot:
                 self.notifier.send("Real money AUTO ON",
-                                   f"Hold <$12K · 10 trades had {b24} bonds in the last 24 h "
+                                   f"The 10-trade test had {b24} bonds in the last 24 h "
                                    f"({'+' if p24 >= 0 else '-'}${abs(p24):.0f}). Real buys are back on: "
-                                   f"${float(tc.get('real_size_usd', 10)):g} each.", tags="rocket", priority=4, force=True)
+                                   f"${float(tc.get('real_size_usd', 10)):g} each on '{t.REAL_LABELS.get(t.NAME, t.NAME)}'.", tags="rocket", priority=4, force=True)
             else:
                 self.notifier.send("Real money AUTO OFF",
                                    f"Market cold: only {b24} bond(s) in the last 24 h (needs {need}). No new real buys; "

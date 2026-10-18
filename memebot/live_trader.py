@@ -46,7 +46,7 @@ JUP_SWAP = os.environ.get("MOMENTUM_JUP_SWAP", "https://lite-api.jup.ag/swap/v1/
 RESERVE_SOL = 0.01          # always keep this much for fees / rent
 
 
-STRATEGY_TAGS = {"lookalike": "Lookalike", "reclaim": "Reclaim", "lookalike_grad": "Lookalike·grad", "survivor": "Survivor", "calls": "Discord calls", "rangehold_small10": "Hold <$12K·10tr"}      # real positions opened by our own strategies (not copies)
+STRATEGY_TAGS = {"lookalike": "Lookalike", "reclaim": "Reclaim", "lookalike_grad": "Lookalike·grad", "survivor": "Survivor", "calls": "Discord calls", "rangehold_small10": "Hold <$12K·10tr", "rangehold_small10d": "Hold <$12K·<60% ATH"}      # real positions opened by our own strategies (not copies)
 
 
 def _short(w):

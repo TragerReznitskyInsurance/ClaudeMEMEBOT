@@ -102,6 +102,8 @@ class Runner:
         self.notifier = Notifier(os.path.join(HERE, "data"), cur)
         from memebot.heat import MarketHeat
         self.heat = MarketHeat(os.path.join(HERE, "data"), cur, self.notifier, lambda: self.rangehold_small10)
+        self.heat.real_getter = lambda: next((t for t in (self.rangehold_small10d, self.rangehold_small10)
+                                              if t.cfg().get("is_real_test")), self.rangehold_small10)
         from memebot.explore import ExploreLog
         self.explore = ExploreLog(os.path.join(HERE, "data", "explore.jsonl"), cur)
         self.live2.notifier, self.live2.notify_label = self.notifier, "Real wallet"
@@ -266,6 +268,8 @@ class Runner:
             self.rangehold_small10t.feed_price = feed_price
             eng.rangehold_small10t = self.rangehold_small10t
             self.rangehold_small10.live = self.live2          # real money (if switched on in Settings) uses the real wallet
+            self.rangehold_small10d.live = self.live2         # 18 Oct: the real-money test (real_test) - see rangehold_small10
+            self.rangehold_small10d.heat_source = self.rangehold_small10   # auto on/off still reads the 10-trade test
             self.rangehold_v2mid.active = True
             self.rangehold_v2mid.feed_price = feed_price
             eng.rangehold_v2mid = self.rangehold_v2mid
@@ -1261,8 +1265,9 @@ async def api_real_small10(request):
     runner.cfg = S.load_config(CONFIG)
     if runner.engine and runner.running:
         runner.engine.cfg.setdefault("rangehold_small10", {})["real_enabled"] = on
-    runner.live2._event("info", "Hold <$12K · 10 trades: real money ON - every paper buy is also bought for real"
-                        if on else "Hold <$12K · 10 trades: real money OFF - paper only (open real coins still sell normally)")
+    lab = runner.heat.real_getter().REAL_LABELS.get(runner.heat.real_getter().NAME, "real test")
+    runner.live2._event("info", f"{lab}: real money ON - every paper buy is also bought for real (auto: only while bonds are coming)"
+                        if on else f"{lab}: real money OFF - paper only (open real coins still sell normally)")
     log.info("real money for rangehold_small10 switched %s", "ON" if on else "OFF")
     return web.json_response({"on": on})
 
