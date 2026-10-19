@@ -486,6 +486,25 @@ class RangeHoldSmallThin(RangeHoldSmall):
             await asyncio.sleep(3)
         return False, why
 
+    def _rugcheck_down_alert(self, why):
+        """19 Oct: RugCheck couldn't be reached (not a failed check) for 2+ real buys within 2 h -> one phone push
+        (at most every 3 h), so a quiet night of skipped real buys doesn't go unnoticed."""
+        if not why.startswith("RugCheck ") and why != "RugCheck didn't answer":
+            return                                          # a real RugCheck verdict (e.g. creator rugged) - fine
+        now = time.time()
+        q = self.__dict__.setdefault("_rc_fail", [])
+        q[:] = [t for t in q if now - t < 7200] + [now]
+        n = getattr(getattr(self, "live", None), "notifier", None)
+        if len(q) >= 2 and n is not None and now - self.__dict__.get("_rc_alert", 0) > 3 * 3600:
+            self._rc_alert = now
+            try:
+                n.send("Real buys skipped: RugCheck unreachable",
+                       f"{len(q)} real buys in the last 2 h were skipped because this computer couldn't reach RugCheck "
+                       f"({why}). Paper keeps running; real buys resume by themselves once RugCheck answers. "
+                       f"If it lasts, check the laptop's internet / restart the router.", tags="warning", priority=4, force=True)
+            except Exception as e:
+                log.info("rugcheck alert: %s", e)
+
     async def _real_buy(self, mint, symbol):
         c = self.cfg()
         ok, why = await self._rugcheck(mint)
@@ -495,7 +514,9 @@ class RangeHoldSmallThin(RangeHoldSmall):
         if not ok:
             p["real_skip"] = why
             log.info("SMALL10 no real buy %s: %s", symbol, why)
+            self._rugcheck_down_alert(why)
             return self._event("skip", f"{symbol}: no real buy - {why}", mint=mint)
+        self.__dict__["_rc_fail"] = []
         if p.get("last_px") and p["last_px"] / p["entry_px"] > 1.15:
             p["real_skip"] = "price ran 15%+ while checking"
             log.info("SMALL10 no real buy %s: price ran 15%%+ while checking", symbol)
