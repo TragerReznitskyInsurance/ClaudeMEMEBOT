@@ -284,6 +284,9 @@ class RangeHold(RangeBreak):
         if cd.get("src") == "jupiter" or px * SUPPLY >= float(c.get("max_entry_mcap_sol", 250)):
             self.traded.add(cd["mint"])                    # already graduated / too close to the bonding level
             return
+        dead, usd = float(c.get("dead_mcap_usd", 0) or 0), self._usd()
+        if dead and usd and px * SUPPLY * usd < dead * 1.1:
+            return                                          # 19 Oct: too close to the dead zone - would be sold at once
         return super()._enter(cd, px, ts, trades_2m)
 
     def check(self, p, px, ts):

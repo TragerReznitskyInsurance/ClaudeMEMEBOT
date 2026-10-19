@@ -697,6 +697,21 @@ def _settings_fix_1018b():
         log.warning("settings fix 1018b skipped: %s", e)
 
 
+def _settings_fix_1019():
+    """One-time (19 Oct, owner's request): hold tests' dead zone $4K -> $4.5K. Coins at $3-5K bonded <1% of the time
+    in the next 6 h (vs ~3% from $5.3K); replay: better in all three main tests, no bonders cut in the real-money one."""
+    mark = os.path.join(HERE, "data", "settings_fix_1019.done")
+    if os.path.exists(mark):
+        return
+    try:
+        S.save_overrides({"rangehold.dead_mcap_usd": 4500.0, "rangehold_small10.dead_mcap_usd": 4500.0}, config_path=CONFIG)
+        with open(mark, "w") as fh:
+            fh.write(str(time.time()))
+        log.info("settings: hold-test dead zone $4K -> $4.5K (one-time update 19 Oct)")
+    except Exception as e:
+        log.warning("settings fix 1019 skipped: %s", e)
+
+
 def _settings_fix_1006():
     """One-time (6 Oct): also copy wallet BB1jeG... on paper (owner's request), alongside wallet #1."""
     mark = os.path.join(HERE, "data", "settings_fix_1006.done")
@@ -737,6 +752,7 @@ _settings_fix_1016b()
 _settings_fix_1016c()
 _settings_fix_1018()
 _settings_fix_1018b()
+_settings_fix_1019()
 runner = Runner()
 if not os.path.exists(os.path.join(HERE, "data", "settings_fix_1013c.done")):
     # one-time (13 Oct): the tuned test has new rules - count its results from now (old trades stay in its files)
