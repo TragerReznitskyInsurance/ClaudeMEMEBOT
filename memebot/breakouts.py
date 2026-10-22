@@ -160,6 +160,57 @@ class BreakoutLog:
         waiting[mint] = [cb]
         self._put(("launch", f"buy:{mint}:{int(ts)}", mint, "buy"))
 
+    def on_test_activity(self, mint, ts, cb):
+        """21 Oct: trade counts on the coin's bonding curve in the last 5 min / 1 h / 24 h at a hold-test buy
+        (one getSignaturesForAddress call, a few more for very busy coins). `cb(info)` gets the result."""
+        if not self.enabled() or not self._key():
+            return
+        cache = self.__dict__.setdefault("_act", {})
+        hit = cache.get(mint)
+        if hit and ts - hit[0] < 120:
+            try:
+                cb(hit[1])
+            except Exception:
+                pass
+            return
+        self.__dict__.setdefault("_act_cb", {}).setdefault(mint, []).append(cb)
+        self._put(("activity", f"act:{mint}:{int(ts)}", mint, ts))
+
+    async def _activity(self, cid, mint, ts):
+        addr = curve_address(mint)
+        now = ts or time.time()
+        n5 = n60 = n24 = 0
+        before, pages, oldest = None, 0, None
+        while pages < 6:
+            opts = {"limit": 1000, "commitment": "confirmed"}
+            if before:
+                opts["before"] = before
+            sigs = await self._rpc("getSignaturesForAddress", [addr, opts]) or []
+            pages += 1
+            for s in sigs:
+                bt = s.get("blockTime")
+                if not bt or s.get("err"):
+                    continue
+                oldest = bt
+                age = now - bt
+                if age <= 86400:
+                    n24 += 1
+                    if age <= 3600:
+                        n60 += 1
+                        if age <= 300:
+                            n5 += 1
+            if len(sigs) < 1000 or (oldest and now - oldest > 86400):
+                break
+            before = sigs[-1].get("signature")
+        info = dict(tx_5m=n5, tx_1h=n60, tx_24h=n24, capped=pages >= 6 and (oldest or now) > now - 86400)
+        self._write(dict(type="activity", id=cid, mint=mint, ts=round(now, 1), **info))
+        self.__dict__.setdefault("_act", {})[mint] = (now, info)
+        for cb in self.__dict__.setdefault("_act_cb", {}).pop(mint, []):
+            try:
+                cb(info)
+            except Exception as e:
+                log.info("activity callback: %s", e)
+
     def _buy_result(self, mint, info):
         cache = self.__dict__.setdefault("_buy_launch", {})
         cache[mint] = info
@@ -302,6 +353,8 @@ class BreakoutLog:
                     await self._launch(a, b, c)
                 elif kind == "leaders":
                     await self._leaders(a, b, c)
+                elif kind == "activity":
+                    await self._activity(a, b, c)
             except asyncio.CancelledError:
                 raise
             except Exception as e:

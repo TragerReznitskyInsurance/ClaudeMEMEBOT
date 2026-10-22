@@ -90,6 +90,15 @@ class RangeBreak(Reclaim):
         ll = getattr(self, "launch_log", None)                 # 16 Oct: rate this coin's launch (research)
         if ll is not None:
             ll.on_test_buy(cd["mint"], ts, lambda info, m=cd["mint"]: self._set_launch(m, info))
+            if hasattr(ll, "on_test_activity"):
+                ll.on_test_activity(cd["mint"], ts, lambda info, m=cd["mint"]: self._set_activity(m, info))
+
+    def _set_activity(self, mint, info):
+        p = self.positions.get(mint)
+        if p is None:
+            p = next((x for x in reversed(self.closed) if x.get("mint") == mint), None)
+        if p is not None:
+            p["activity"] = info
 
     def _set_launch(self, mint, info):
         p = self.positions.get(mint)
