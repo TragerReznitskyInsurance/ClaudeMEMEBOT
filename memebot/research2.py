@@ -53,12 +53,16 @@ class Research2:
         self.rockets: dict[str, dict] = {}             # mint -> path being recorded
         self.fetched: set[str] = set()
         self.day, self.fetches = "", 0
-        self.wallets: dict[str, list] = {}             # wallet -> [bond_hits, loss_hits, last_ts]
+        self.wallets: dict[str, list] = {}             # wallet -> [bond_hits, loss_hits, last_ts]  (first ~30 s)
+        self.mid: dict[str, list] = {}                 # wallet -> [bond_hits, loss_hits, coins]  (after 44 SOL, 30 min)
+        self.pending_buyers: dict[str, list] = {}      # mint -> wallets that bought it after 44 SOL (until resolved)
         self.stats = dict(smart_bond=0, smart_loss=0, smart_signals=0, post_coins=0, post_rows=0, rockets=0, errors=0)
         self.last_error = ""
         try:
             with open(os.path.join(data_dir, "smart_wallets.json"), encoding="utf-8") as fh:
-                self.wallets = (json.load(fh) or {}).get("wallets") or {}
+                _w = json.load(fh) or {}
+                self.wallets = _w.get("wallets") or {}
+                self.mid = _w.get("mid") or {}
         except (OSError, ValueError):
             pass
 
@@ -85,7 +89,9 @@ class Research2:
             if len(self.wallets) > 60000:                  # keep the scoreboard bounded: drop one-off wallets
                 self.wallets = {w: v for w, v in self.wallets.items() if v[0] + v[1] > 1}
             with open(p + ".tmp", "w", encoding="utf-8") as fh:
-                json.dump(dict(updated=time.time(), wallets=self.wallets), fh, separators=(",", ":"))
+                if len(self.mid) > 80000:
+                    self.mid = {w: v for w, v in self.mid.items() if v[0] + v[1] > 1}
+                json.dump(dict(updated=time.time(), wallets=self.wallets, mid=self.mid), fh, separators=(",", ":"))
             os.replace(p + ".tmp", p)
         except OSError:
             pass
@@ -105,7 +111,11 @@ class Research2:
         at least min_share among their recorded early buys."""
         c = self.cfg()
         nb, share = int(c.get("smart_min_bonds", 3)), float(c.get("smart_min_share", 0.3))
-        return {w for w, v in self.wallets.items() if v[0] >= nb and v[0] / max(1, v[0] + v[1]) >= share}
+        # 22 Oct: scored on MID-stage buys (bought after the coin crossed 44 SOL, seen live) - the first-100-tx data
+        # only covers a coin's first ~30 s (launch snipers/bots). Wallets in 15%+ of all coins are bots: excluded.
+        n_coins = max(1, int(self.stats.get("mid_resolved", 0)) or sum(v[0] + v[1] for v in self.mid.values()) // 20)
+        return {w for w, v in self.mid.items() if v[0] >= nb and v[0] / max(1, v[0] + v[1]) >= share
+                and v[0] + v[1] < max(10, 0.15 * n_coins)}
 
     # ------------------------------------------------------------------ engine hooks
     def on_migrate(self, mint, symbol, ts):
@@ -120,6 +130,8 @@ class Research2:
         self.post[mint] = dict(sym=(symbol or "")[:20], t0=ts, next=ts + 30)
         self.stats["post_coins"] += 1
         self._fetch(mint, 1)
+        if (mint in self.crossed or mint in self.pending_buyers) and mint not in self.rockets:
+            self._resolve(mint, 1)                      # (still recording: _finish_rocket resolves it with its buyers)
 
     def on_cross(self, mint, symbol, ts, age_s, mcap):
         if not self.enabled() or not str(mint).endswith("pump") or not mcap or mcap > 120:
@@ -139,6 +151,9 @@ class Research2:
         if r is not None and mcap:
             if trader and side == "buy":                # (on-chain price polls carry no trader - not trades)
                 r["buys"] += 1
+                b = r.setdefault("buyers", {})
+                if trader not in b and (sol or 0) >= 0.05 and len(b) < 400:
+                    b[trader] = [round(ts - r["t0"]), round(mcap, 1), round(sol, 3)]
             elif trader and side == "sell":
                 r["sells"] += 1
             if ts - r["last"] >= float(self.cfg().get("rocket_sample_s", 3)):
@@ -165,9 +180,32 @@ class Research2:
         r = self.rockets.pop(mint, None)
         if not r:
             return
+        buyers = r.get("buyers") or {}
         self._write("rocket_paths.jsonl", dict(m=mint, sym=r["sym"], t0=round(r["t0"], 1), age_s=r["age_s"],
-                                               mc0=r["mc0"], path=r["path"]))
+                                               mc0=r["mc0"], path=r["path"],
+                                               buyers=[[w] + v for w, v in buyers.items()]))
         self.stats["rockets"] += 1
+        if mint in self.migrated:
+            self.pending_buyers[mint] = list(buyers)
+            self._resolve(mint, 1)
+        else:
+            self.pending_buyers[mint] = list(buyers)
+
+    def _resolve(self, mint, bonded):
+        """Outcome of a 44-SOL crosser: bonded (migrated) or not within 6 h. Scores its mid-stage buyers."""
+        if not self.__dict__.setdefault("_resolved", set()).isdisjoint({mint}):
+            return
+        self._resolved.add(mint)
+        if len(self._resolved) > 50000:
+            self._resolved = set(list(self._resolved)[-20000:])
+        self._write("rocket_outcomes.jsonl", dict(m=mint, bonded=bonded, ts=round(time.time())))
+        for w in self.pending_buyers.pop(mint, []) or []:
+            v = self.mid.setdefault(w, [0, 0, 0])
+            v[0 if bonded else 1] += 1
+        self.stats["mid_resolved"] = self.stats.get("mid_resolved", 0) + 1
+        self.stats["mid_bonded"] = self.stats.get("mid_bonded", 0) + bonded
+        if self.stats["mid_resolved"] % 20 == 0:
+            self._save_wallets()
 
     # ------------------------------------------------------------------ smart money
     def _fetch(self, mint, label):
@@ -238,8 +276,11 @@ class Research2:
             if now - ts < 6 * 3600:
                 break
             self.crossed.popitem(last=False)
-            if m not in self.migrated and random.random() < share:
-                self._fetch(m, 0)
+            if m not in self.migrated:
+                if m in self.pending_buyers:
+                    self._resolve(m, 0)
+                if random.random() < share:
+                    self._fetch(m, 0)
 
     # ------------------------------------------------------------------ after the bond
     async def _post_prices(self, now):
