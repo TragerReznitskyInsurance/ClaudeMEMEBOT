@@ -246,6 +246,7 @@ class Engine:
         self.survivor = None                       # Survivor breakout (old coins at a new high), live mode only
         self.hotword = None                        # hot-word paper test (Survivor rules, hot trends only)
         self.breakouts = None                      # BreakoutLog: every 44 SOL crossing + wallet #1 buys (research)
+        self.research2 = None                      # Research2: smart money / after-bond prices / rocket paths (21 Oct)
         self.skimmer = None                        # Skimmer paper test (quick +20% / -5% trades)
         self.copy_log = None                       # file handle: every followed-wallet trade we see
         self.journal = journal
@@ -292,6 +293,11 @@ class Engine:
                 self.narr.on_launch(mint, ev.get("name"), ev.get("symbol"), ts)
             elif tx == "migrate":
                 self.narr.on_graduate(mint, ts)
+        if tx == "migrate" and self.research2 is not None:
+            try:
+                self.research2.on_migrate(mint, ev.get("symbol"), ts)
+            except Exception as e:
+                log.debug("research2 migrate: %s", e)
         if tx == "create":
             self._on_create(ev, ts)
         elif tx == "migrate":
@@ -532,6 +538,13 @@ class Engine:
         t.update_market(ev, ts)
         if self.narr is not None and t.creator:
             self.narr.on_mcap(t.mint, prev_mcap, t.mcap, ts)
+        if self.research2 is not None and t.creator:
+            try:
+                if prev_mcap and t.mcap and prev_mcap < 44.0 <= t.mcap:
+                    self.research2.on_cross(t.mint, t.symbol, ts, ts - t.created_ts, t.mcap)
+                self.research2.on_trade(t.mint, ts, t.mcap, trader, ev.get("txType"), sol)
+            except Exception as e:
+                log.debug("research2 trade: %s", e)
         if self.breakouts is not None and t.creator and prev_mcap and t.mcap and prev_mcap < 44.0 <= t.mcap:
             try:
                 from memebot.snapshots import stream_features
@@ -917,7 +930,7 @@ class Engine:
             # keep watching until every candidate-collecting paper test (Reclaim + the hold tests) knows this coin
             rc_done = not any(s is not None and s.wants_watch(t.mint) for s in (
                 self.reclaim, self.rangehold, self.rangehold_v2, self.rangehold_mix,
-                self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l, self.rangehold_small10d, self.rangehold_small10dl))
+                self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l, self.rangehold_small10d, self.rangehold_small10dl, self.research2))
             if (snap_done and lk_done and rc_done) or age > _f(sc.get("watch_s"), 1800.0) or (age > 300 and t.mcap and t.mcap < 30):
                 self._drop(t, "research: done")           # recorded, too old, or dead - free the slot
             return

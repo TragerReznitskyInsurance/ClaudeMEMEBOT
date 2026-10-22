@@ -79,6 +79,8 @@ class Runner:
         self.reclaim.live = self.live2                      # Reclaim trades the real (lookalike) wallet since 30 Sep 18:30
         self.narr = Narratives(os.path.join(HERE, "data", "narratives.json"), lambda: S.helius_key(CONFIG))
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
+        from memebot.research2 import Research2
+        self.research2 = Research2(os.path.join(HERE, "data"), lambda: S.helius_key(CONFIG), cur)
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
         self.rangehold = RangeHold(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_v2 = RangeHoldV2(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -248,6 +250,7 @@ class Runner:
             self.reclaim.active = True
             self.reclaim.feed_price = feed_price
             eng.breakouts = self.breakouts
+            eng.research2 = self.research2
             self.calls.active = True
             self.rangehold.active = True
             self.rangehold.feed_price = feed_price
@@ -418,7 +421,7 @@ class Runner:
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
-                "breakouts": self.breakouts.summary(),
+                "breakouts": self.breakouts.summary(), "research2": self.research2.summary(),
                 "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_small10t": self.rangehold_small10t.state(), "rangehold_v2mid": self.rangehold_v2mid.state(), "rangehold_lowscore": self.rangehold_lowscore.state(), "rangehold_small10l": self.rangehold_small10l.state(), "rangehold_small10d": self.rangehold_small10d.state(), "rangehold_small10dl": self.rangehold_small10dl.state(), "bondscore": dict(self.bondscore.state(), heat=self.heat.state()),
                 "narratives": self.narr.state()}
 
@@ -805,6 +808,7 @@ async def broadcaster(app):
     rc_task = asyncio.create_task(runner.reclaim.run(every=3))
     test_tasks = []
     test_tasks.append(asyncio.create_task(runner.breakouts.run()))
+    test_tasks.append(asyncio.create_task(runner.research2.run()))
     test_tasks.append(asyncio.create_task(runner.calls.run(every=3)))
     test_tasks.append(asyncio.create_task(runner.rangehold.run(every=5)))
     test_tasks.append(asyncio.create_task(runner.rangehold_v2.run(every=5)))
@@ -1394,6 +1398,7 @@ async def api_diagnostics(request):
                      "rangehold_small10l_state.json", "rangehold_small10l_trades.csv", "rangehold_small10l_fills.csv",
                      "rangehold_small10d_state.json", "rangehold_small10d_trades.csv", "rangehold_small10d_fills.csv",
                      "rangehold_small10dl_state.json", "rangehold_small10dl_trades.csv", "rangehold_small10dl_fills.csv",
+                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl",
                      "bond_score.json", "bond_predictions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

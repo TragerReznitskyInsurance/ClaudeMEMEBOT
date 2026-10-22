@@ -399,3 +399,15 @@ notify:
   enabled: true
   server: "https://ntfy.sh"
   paper_summary_every_min: 60          # hourly push with every paper test's P&L (quiet, no sound); 0 = off
+
+# RESEARCH (21 Oct): data collectors only - nothing trades. Smart-money wallets (who buys early into coins that
+# bond), prices for 24 h after every bond, and second-by-second paths of every coin crossing 44 SOL (30 min).
+research2:
+  enabled: true
+  smart_fetch_per_day: 300             # Helius enhanced-transaction calls a day (first 100 txs of a coin)
+  smart_loser_share: 0.12              # share of non-bonding 44-SOL crossers sampled as "did not bond" examples
+  smart_early_s: 300                   # buyers within this many seconds of launch count as "early"
+  smart_min_bonds: 3                   # a wallet qualifies as smart money with this many early buys in bonders...
+  smart_min_share: 0.3                 # ...and at least this share of its recorded early buys bonding
+  rocket_window_min: 30                # record each 44-SOL crosser's market cap path for this long
+  rocket_sample_s: 3                   # at most one point every this many seconds
