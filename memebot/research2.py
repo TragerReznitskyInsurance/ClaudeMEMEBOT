@@ -109,7 +109,9 @@ class Research2:
 
     # ------------------------------------------------------------------ engine hooks
     def on_migrate(self, mint, symbol, ts):
-        if not self.enabled() or mint in self.migrated:
+        # pump.fun coins only (their addresses end in "pump"): the migration feed also carries other launchpads,
+        # whose supply/decimals make the market caps meaningless here
+        if not self.enabled() or mint in self.migrated or not str(mint).endswith("pump"):
             return
         self.migrated[mint] = ts
         if len(self.migrated) > 20000:
@@ -120,8 +122,8 @@ class Research2:
         self._fetch(mint, 1)
 
     def on_cross(self, mint, symbol, ts, age_s, mcap):
-        if not self.enabled():
-            return
+        if not self.enabled() or not str(mint).endswith("pump") or not mcap or mcap > 120:
+            return                                      # pump.fun coins crossing 44 SOL normally (not launch-block jumps)
         if mint not in self.crossed:
             self.crossed[mint] = ts
             while len(self.crossed) > 30000:
@@ -173,9 +175,12 @@ class Research2:
             return
         day = time.strftime("%Y-%m-%d")
         if day != self.day:
-            self.day, self.fetches = day, 0
-        if self.fetches >= int(self.cfg().get("smart_fetch_per_day", 300)):
-            return
+            self.day, self.fetches, self.fetch_split = day, 0, [0, 0]
+        split = self.__dict__.setdefault("fetch_split", [0, 0])      # [not bonded, bonded] today
+        cap = int(self.cfg().get("smart_fetch_per_day", 300))
+        if self.fetches >= cap or split[label] >= (cap * (0.65 if label else 0.35)):
+            return                                      # keep room for both kinds every day (bonders come first)
+        split[label] += 1
         self.fetches += 1
         self.fetched.add(mint)
         if len(self.fetched) > 50000:
