@@ -81,6 +81,9 @@ class Runner:
         self.breakouts = BreakoutLog(os.path.join(HERE, "data", "breakouts.jsonl"), lambda: S.helius_key(CONFIG), cur)
         from memebot.research2 import Research2
         self.research2 = Research2(os.path.join(HERE, "data"), lambda: S.helius_key(CONFIG), cur)
+        from memebot.bigcap_paper import BigCapPaper
+        self.bigcap_paper = BigCapPaper(os.path.join(HERE, "data"), cur)
+        self.research2.paper = self.bigcap_paper
         self.reclaim.breakouts = self.breakouts             # research log of every Reclaim signal (volume, launch speed)
         self.rangehold = RangeHold(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
         self.rangehold_v2 = RangeHoldV2(os.path.join(HERE, "data"), cur, lambda: S.helius_key(CONFIG), lambda: sol_price.usd)
@@ -421,7 +424,7 @@ class Runner:
         return {"type": "state", "meta": self.meta(), "data": snap, "live": self.live.state(cw),
                 "live2": self.live2.state([]),
                 "reclaim": self.reclaim.state(),
-                "breakouts": self.breakouts.summary(), "research2": self.research2.summary(),
+                "breakouts": self.breakouts.summary(), "research2": self.research2.summary(), "bigcap_paper": self.bigcap_paper.state(),
                 "calls": dict(self.calls.state(), notify=self.notify.state()), "rangehold": self.rangehold.state(), "rangehold_v2": self.rangehold_v2.state(), "rangehold_mix": self.rangehold_mix.state(), "rangehold_small10": self.rangehold_small10.state(), "rangehold_floor": self.rangehold_floor.state(), "rangehold_small10t": self.rangehold_small10t.state(), "rangehold_v2mid": self.rangehold_v2mid.state(), "rangehold_lowscore": self.rangehold_lowscore.state(), "rangehold_small10l": self.rangehold_small10l.state(), "rangehold_small10d": self.rangehold_small10d.state(), "rangehold_small10dl": self.rangehold_small10dl.state(), "bondscore": dict(self.bondscore.state(), heat=self.heat.state()),
                 "narratives": self.narr.state()}
 
@@ -1188,7 +1191,7 @@ STRAT_HIDE = {}
 
 PAPER_LABELS = [("rangehold", "Hold to bond"), 
                 ("rangehold_v2mid", "V2 85-130 SOL"), ("rangehold_small10t", "<$12K 2h+ <80% ATH"),
-                ("rangehold_small10", "<$12K 10 trades"), ("rangehold_small10l", "<$12K 10tr 24h"), ("rangehold_small10d", "<$12K 10tr <60% ATH"), ("rangehold_small10dl", "<60% ATH + 24h")]
+                ("rangehold_small10", "<$12K 10 trades"), ("rangehold_small10l", "<$12K 10tr 24h"), ("rangehold_small10d", "<$12K 10tr <60% ATH"), ("rangehold_small10dl", "<60% ATH + 24h"), ("bigcap_paper", "Big caps spike 48h")]
 
 
 def paper_summary_text(prev=None):
@@ -1398,7 +1401,7 @@ async def api_diagnostics(request):
                      "rangehold_small10l_state.json", "rangehold_small10l_trades.csv", "rangehold_small10l_fills.csv",
                      "rangehold_small10d_state.json", "rangehold_small10d_trades.csv", "rangehold_small10d_fills.csv",
                      "rangehold_small10dl_state.json", "rangehold_small10dl_trades.csv", "rangehold_small10dl_fills.csv",
-                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl", "rocket_outcomes.jsonl", "bigcap.jsonl",
+                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl", "rocket_outcomes.jsonl", "bigcap.jsonl", "bigcap_paper_state.json", "bigcap_paper_trades.jsonl",
                      "bond_score.json", "bond_predictions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

@@ -460,6 +460,7 @@ footer { text-align: center; color: var(--text-3); font-size: 12px; margin-top: 
   <section id="rangeholdsmall10l"></section>
   <section id="rangeholdsmall10d"></section>
   <section id="rangeholdsmall10dl"></section>
+  <section id="bigcappaper"></section>
   <section id="narratives"></section>
   <div id="hero"></div>
   <div id="dash" hidden>
@@ -663,7 +664,7 @@ async function setSpeed(s) { try { META = await api("/api/speed", { speed: s });
 let lastMsg = 0;
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; RHT = j.rangehold_small10; RHF = j.rangehold_floor; RHU = j.rangehold_small10t; RHV = j.rangehold_v2mid; RHL = j.rangehold_lowscore; RHX = j.rangehold_small10l; RHD = j.rangehold_small10d; RHDL = j.rangehold_small10dl; BS = j.bondscore; NR = j.narratives; lastMsg = Date.now(); render(); };
+  ws.onmessage = m => { const j = JSON.parse(m.data); if (j.meta && j.meta.boot) { if (BOOT && BOOT !== j.meta.boot) { location.reload(); return; } BOOT = j.meta.boot; } META = j.meta; S = j.data; LIVE = j.live; LIVE2 = j.live2; LK = j.lookalike; RC = j.reclaim; LG = j.lookalike_grad; AT = j.age_test; SV = j.survivor; SK = j.skimmer; RCC = j.reclaim_big; CL = j.calls; FL = j.fastlaunch; RH = j.rangehold; RHS = j.rangehold_small; RH2 = j.rangehold_v2; RHM = j.rangehold_mix; RHT = j.rangehold_small10; RHF = j.rangehold_floor; RHU = j.rangehold_small10t; RHV = j.rangehold_v2mid; RHL = j.rangehold_lowscore; RHX = j.rangehold_small10l; RHD = j.rangehold_small10d; RHDL = j.rangehold_small10dl; BCP = j.bigcap_paper; BS = j.bondscore; NR = j.narratives; lastMsg = Date.now(); render(); };
   ws.onclose = () => { META = null; renderHeader(true); setTimeout(connect, 1500); };
 }
 connect();
@@ -1136,7 +1137,7 @@ function renderLab() {
 
 
 /* ── 3-minute vs 5-minute age test (paper) ── */
-let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHU = null, RHV = null, RHL = null, RHX = null, RHD = null, RHDL = null, BS = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
+let CB = null, RH = null, RHS = null, RH2 = null, RHM = null, RHT = null, RHF = null, RHU = null, RHV = null, RHL = null, RHX = null, RHD = null, RHDL = null, BCP = null, BS = null, FL = null, AT = null, BOOT = null, SV = null, SK = null, RCC = null, RST = null, CL = null, RB = null;   // BOOT: server start id - a new one means an update was installed, so reload the page
 /* ── paper test panels: open/closed ─────────── */
 const stratOpen = {reclaim: true, rangehold: true, rangehold_small: true, rangehold_v2: true, rangehold_mix: true, rangehold_small10: true, rangehold_floor: true, rangehold_small10t: true, rangehold_v2mid: true, rangehold_lowscore: true, rangehold_small10l: true, rangehold_small10d: true, rangehold_small10dl: true, calls: true};
 function RT() { return [RHD, RHT].find(x => x && x.is_real_test) || RHT; }   // the test real money follows (18 Oct: under 60% of ATH)
@@ -1442,7 +1443,22 @@ function watchTable(name, label) {
       <td class="r num faint">${c.age_min < 60 ? c.age_min + "m" : Math.floor(c.age_min / 60) + "h " + String(c.age_min % 60).padStart(2, "0") + "m"}</td>
       <td><span class="badge ${c.rank === 0 ? "up" : c.rank === 1 ? "warn" : "gray"}" style="white-space:normal">${esc(c.why)}</span></td></tr>`).join("")}</tbody></table></div></div>`;
 }
-function renderReclaim() { renderOverview(); renderBondScore(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdv2mid"), RHV, "📦⏳² Hold to bonding v2 · 85–130 SOL + floor after 2×"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · 2h+ old, under 80% of ATH, floor after 2×"); renderStrat($("#rangeholdsmall10l"), RHX, "📦🐣⏰ Hold to bonding · under $12K · 10+ trades · 24h hold"); renderStrat($("#rangeholdsmall10d"), RHD, "📦🐣📉 Hold to bonding · under $12K · 10+ trades · under 60% of ATH"); renderStrat($("#rangeholdsmall10dl"), RHDL, "📦🐣📉⏰ Hold to bonding · under $12K · 10+ trades · under 60% of ATH · 24h hold"); }
+function renderBigCap() {
+  const el = $("#bigcappaper"), B = BCP;
+  if (!el) return;
+  if (!B) { el.innerHTML = ""; return; }
+  const $m = v => v == null ? "—" : (v < 0 ? "−$" : "+$") + Math.abs(v).toFixed(2);
+  const k = v => v == null ? "—" : "$" + (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.round(v / 1000) + "K");
+  const tot = (B.realized_usd || 0) + (B.open_pnl_usd || 0);
+  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>📈 Big caps · volume spike · ride 48h</h2><span class="badge gray">paper only</span></div><div class="card-b" style="font-size:13px;line-height:1.6">
+    <div class="faint" style="margin-bottom:6px">${esc(B.desc || "")}</div>
+    <b class="num ${cls(tot)}">${$m(tot)}</b> total · closed ${B.closed} (${B.wins || 0} won) ${$m(B.realized_usd)} · open ${B.open} ${$m(B.open_pnl_usd)}`;
+  if (B.positions && B.positions.length) h += `<table class="wtab" style="margin-top:8px"><tr class="faint"><td>Coin</td><td class="r">Bought at</td><td class="r">Now</td><td class="r">×</td><td class="r">Peak ×</td><td class="r">Low ×</td><td class="r">P&L</td><td class="r">Held</td></tr>
+    ${B.positions.map(p => `<tr><td><a href="https://dexscreener.com/solana/${p.mint}" target="_blank" rel="noopener">${esc(p.symbol)}</a> <span class="faint">${p.spike ? p.spike + "× vol" : ""}</span></td><td class="r num">${k(p.entry_mc)}</td><td class="r num">${k(p.now_mc)}</td><td class="r num ${cls(p.mult - 1)}">${p.mult.toFixed(2)}</td><td class="r num">${(p.peak || 1).toFixed(2)}</td><td class="r num">${(p.low || 1).toFixed(2)}</td><td class="r num ${cls(p.pnl_usd)}">${$m(p.pnl_usd)}</td><td class="r num">${p.age_h}h</td></tr>`).join("")}</table>`;
+  if (B.recent && B.recent.length) h += `<div class="faint" style="margin-top:8px">Recently closed: ${B.recent.map(x => `${esc(x.symbol)} ${x.exit_mult.toFixed(2)}× (peak ${x.peak.toFixed(1)}×) ${$m(x.pnl_usd)}`).join(" · ")}</div>`;
+  el.innerHTML = h + `</div></div>`;
+}
+function renderReclaim() { renderBigCap(); renderOverview(); renderBondScore(); renderStrat($("#rangehold"), RH, "📦⏳ Range breakout · hold to bonding test"); renderStrat($("#rangeholdv2mid"), RHV, "📦⏳² Hold to bonding v2 · 85–130 SOL + floor after 2×"); renderStrat($("#rangeholdsmall10"), RHT, "📦🐣 Hold to bonding · under $12K · 10+ trades"); renderStrat($("#rangeholdsmall10t"), RHU, "📦🐣 Hold to bonding · under $12K · 10+ trades · 2h+ old, under 80% of ATH, floor after 2×"); renderStrat($("#rangeholdsmall10l"), RHX, "📦🐣⏰ Hold to bonding · under $12K · 10+ trades · 24h hold"); renderStrat($("#rangeholdsmall10d"), RHD, "📦🐣📉 Hold to bonding · under $12K · 10+ trades · under 60% of ATH"); renderStrat($("#rangeholdsmall10dl"), RHDL, "📦🐣📉⏰ Hold to bonding · under $12K · 10+ trades · under 60% of ATH · 24h hold"); }
 function renderStrat(el, L, title) {
   if (!L || (!L.enabled && !L.open && !L.closed)) { el.innerHTML = ""; return; }
   if (TCOLOR[L.name] && TSEL !== L.name) { el.innerHTML = ""; return; }   // tests open one at a time from the table

@@ -58,6 +58,7 @@ class Research2:
         self.post: dict[str, dict] = {}                # mint -> {sym, t0, next}
         self.rockets: dict[str, dict] = {}             # mint -> path being recorded
         self.big: dict[str, dict] = {}                 # mint -> {t0, last_mc, low_n} (big-cap volume tracking)
+        self.paper = None                              # BigCapPaper (paper test fed by the big-cap snapshots)
         self.fetched: set[str] = set()
         self.day, self.fetches = "", 0
         self.wallets: dict[str, list] = {}             # wallet -> [bond_hits, loss_hits, last_ts]  (first ~30 s)
@@ -304,8 +305,12 @@ class Research2:
         if now - self.__dict__.get("_big_ts", 0) < float(self.cfg().get("bigcap_every_s", 60)):
             return
         self._big_ts = now
-        for m in [m for m, b in self.big.items() if now - b["t0"] > 3 * 86400 or b["low_n"] >= 3]:
+        held = (lambda m: self.paper is not None and self.paper.holding(m))
+        for m in [m for m, b in self.big.items() if (now - b["t0"] > 3 * 86400 or b["low_n"] >= 3) and not held(m)]:
             self.big.pop(m, None)
+        if self.paper is not None:
+            for m in list(self.paper.positions):
+                self.big.setdefault(m, dict(t0=now, last_mc=None, low_n=0))
         ids = list(self.big)
         s = await self._sess()
         for i in range(0, len(ids), 30):
@@ -332,11 +337,21 @@ class Research2:
                 b["last_mc"] = mc
                 b["low_n"] = b["low_n"] + 1 if mc < 50000 and now - b["t0"] > 7200 else 0
                 v, tx, pc = p.get("volume") or {}, p.get("txns") or {}, p.get("priceChange") or {}
-                self._write("bigcap.jsonl", dict(m=m, ts=round(now), mc=round(mc), liq=round((p.get("liquidity") or {}).get("usd") or 0),
-                                                 v5=round(v.get("m5") or 0), v1h=round(v.get("h1") or 0), v24=round(v.get("h24") or 0),
-                                                 b5=(tx.get("m5") or {}).get("buys"), s5=(tx.get("m5") or {}).get("sells"),
-                                                 b1h=(tx.get("h1") or {}).get("buys"), s1h=(tx.get("h1") or {}).get("sells"),
-                                                 pc5=pc.get("m5"), pc1h=pc.get("h1"), dex=p.get("dexId")))
+                row = dict(m=m, ts=round(now), mc=round(mc), liq=round((p.get("liquidity") or {}).get("usd") or 0),
+                           v5=round(v.get("m5") or 0), v1h=round(v.get("h1") or 0), v24=round(v.get("h24") or 0),
+                           b5=(tx.get("m5") or {}).get("buys"), s5=(tx.get("m5") or {}).get("sells"),
+                           b1h=(tx.get("h1") or {}).get("buys"), s1h=(tx.get("h1") or {}).get("sells"),
+                           pc5=pc.get("m5"), pc1h=pc.get("h1"), dex=p.get("dexId"))
+                try:
+                    row["px"] = float(p.get("priceUsd") or 0) or None
+                except (TypeError, ValueError):
+                    row["px"] = None
+                self._write("bigcap.jsonl", row)
+                if self.paper is not None:
+                    try:
+                        self.paper.on_snapshot(m, row, row["px"], (p.get("baseToken") or {}).get("symbol"), now)
+                    except Exception as e:
+                        self.last_error = f"bigcap paper: {e}"[:120]
                 self.stats["big_rows"] = self.stats.get("big_rows", 0) + 1
             await asyncio.sleep(0.3)
 
@@ -383,6 +398,8 @@ class Research2:
                         self._finish_rocket(m)              # no trades lately: close the path anyway
                     await self._post_prices(now)
                     await self._bigcap(now)
+                    if self.paper is not None:
+                        self.paper.tick(now)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
