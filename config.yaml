@@ -423,5 +423,6 @@ bigcap_paper:
   max_mc_usd: 5000000
   spike_mult: 2.0                      # 5-min volume at least this x its average 5-min volume over the last hour
   min_v5_usd: 3000                     # ...and at least this much in those 5 minutes
-  min_liq_usd: 15000
+  min_liq_usd: 40000                   # 23 Oct: was 15K
+  min_hours_since_bond: 6              # 23 Oct: skip coins that bonded less than 6 h ago (v1: 237 of 261 such buys rugged)
   fee_pct: 2                           # charged on the buy and on the sell

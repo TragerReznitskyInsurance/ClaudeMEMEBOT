@@ -137,7 +137,7 @@ class Research2:
                 self.migrated.pop(m, None)
         self.post[mint] = dict(sym=(symbol or "")[:20], t0=ts, next=ts + 30)
         self.stats["post_coins"] += 1
-        self.big.setdefault(mint, dict(t0=ts, last_mc=None, low_n=0))
+        self.big.setdefault(mint, dict(t0=ts, mig=ts, last_mc=None, low_n=0))
         self._fetch(mint, 1)
         if (mint in self.crossed or mint in self.pending_buyers) and mint not in self.rockets:
             self._resolve(mint, 1)                      # (still recording: _finish_rocket resolves it with its buyers)
@@ -299,7 +299,7 @@ class Research2:
         for c in coins:
             m = c.get("mint")
             if m and c.get("complete") and (c.get("mcap_usd") or 0) >= 150000 and m not in self.big and len(self.big) < 600:
-                self.big[m] = dict(t0=now, last_mc=c.get("mcap_usd"), low_n=0)
+                self.big[m] = dict(t0=now, mig=None, last_mc=c.get("mcap_usd"), low_n=0)   # bonded before we saw it
 
     async def _bigcap(self, now):
         if now - self.__dict__.get("_big_ts", 0) < float(self.cfg().get("bigcap_every_s", 60)):
@@ -311,7 +311,9 @@ class Research2:
         if self.paper is not None:
             for m in list(self.paper.positions):
                 self.big.setdefault(m, dict(t0=now, last_mc=None, low_n=0))
-        ids = list(self.big)
+        # 23 Oct: every minute only while worth $100K+ (or held by the paper test), every 5 min below that - the file
+        # was growing ~170 MB a day; dead coins (under $30K for 3 checks, after their first 10 min) drop off faster
+        ids = [m for m, b in self.big.items() if now >= b.get("next", 0)]
         s = await self._sess()
         for i in range(0, len(ids), 30):
             chunk = ids[i:i + 30]
@@ -335,13 +337,15 @@ class Research2:
                     continue
                 mc = p.get("marketCap") or p.get("fdv") or 0
                 b["last_mc"] = mc
-                b["low_n"] = b["low_n"] + 1 if mc < 50000 and now - b["t0"] > 7200 else 0
+                b["low_n"] = b["low_n"] + 1 if mc < 30000 and now - b["t0"] > 600 else 0
+                b["next"] = now + (55 if mc >= 100000 or held(m) else 295)
                 v, tx, pc = p.get("volume") or {}, p.get("txns") or {}, p.get("priceChange") or {}
                 row = dict(m=m, ts=round(now), mc=round(mc), liq=round((p.get("liquidity") or {}).get("usd") or 0),
                            v5=round(v.get("m5") or 0), v1h=round(v.get("h1") or 0), v24=round(v.get("h24") or 0),
                            b5=(tx.get("m5") or {}).get("buys"), s5=(tx.get("m5") or {}).get("sells"),
                            b1h=(tx.get("h1") or {}).get("buys"), s1h=(tx.get("h1") or {}).get("sells"),
-                           pc5=pc.get("m5"), pc1h=pc.get("h1"), dex=p.get("dexId"))
+                           pc5=pc.get("m5"), pc1h=pc.get("h1"), dex=p.get("dexId"),
+                           bond_h=round((now - b["mig"]) / 3600, 2) if b.get("mig") else None)
                 try:
                     row["px"] = float(p.get("priceUsd") or 0) or None
                 except (TypeError, ValueError):

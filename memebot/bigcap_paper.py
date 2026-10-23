@@ -22,6 +22,7 @@ log = logging.getLogger("memebot")
 
 class BigCapPaper:
     NAME = "bigcap_paper"
+    VERSION = 2          # 23 Oct: v1 (any age) bought fresh migrations that rugged - archived, restarted with v2 rules
 
     def __init__(self, data_dir, cfg_getter):
         self.path = os.path.join(data_dir, "bigcap_paper_state.json")
@@ -33,6 +34,9 @@ class BigCapPaper:
         try:
             with open(self.path, encoding="utf-8") as fh:
                 s = json.load(fh) or {}
+            if s and s.get("version", 1) < self.VERSION:   # rules changed: keep the old run for analysis, start fresh
+                os.replace(self.path, self.path.replace(".json", f"_v{s.get('version', 1)}.json"))
+                s = {}
             self.positions = s.get("positions") or {}
             self.closed = s.get("closed") or []
             self.traded = set(s.get("traded") or [])
@@ -51,7 +55,7 @@ class BigCapPaper:
     def _save(self):
         try:
             with open(self.path + ".tmp", "w", encoding="utf-8") as fh:
-                json.dump(dict(positions=self.positions, closed=self.closed[-2000:], traded=list(self.traded)[-20000:]), fh)
+                json.dump(dict(version=self.VERSION, positions=self.positions, closed=self.closed[-2000:], traded=list(self.traded)[-20000:]), fh)
             os.replace(self.path + ".tmp", self.path)
         except OSError:
             pass
@@ -81,6 +85,9 @@ class BigCapPaper:
             return
         if liq < float(c.get("min_liq_usd", 15000)) or v5 < float(c.get("min_v5_usd", 3000)):
             return
+        bh = row.get("bond_h")                          # hours since it bonded (None = bonded before we saw it)
+        if bh is not None and bh < float(c.get("min_hours_since_bond", 0)):
+            return                                      # 23 Oct: fresh migrations spike then rug - skip them
         if not (avg5 and v5 >= float(c.get("spike_mult", 2.0)) * avg5 and b5 > s5 and pc5 > 0):
             return
         self.traded.add(m)
@@ -139,6 +146,7 @@ class BigCapPaper:
                     recent=[dict(symbol=x["symbol"], entry_mc=x["entry_mc"], exit_mult=x["exit_mult"], peak=x["peak_mult"],
                                  pnl_usd=x["pnl_usd"]) for x in self.closed[-15:][::-1]],
                     wins=sum(1 for x in self.closed if x["pnl_usd"] > 0),
-                    desc=(f"Bonded/graduated coins at ${float(c.get('min_mc_usd', 150000)) / 1000:g}K+ whose 5-min volume jumps to "
+                    desc=(f"Bonded/graduated coins at ${float(c.get('min_mc_usd', 150000)) / 1000:g}K+, bonded {float(c.get('min_hours_since_bond', 0)):g}h+ ago, "
+                          f"liquidity ${float(c.get('min_liq_usd', 15000)) / 1000:g}K+, whose 5-min volume jumps to "
                           f"{float(c.get('spike_mult', 2)):g}x+ their hourly pace (buys > sells, price up) · "
                           f"${float(c.get('size_usd', 25)):g} each · no stop, sold after {float(c.get('hold_h', 48)):g}h · paper only"))
