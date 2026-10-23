@@ -289,7 +289,7 @@ class Runner:
             self.rangehold_small10dl.feed_price = feed_price
             eng.rangehold_small10dl = self.rangehold_small10dl
             self.explore.listeners = [s.add_late for s in (self.rangehold, self.rangehold_v2,
-                                      self.rangehold_mix, self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l, self.rangehold_small10d, self.rangehold_small10dl)]
+                                      self.rangehold_mix, self.rangehold_small10, self.rangehold_floor, self.rangehold_small10t, self.rangehold_v2mid, self.rangehold_lowscore, self.rangehold_small10l, self.rangehold_small10d, self.rangehold_small10dl)] + [self.research2.add_explore]
             self.calls.feed_price = feed_price
             eng.reclaim = self.reclaim
             eng.narr = self.narr
@@ -1398,7 +1398,7 @@ async def api_diagnostics(request):
                      "rangehold_small10l_state.json", "rangehold_small10l_trades.csv", "rangehold_small10l_fills.csv",
                      "rangehold_small10d_state.json", "rangehold_small10d_trades.csv", "rangehold_small10d_fills.csv",
                      "rangehold_small10dl_state.json", "rangehold_small10dl_trades.csv", "rangehold_small10dl_fills.csv",
-                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl",
+                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl", "rocket_outcomes.jsonl", "bigcap.jsonl",
                      "bond_score.json", "bond_predictions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

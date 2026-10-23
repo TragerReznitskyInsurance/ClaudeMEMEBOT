@@ -17,6 +17,11 @@ Research data collectors (21 Oct, owner's request: "collect as much data as poss
    fast" strategies can be tested with real price paths.
      data/rocket_paths.jsonl  {m, sym, t0, age_s, mc0, path: [[seconds_since_cross, mcap_sol, buys, sells]]}
 
+4. BIG CAPS (22 Oct) - every bonded pump.fun coin (and any graduated coin pump.fun's lists show at $150K+) gets
+   DexScreener's numbers every minute while it's worth $50K+ (for up to 3 days): market cap, liquidity, 5 min / 1 h /
+   24 h volume, buys/sells, price change - to test "buy coins whose volume spikes at $150K+ and catch the runners".
+     data/bigcap.jsonl        {m, ts, mc, liq, v5, v1h, v24, b5, s5, b1h, s1h, pc5, pc1h, dex}
+
 Costs: up to `smart_fetch_per_day` (300) Helius enhanced-transaction calls a day; Jupiter's free price API.
 Settings: `research2` section in config.yaml.
 """
@@ -37,6 +42,7 @@ from memebot import wallet_tokens as WT
 log = logging.getLogger("memebot")
 SUPPLY = 1_000_000_000
 JUP = "https://lite-api.jup.ag/price/v3?ids={ids}"
+DEXS = "https://api.dexscreener.com/tokens/v1/solana/{ids}"
 MAX_FILE = 80_000_000
 
 
@@ -51,6 +57,7 @@ class Research2:
         self.migrated: dict[str, float] = {}           # mint -> migration ts
         self.post: dict[str, dict] = {}                # mint -> {sym, t0, next}
         self.rockets: dict[str, dict] = {}             # mint -> path being recorded
+        self.big: dict[str, dict] = {}                 # mint -> {t0, last_mc, low_n} (big-cap volume tracking)
         self.fetched: set[str] = set()
         self.day, self.fetches = "", 0
         self.wallets: dict[str, list] = {}             # wallet -> [bond_hits, loss_hits, last_ts]  (first ~30 s)
@@ -129,6 +136,7 @@ class Research2:
                 self.migrated.pop(m, None)
         self.post[mint] = dict(sym=(symbol or "")[:20], t0=ts, next=ts + 30)
         self.stats["post_coins"] += 1
+        self.big.setdefault(mint, dict(t0=ts, last_mc=None, low_n=0))
         self._fetch(mint, 1)
         if (mint in self.crossed or mint in self.pending_buyers) and mint not in self.rockets:
             self._resolve(mint, 1)                      # (still recording: _finish_rocket resolves it with its buyers)
@@ -282,6 +290,56 @@ class Research2:
                 if random.random() < share:
                     self._fetch(m, 0)
 
+    # ------------------------------------------------------------------ big caps (volume)
+    def add_explore(self, coins, now):
+        """Explore listener: graduated coins pump.fun lists at $150K+ join the big-cap tracking."""
+        if not self.enabled():
+            return
+        for c in coins:
+            m = c.get("mint")
+            if m and c.get("complete") and (c.get("mcap_usd") or 0) >= 150000 and m not in self.big and len(self.big) < 600:
+                self.big[m] = dict(t0=now, last_mc=c.get("mcap_usd"), low_n=0)
+
+    async def _bigcap(self, now):
+        if now - self.__dict__.get("_big_ts", 0) < float(self.cfg().get("bigcap_every_s", 60)):
+            return
+        self._big_ts = now
+        for m in [m for m, b in self.big.items() if now - b["t0"] > 3 * 86400 or b["low_n"] >= 3]:
+            self.big.pop(m, None)
+        ids = list(self.big)
+        s = await self._sess()
+        for i in range(0, len(ids), 30):
+            chunk = ids[i:i + 30]
+            try:
+                async with s.get(DEXS.format(ids=",".join(chunk)), timeout=aiohttp.ClientTimeout(total=10)) as r:
+                    data = await r.json(content_type=None) if r.status == 200 else []
+            except Exception as e:
+                self.last_error = f"dexscreener: {type(e).__name__}"
+                continue
+            best = {}
+            for p in data if isinstance(data, list) else []:
+                m = ((p.get("baseToken") or {}).get("address"))
+                if m in self.big and ((p.get("liquidity") or {}).get("usd") or 0) >= ((best.get(m) or {}).get("liquidity") or {}).get("usd", -1):
+                    best[m] = p
+            for m in chunk:
+                b, p = self.big.get(m), best.get(m)
+                if not b:
+                    continue
+                if not p:
+                    b["low_n"] += 1 if now - b["t0"] > 1800 else 0
+                    continue
+                mc = p.get("marketCap") or p.get("fdv") or 0
+                b["last_mc"] = mc
+                b["low_n"] = b["low_n"] + 1 if mc < 50000 and now - b["t0"] > 7200 else 0
+                v, tx, pc = p.get("volume") or {}, p.get("txns") or {}, p.get("priceChange") or {}
+                self._write("bigcap.jsonl", dict(m=m, ts=round(now), mc=round(mc), liq=round((p.get("liquidity") or {}).get("usd") or 0),
+                                                 v5=round(v.get("m5") or 0), v1h=round(v.get("h1") or 0), v24=round(v.get("h24") or 0),
+                                                 b5=(tx.get("m5") or {}).get("buys"), s5=(tx.get("m5") or {}).get("sells"),
+                                                 b1h=(tx.get("h1") or {}).get("buys"), s1h=(tx.get("h1") or {}).get("sells"),
+                                                 pc5=pc.get("m5"), pc1h=pc.get("h1"), dex=p.get("dexId")))
+                self.stats["big_rows"] = self.stats.get("big_rows", 0) + 1
+            await asyncio.sleep(0.3)
+
     # ------------------------------------------------------------------ after the bond
     async def _post_prices(self, now):
         due = [m for m, p in self.post.items() if p["next"] <= now]
@@ -324,6 +382,7 @@ class Research2:
                               if now - r["t0"] > float(self.cfg().get("rocket_window_min", 30)) * 60 + 60]:
                         self._finish_rocket(m)              # no trades lately: close the path anyway
                     await self._post_prices(now)
+                    await self._bigcap(now)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -336,5 +395,5 @@ class Research2:
 
     def summary(self):
         return dict(**self.stats, wallets=len(self.wallets), smart_wallets=len(self._smart_cache()),
-                    following_post=len(self.post), recording_rockets=len(self.rockets),
+                    following_post=len(self.post), recording_rockets=len(self.rockets), bigcap_tracking=len(self.big),
                     fetches_today=self.fetches, last_error=self.last_error)
