@@ -32,7 +32,7 @@
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* chart series (fixed order, validated for CVD on the dark card surface) */
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s9: #7a6a00; --s10: #00838f;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s9: #7a6a00; --s10: #00838f; --s11: #6d4c41;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -41,7 +41,7 @@
   --up: #0fae74; --up-soft: rgba(15,174,116,.11); --down: #e23a55; --down-soft: rgba(226,58,85,.1);
   --brand: #6a57f0; --brand-soft: rgba(106,87,240,.1); --warn: #c77a00; --warn-soft: rgba(199,122,0,.1);
   --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.05);
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --s9: #c9b437; --s10: #26c6da;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --s9: #c9b437; --s10: #26c6da; --s11: #bcaaa4;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -1243,6 +1243,7 @@ const TESTS = [["rangehold", "Hold to bond", () => RH, "--s2"],
   ["rangehold_small10l", "Hold <$12K · 10 trades · 24h", () => RHX, "--s1"],
   ["rangehold_small10d", "Hold <$12K · 10 trades · under 60% ATH", () => RHD, "--s9"],
   ["rangehold_small10dl", "Hold <$12K · under 60% ATH · 24h", () => RHDL, "--s10"],
+  ["bigcap_paper", "Big caps · volume spike · 48h", () => BCP, "--s11"],
 ];
 const TCOLOR = Object.fromEntries(TESTS.map(t => [t[0], t[3]]));
 const money = (v, d = 0) => v == null ? "—" : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
@@ -1446,11 +1447,11 @@ function watchTable(name, label) {
 function renderBigCap() {
   const el = $("#bigcappaper"), B = BCP;
   if (!el) return;
-  if (!B) { el.innerHTML = ""; return; }
+  if (!B || TSEL !== "bigcap_paper") { el.innerHTML = ""; return; }   // opens from the paper-tests table like the others
   const $m = v => v == null ? "—" : (v < 0 ? "−$" : "+$") + Math.abs(v).toFixed(2);
   const k = v => v == null ? "—" : "$" + (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.round(v / 1000) + "K");
   const tot = (B.realized_usd || 0) + (B.open_pnl_usd || 0);
-  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>📈 Big caps · volume spike · ride 48h</h2><span class="badge gray">paper only</span></div><div class="card-b" style="font-size:13px;line-height:1.6">
+  let h = `<div class="card" style="margin-top:14px"><div class="rm-head"><h2>📈 Big caps · volume spike · ride 48h</h2><span class="badge brand">● PAPER</span><div class="rm-actions"><button class="btn" onclick="testPick('bigcap_paper')">✕ Close</button></div></div><div class="card-b" style="font-size:13px;line-height:1.6">
     <div class="faint" style="margin-bottom:6px">${esc(B.desc || "")}</div>
     <b class="num ${cls(tot)}">${$m(tot)}</b> total · closed ${B.closed} (${B.wins || 0} won) ${$m(B.realized_usd)} · open ${B.open} ${$m(B.open_pnl_usd)}`;
   if (B.positions && B.positions.length) h += `<table class="wtab" style="margin-top:8px"><tr class="faint"><td>Coin</td><td class="r">Bought at</td><td class="r">Now</td><td class="r">×</td><td class="r">Peak ×</td><td class="r">Low ×</td><td class="r">P&L</td><td class="r">Held</td></tr>

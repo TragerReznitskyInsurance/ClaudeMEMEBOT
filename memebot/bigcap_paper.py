@@ -128,7 +128,13 @@ class BigCapPaper:
         real = round(sum(c["pnl_usd"] for c in self.closed), 2)
         unreal = round(sum(x["pnl_usd"] for x in opn), 2)
         c = self.cfg()
-        return dict(name=self.NAME, enabled=self.enabled(), open=len(opn), closed=len(self.closed), bonded=0,
+        cum, curve = 0.0, []
+        for x in sorted(self.closed, key=lambda x: x["closed"]):
+            cum += x["pnl_usd"]
+            curve.append([round(x["closed"]), round(cum, 2)])
+        wins = sum(1 for x in self.closed if x["pnl_usd"] > 0)
+        return dict(name=self.NAME, enabled=self.enabled(), open=len(opn), closed=len(self.closed), bonded=None,
+                    curve=curve[-500:], win_rate=round(wins / len(self.closed) * 100) if self.closed else None,
                     realized_usd=real, open_pnl_usd=unreal, positions=opn[:60],
                     recent=[dict(symbol=x["symbol"], entry_mc=x["entry_mc"], exit_mult=x["exit_mult"], peak=x["peak_mult"],
                                  pnl_usd=x["pnl_usd"]) for x in self.closed[-15:][::-1]],
