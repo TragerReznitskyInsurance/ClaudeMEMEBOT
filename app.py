@@ -1401,7 +1401,7 @@ async def api_diagnostics(request):
                      "rangehold_small10l_state.json", "rangehold_small10l_trades.csv", "rangehold_small10l_fills.csv",
                      "rangehold_small10d_state.json", "rangehold_small10d_trades.csv", "rangehold_small10d_fills.csv",
                      "rangehold_small10dl_state.json", "rangehold_small10dl_trades.csv", "rangehold_small10dl_fills.csv",
-                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl", "rocket_outcomes.jsonl", "bigcap.jsonl", "bigcap_paper_state.json", "bigcap_paper_state_v1.json", "bigcap_paper_trades.jsonl",
+                     "smart_early.jsonl", "smart_wallets.json", "smart_signals.jsonl", "postbond.jsonl", "rocket_paths.jsonl", "rocket_outcomes.jsonl", "bigcap.jsonl", "bigcap_paper_state.json", "bigcap_paper_state_v1.json", "bigcap_paper_state_v2.json", "bigcap_paper_trades.jsonl",
                      "bond_score.json", "bond_predictions.jsonl"):
             p = os.path.join(data_dir, name)
             if os.path.exists(p):

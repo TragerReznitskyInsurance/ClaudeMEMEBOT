@@ -93,7 +93,8 @@ breakouts:
   enabled: true
   dedupe_min: 30                       # one record per coin per 30 minutes
   launch_checks_per_day: 400           # bundle/sniper checks cost one Enhanced call each
-  launch_check_share: 0.35             # share of crossings that get one (all wallet #1 buys do)
+  launch_check_share: 0                # 26 Oct: was 0.35 - research done; hold-test buys still get checked (daily launch-type report)
+  activity_counts: false               # 26 Oct: trade counts at hold-test buys - no signal in 123 coins, saves Helius credits
 
 # ── Skimmer (PAPER ONLY) ───────────────────────────────────────
 # Lots of quick trades: buys every coin rising through 44 SOL (young coins 2+ min old from the live
@@ -404,7 +405,7 @@ notify:
 # bond), prices for 24 h after every bond, and second-by-second paths of every coin crossing 44 SOL (30 min).
 research2:
   enabled: true
-  smart_fetch_per_day: 300             # Helius enhanced-transaction calls a day (first 100 txs of a coin)
+  smart_fetch_per_day: 0               # 26 Oct: was 300 - off (heavy Helius credit use; the "did not bond" sample starved, so no usable test)
   smart_loser_share: 0.12              # share of non-bonding 44-SOL crossers sampled as "did not bond" examples
   smart_early_s: 300                   # buyers within this many seconds of launch count as "early"
   smart_min_bonds: 3                   # a wallet qualifies as smart money with this many early buys in bonders...
@@ -425,4 +426,6 @@ bigcap_paper:
   min_v5_usd: 3000                     # ...and at least this much in those 5 minutes
   min_liq_usd: 40000                   # 23 Oct: was 15K
   min_hours_since_bond: 6              # 23 Oct: skip coins that bonded less than 6 h ago (v1: 237 of 261 such buys rugged)
+  min_hist_mult: 1.5                   # 26 Oct (v3): last hour's volume >= 1.5x the last 5 min's (the coin traded before the spike)...
+  min_day_mult: 2.0                    # ...and 24h volume >= 2x the last hour's - skips brand-new pairs (v2: 42 of 50 rugged)
   fee_pct: 2                           # charged on the buy and on the sell

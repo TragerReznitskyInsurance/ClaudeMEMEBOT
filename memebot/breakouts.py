@@ -163,8 +163,8 @@ class BreakoutLog:
     def on_test_activity(self, mint, ts, cb):
         """21 Oct: trade counts on the coin's bonding curve in the last 5 min / 1 h / 24 h at a hold-test buy
         (one getSignaturesForAddress call, a few more for very busy coins). `cb(info)` gets the result."""
-        if not self.enabled() or not self._key():
-            return
+        if not self.enabled() or not self._key() or not self.cfg().get("activity_counts", False):
+            return                                      # 26 Oct: off - no link to bonding/profit in 123 coins, costs Helius credits
         cache = self.__dict__.setdefault("_act", {})
         hit = cache.get(mint)
         if hit and ts - hit[0] < 120:

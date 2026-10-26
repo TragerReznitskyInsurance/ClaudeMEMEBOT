@@ -9,6 +9,12 @@ buys a coin when, at $150K+ market cap, its volume spikes:
 $`size_usd` (25) per coin, one buy per coin, no stop: held `hold_h` (48) hours, then sold at the market. `fee_pct`
 (2%) is charged on the way in and out. Peak / low / time-to-peak are kept on every trade to design exits later.
 Never real money. Settings: `bigcap_paper` section in config.yaml.
+
+v3 (26 Oct): v2 bought brand-new pairs (famous-name tickers listed with ~$50K liquidity, all their volume in the last
+5 minutes) - 42 of 50 went to ~0 within minutes. Now the coin must have traded before the spike: last hour's volume
+>= `min_hist_mult` x the last 5 min's, and 24h volume >= `min_day_mult` x the last hour's.
+Every position also tracks "shadow exits" - what each take-profit / stop pair would have returned, in the order the
+prices actually came - so exits can be chosen from real paths. The dashboard result stays the plain 48 h hold.
 """
 from __future__ import annotations
 
@@ -22,7 +28,8 @@ log = logging.getLogger("memebot")
 
 class BigCapPaper:
     NAME = "bigcap_paper"
-    VERSION = 2          # 23 Oct: v1 (any age) bought fresh migrations that rugged - archived, restarted with v2 rules
+    VERSION = 3          # 23 Oct v2: skip fresh migrations. 26 Oct v3: skip brand-new pairs (v2 archived)
+    SHADOW = [(tp, sl) for tp in (1.3, 1.5, 2.0, 3.0) for sl in (0.7, 0.5, 0)]   # sl 0 = no stop
 
     def __init__(self, data_dir, cfg_getter):
         self.path = os.path.join(data_dir, "bigcap_paper_state.json")
@@ -72,6 +79,14 @@ class BigCapPaper:
             if mult > p["peak_mult"]:
                 p["peak_mult"], p["peak_min"] = round(mult, 3), round((now - p["opened"]) / 60)
             p["low_mult"] = round(min(p["low_mult"], mult), 3)
+            sh = p.setdefault("shadow", {})
+            for tp, sl in self.SHADOW:
+                k = f"tp{tp:g}_sl{sl:g}"
+                if k not in sh:
+                    if mult >= tp:
+                        sh[k] = tp
+                    elif sl and mult <= sl:
+                        sh[k] = sl
             if now - p["opened"] >= float(self.cfg().get("hold_h", 48)) * 3600:
                 self._close(m, now, "held 48h")
             return
@@ -90,12 +105,15 @@ class BigCapPaper:
             return                                      # 23 Oct: fresh migrations spike then rug - skip them
         if not (avg5 and v5 >= float(c.get("spike_mult", 2.0)) * avg5 and b5 > s5 and pc5 > 0):
             return
+        v24 = row.get("v24") or 0
+        if v1h < float(c.get("min_hist_mult", 0)) * v5 or v24 < float(c.get("min_day_mult", 0)) * v1h:
+            return                                      # 26 Oct v3: brand-new pair (no trading before the spike) - skip
         self.traded.add(m)
         size = float(c.get("size_usd", 25))
         self.positions[m] = dict(mint=m, symbol=(symbol or m[:5])[:20], opened=now, entry_px=price, entry_mc=mc,
                                  size_usd=size, last_px=price, last_mc=mc, last_ts=now, peak_mult=1.0, peak_min=0,
                                  low_mult=1.0, entry=dict(v5=v5, v1h=v1h, spike=round(v5 / avg5, 1), b5=b5, s5=s5,
-                                                          pc5=pc5, liq=liq))
+                                                          pc5=pc5, liq=liq, v24=v24, bond_h=bh))
         log.info("BIGCAP paper buy %s at $%.0fK (5m volume %.1fx its hourly pace)", symbol, mc / 1000, v5 / avg5)
         self._save()
 
@@ -112,7 +130,10 @@ class BigCapPaper:
         fee = float(self.cfg().get("fee_pct", 2)) / 100
         mult = p["last_px"] / p["entry_px"]
         out = p["size_usd"] * (1 - fee) * mult * (1 - fee)
-        rec = dict(p, closed=now, exit=why, exit_mult=round(mult, 3), pnl_usd=round(out - p["size_usd"], 2))
+        sh = dict(p.get("shadow") or {})
+        for tp, sl in self.SHADOW:                      # rules that never triggered sell at the end like the main test
+            sh.setdefault(f"tp{tp:g}_sl{sl:g}", round(mult, 3))
+        rec = dict(p, shadow=sh, closed=now, exit=why, exit_mult=round(mult, 3), pnl_usd=round(out - p["size_usd"], 2))
         self.closed.append(rec)
         try:
             with open(self.trades_path, "a", encoding="utf-8") as fh:
@@ -146,7 +167,8 @@ class BigCapPaper:
                     recent=[dict(symbol=x["symbol"], entry_mc=x["entry_mc"], exit_mult=x["exit_mult"], peak=x["peak_mult"],
                                  pnl_usd=x["pnl_usd"]) for x in self.closed[-15:][::-1]],
                     wins=sum(1 for x in self.closed if x["pnl_usd"] > 0),
-                    desc=(f"Bonded/graduated coins at ${float(c.get('min_mc_usd', 150000)) / 1000:g}K+, bonded {float(c.get('min_hours_since_bond', 0)):g}h+ ago, "
+                    desc=(f"v3 · Bonded/graduated coins at ${float(c.get('min_mc_usd', 150000)) / 1000:g}K+, bonded {float(c.get('min_hours_since_bond', 0)):g}h+ ago "
+                          f"and trading before the spike (not brand-new pairs), "
                           f"liquidity ${float(c.get('min_liq_usd', 15000)) / 1000:g}K+, whose 5-min volume jumps to "
                           f"{float(c.get('spike_mult', 2)):g}x+ their hourly pace (buys > sells, price up) · "
                           f"${float(c.get('size_usd', 25)):g} each · no stop, sold after {float(c.get('hold_h', 48)):g}h · paper only"))
